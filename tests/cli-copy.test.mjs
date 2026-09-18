@@ -47,7 +47,7 @@ test("every string differs between the two languages unless it is a command or c
     "preflight.componentLauncher",
     // The language question is asked before a language is chosen, so it is
     // the same bilingual line in both catalogs; the localhost value is a URL.
-    "setup.languageQuestion", "setup.languageHint", "setup.originReachLocalhostValue",
+    "setup.languageQuestion", "setup.languageHint", "setup.languageDefaultMarker", "setup.originReachLocalhostValue",
   ]);
   const unexpected = same.filter((key) => !allowed.has(key));
   assert.deepEqual(unexpected, [], `untranslated: ${unexpected.join(", ")}`);

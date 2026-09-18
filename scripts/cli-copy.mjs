@@ -73,6 +73,7 @@ export const en = {
     retryPrompt: "Try again? (Y/n)",
     cancelled: "Cancelled. Nothing was written.",
     invalidChoice: (options) => `Please answer with one of: ${options.join(", ")}.`,
+    defaultMarker: "(default — Enter keeps it)",
   },
 
   setup: {
@@ -82,7 +83,8 @@ export const en = {
     // Language (asked before anything else, so both languages appear as-is)
     languageQuestion: "Language / 语言",
     languageOptions: ["English", "中文"],
-    languageHint: "Enter keeps the default in brackets. / 回车即使用方括号中的默认项。",
+    languageHint: "Enter keeps the default. / 回车即使用默认项。",
+    languageDefaultMarker: "(default / 默认)",
 
     // How SiteWake runs
     targetQuestion: "How will SiteWake run?",
@@ -218,6 +220,7 @@ export const zh = {
     retryPrompt: "重新输入？(Y/n)",
     cancelled: "已取消，未写入任何配置。",
     invalidChoice: (options) => `请输入以下之一：${options.join("、")}。`,
+    defaultMarker: "（默认，回车即选）",
   },
 
   setup: {
@@ -226,7 +229,8 @@ export const zh = {
 
     languageQuestion: "Language / 语言",
     languageOptions: ["English", "中文"],
-    languageHint: "Enter keeps the default in brackets. / 回车即使用方括号中的默认项。",
+    languageHint: "Enter keeps the default. / 回车即使用默认项。",
+    languageDefaultMarker: "(default / 默认)",
 
     targetQuestion: "SiteWake 以哪种方式运行？",
     targetLocal: "用 Node.js 从源码运行 —— 开发调试",

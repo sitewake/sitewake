@@ -51,7 +51,7 @@ There is exactly one spelling of each; `tests/brand-purity.test.mjs` fails the b
 Maintainers cut releases; contributors do not need to think about version numbers.
 
 - `main` is unreleased work. A release is a commit titled `Release vX.Y.Z` with an annotated tag `vX.Y.Z` and a GitHub Release whose notes come from [CHANGELOG.md](CHANGELOG.md). Tags never move: a fix to a released version ships as the next patch version (`vX.Y.Z+1`), a batch of features as the next minor version.
-- Pull requests are **squash-merged**, one commit per PR, under your name. Your change ships in the next `Release vX.Y.Z` and is listed in that release's notes.
+- Every pull request runs `npm run test:public` on GitHub Actions (the `gate` job); it has to be green before a merge. Pull requests are **squash-merged**, one commit per PR, under your name. Your change ships in the next `Release vX.Y.Z` and is listed in that release's notes.
 - Do not change `version` in `package.json`, add a version heading to `CHANGELOG.md`, or create tags in a PR — the maintainer doing the release does that in one place. Describing the user-visible change in the PR is what ends up in the notes.
 - Maintainers develop in a private repository and publish each release from it. A merged PR is carried into that repository before the next release; the next `Release vX.Y.Z` commit contains it, so a merge on GitHub is the whole contribution.
 

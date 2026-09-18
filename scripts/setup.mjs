@@ -359,11 +359,16 @@ function padDisplay(text, width) {
   return `${text}${" ".repeat(Math.max(0, width - displayWidth(text)))}`;
 }
 
-/** Asks a numbered menu until a valid number is given; Enter picks `fallback` (1-based). */
-async function askChoice(io, log, copy, lines, fallback) {
-  for (const [index, line] of lines.entries()) log(`  ${index + 1}. ${line}`);
+/**
+ * Asks a numbered menu until a valid number is given. The default (1-based
+ * `fallback`) is marked on its own line, so the prompt stays a bare `>`.
+ */
+async function askChoice(io, log, copy, lines, fallback, marker = copy.common.defaultMarker) {
+  for (const [index, line] of lines.entries()) {
+    log(`  ${index + 1}. ${line}${index + 1 === fallback ? `  ${marker}` : ""}`);
+  }
   for (;;) {
-    const answer = (await io.ask(fallback ? `[${fallback}]` : "", fallback ? String(fallback) : "")).trim();
+    const answer = (await io.ask("", fallback ? String(fallback) : "")).trim();
     const index = Number(answer);
     if (Number.isInteger(index) && index >= 1 && index <= lines.length) return index;
     log(copy.common.invalidChoice(lines.map((_, i) => String(i + 1))));
@@ -444,7 +449,7 @@ export async function runWizard({
   if (!hasLangFlag(argv)) {
     log(copy.setup.languageQuestion);
     log(`  ${copy.setup.languageHint}`);
-    const choice = await askChoice(io, log, copy, copy.setup.languageOptions, locale === "zh" ? 2 : 1);
+    const choice = await askChoice(io, log, copy, copy.setup.languageOptions, locale === "zh" ? 2 : 1, copy.setup.languageDefaultMarker);
     locale = choice === 2 ? "zh" : "en";
     copy = cli(locale);
     log("");

@@ -143,7 +143,7 @@ test("--lang skips the language question; LANG=C with '2' gives Chinese througho
     const chosen = scriptedIo(["2", "1", KEY, "gpt-test"]);
     assert.equal(await runWizard({ argv: ["--target", "local"], env: { LANG: "C" }, io: chosen, paths }), 0, chosen.out.join("\n"));
     const output = chosen.out.join("\n");
-    assert.match(output, /Language \/ 语言\n  .*\n  1\. English\n  2\. 中文\n\? \[1\]/, "the environment's language is the default in brackets");
+    assert.match(output, /Language \/ 语言\n  .*\n  1\. English  \(default \/ 默认\)\n  2\. 中文\n\? $/m, "the environment's language is marked as the default; the prompt stays bare");
     assert.match(output, /模型服务。SiteWake 需要一个 OpenAI 兼容/);
     assert.match(output, /验证成功/);
     assert.doesNotMatch(output.split("中文")[1], /Verified|Which provider/);
@@ -171,7 +171,7 @@ test("a verified provider fixes the base URL and names the families; 'other' ask
     // Rerun: the existing URL preselects the provider, the model is the default.
     const rerun = scriptedIo(["", "", "", ""]);
     assert.equal(await runWizard({ argv: ["--target", "local"], env: ENV_EN, io: rerun, paths }), 0, rerun.out.join("\n"));
-    assert.match(rerun.out.join("\n"), /5\. Another OpenAI-compatible service[^\n]*\n\? \[2\]/, "Bailian is preselected");
+    assert.match(rerun.out.join("\n"), /2\. Alibaba Cloud Bailian[^\n]*\(default — Enter keeps it\)/, "Bailian is preselected");
     assert.match(rerun.out.join("\n"), /\? Model — [^\n]* \[qwen-plus\]$/m);
 
     // Other: the URL is asked, with the existing one as the default. An Ark
@@ -257,7 +257,7 @@ test("Docker on an existing install keeps real secrets verbatim and regenerates 
 
     const text = await readFile(paths.dockerEnvFile, "utf8");
     const written = parseEnvFile(text);
-    assert.match(io.out.join("\n"), /4\. On the local network[^\n]*\n\? \[2\]/, "the existing https origin preselects the domain case");
+    assert.match(io.out.join("\n"), /2\. Through a domain name[^\n]*\(default — Enter keeps it\)/, "the existing https origin preselects the domain case");
     assert.match(io.out.join("\n"), /\? Domain name \(with or without https:\/\/\) \[https:\/\/agent\.example\.com\]/);
     assert.equal(written.get("POSTGRES_PASSWORD"), "s3cr3t", "a real password is never regenerated");
     assert.equal(written.get("SITEWAKE_RUNNER_ENROLLMENT_TOKEN"), realToken);
@@ -312,7 +312,7 @@ test("trying it out on this machine needs no address; the example's own origin i
     assert.equal(code, 0, io.out.join("\n"));
     assert.equal(io.remaining(), 0, "the localhost case asks nothing further");
     const output = io.out.join("\n");
-    assert.match(output, /4\. On the local network[^\n]*\n\? $/m, "the example's placeholder origin preselects nothing");
+    assert.doesNotMatch(output.split("How will visitors reach")[1], /\(default — Enter keeps it\)/, "the example's placeholder origin preselects nothing");
     assert.match(output, /Server address: http:\/\/localhost:3000/);
     const written = parseEnvFile(await readFile(paths.dockerEnvFile, "utf8"));
     assert.equal(written.get("SITEWAKE_PUBLIC_ORIGIN"), "http://localhost:3000");
@@ -387,7 +387,7 @@ test("Chinese terminal: every person-facing line is Chinese, identifiers stay as
     assert.equal(code, 0, io.out.join("\n"));
     const output = io.out.join("\n");
     assert.match(output, /SiteWake 配置向导/);
-    assert.match(output, /\? \[2\]/, "Chinese is the default when LANG says so");
+    assert.match(output, /2\. 中文  \(default \/ 默认\)/, "Chinese is the default when LANG says so");
     assert.match(output, /访客怎么访问到这台服务器？/);
     assert.match(output, /2\. 阿里云百炼\s+https:\/\/dashscope/);
     assert.match(output, /验证成功/);
