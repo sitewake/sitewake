@@ -123,11 +123,12 @@ docker compose up -d --build
 3. **Model provider** — pick one of the verified providers (OpenAI, Alibaba Cloud Bailian, Zhipu, Volcengine Ark; the base URL is filled in for you) or enter the base URL of another OpenAI-compatible service.
 4. **API key** — from the provider's console; typed without echo, stored in `.env` as `MODEL_API_KEY`, never sent to visitors' browsers.
 5. **Model** — the exact model id from your provider's list; it must support tool calls (the wizard names the verified families).
-6. **How visitors reach this server** — trying it out on this machine, a domain name (required for HTTPS websites), a public IP, or the local network. The wizard derives the server address your website loads the SDK from, e.g. `https://agent.example.com`.
 
-It then sends both runtime requests to the model and only writes the file if they pass. The database and MinIO passwords and the four runner secrets are generated for you; rerunning `./setup` later keeps them. To change the model afterwards, rerun `./setup` (press Enter to keep the key) or edit `MODEL_BASE_URL`, `MODEL_API_KEY` and `MODEL` in `.env`, then `docker compose up -d`.
+It then fills in the **server address** itself — this machine's IP address and port 3000, the address your website loads the SDK from — and prints it. To use a domain name or HTTPS instead, set `SITEWAKE_PUBLIC_ORIGIN` in `.env` (an HTTPS website needs an `https://` address with a TLS reverse proxy such as Caddy or nginx in front of port 3000).
 
-Works with **any OpenAI-compatible model service** — no vendor lock-in. The stack listens on port 3000; open the origin you entered.
+Before writing anything it sends both runtime requests to the model and only writes the file if they pass. The database and MinIO passwords and the four runner secrets are generated for you; rerunning `./setup` later keeps them. To change the model afterwards, rerun `./setup` (press Enter to keep the key) or edit `MODEL_BASE_URL`, `MODEL_API_KEY` and `MODEL` in `.env`, then `docker compose up -d`.
+
+Works with **any OpenAI-compatible model service** — no vendor lock-in. The stack listens on port 3000; open the server address the wizard printed.
 
 Small machine (2 CPU / 2 GB)? Use the compact profile — one browser at a time, a single worker:
 

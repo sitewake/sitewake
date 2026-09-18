@@ -5,10 +5,10 @@
  * verified list, or any OpenAI-compatible base URL), the key and the model,
  * verifies the model with both runtime stages, and only then writes the
  * configuration file for that target — `.env.local` for development from
- * source, `.env` for Docker Compose. On the Docker path it first asks how
- * visitors will reach the server, derives the browser-visible origin from
- * that, generates the random secrets compose requires, and derives the
- * private-network switch.
+ * source, `.env` for Docker Compose. On the Docker path it also fills in the
+ * browser-visible origin, generates the random secrets compose requires, and
+ * derives the private-network switch. The origin is not a question: it is this server's
+ * address and compose's port, announced with a note on where to change it.
  *
  * Runs right after `git clone`, before `npm install`: only `node:` modules and
  * relative files are imported. The page-execution request is replayed from
@@ -56,7 +56,6 @@ export const PASSWORD_KEYS = ["POSTGRES_PASSWORD", "MINIO_ROOT_PASSWORD"];
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_PORT = 3000;
-export const REACHABILITY = ["localhost", "domain", "ip", "lan"];
 
 export function parseEnvFile(text) {
   return new Map(Object.entries(parseEnv(text)));
@@ -376,43 +375,6 @@ async function askChoice(io, log, copy, lines, fallback, marker = copy.common.de
 }
 
 /**
- * Which of the four reachability cases an existing origin describes, so a
- * rerun preselects it: localhost, an https domain, a public IP, or a private
- * address (the LAN case).
- */
-export function reachabilityOf(origin) {
-  let url;
-  try { url = new URL(origin); } catch { return undefined; }
-  const host = url.hostname.toLowerCase();
-  if (host === "localhost" || host === "127.0.0.1") return "localhost";
-  if (url.protocol === "https:") return "domain";
-  if (isPrivateHostname(host)) return "lan";
-  return "ip";
-}
-
-const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
-
-/** The address the "domain" case accepts: https:// plus a hostname that is not an IP. */
-export function normalizeDomainOrigin(input) {
-  const text = String(input ?? "").trim();
-  if (!text) return null;
-  const withScheme = /^[a-z]+:\/\//i.test(text) ? text : `https://${text}`;
-  const origin = normalizeOrigin(withScheme);
-  if (!origin) return null;
-  const url = new URL(origin);
-  if (url.protocol !== "https:" || IPV4.test(url.hostname) || url.hostname === "localhost") return null;
-  return origin;
-}
-
-/** The address the IP and LAN cases accept: an http(s) origin, or a bare host that gets http:// and the port. */
-export function normalizeHostOrigin(input, port = DEFAULT_PORT) {
-  const text = String(input ?? "").trim();
-  if (!text) return null;
-  if (/^[a-z]+:\/\//i.test(text)) return normalizeOrigin(text);
-  return normalizeOrigin(`http://${text}:${port}`);
-}
-
-/**
  * The wizard proper. `io` is injected so tests can script answers and read
  * output without a terminal; `main()` wires up readline.
  *
@@ -526,48 +488,14 @@ export async function runWizard({
     }
 
     let origin;
-    let reachability;
     if (target === "docker") {
+      // Not a question: the address is this server's IP and the port compose
+      // listens on (an existing configured origin is kept). The summary says
+      // where to change it.
+      origin = defaultOrigin({ existing, example, env, interfaces }) || `http://localhost:${DEFAULT_PORT}`;
       log("");
-      log(copy.setup.originIntro);
-      log(copy.setup.originReachQuestion);
-      // The address detected by ./setup (or this machine's LAN address) is a
-      // sensible default only for the LAN case, or for the public-IP case when
-      // it is not a private address.
-      const detected = defaultOrigin({ existing: new Map(), example, env, interfaces });
-      const detectedHost = detected ? new URL(detected).hostname : "";
-      const publicDefault = detectedHost && !isPrivateHostname(detectedHost) ? detected : "";
-      const currentOrigin = defaultOrigin({ existing, example, env: {}, interfaces: {} });
-      const preselectedReach = currentOrigin ? REACHABILITY.indexOf(reachabilityOf(currentOrigin)) + 1 : 0;
-      const reachChoice = await askChoice(io, log, copy, [
-        `${copy.setup.originReachLocalhost}  ${copy.setup.originReachLocalhostValue}`,
-        `${copy.setup.originReachDomain}  ${copy.setup.originReachDomainValue}`,
-        `${copy.setup.originReachIp}  ${copy.setup.originReachIpValue(publicDefault ? detectedHost : "")}`,
-        `${copy.setup.originReachLan}  ${copy.setup.originReachLanValue(detectedHost)}`,
-      ], preselectedReach);
-      reachability = REACHABILITY[reachChoice - 1];
-      const port = Number(existing.get("SITEWAKE_PORT") || example.get("SITEWAKE_PORT") || DEFAULT_PORT) || DEFAULT_PORT;
-      const keepCurrent = reachabilityOf(currentOrigin) === reachability ? currentOrigin : "";
-      if (reachability === "localhost") {
-        origin = `http://localhost:${port}`;
-      } else if (reachability === "domain") {
-        for (;;) {
-          const answer = await io.ask(withFallback(copy.setup.originDomainQuestion, keepCurrent), keepCurrent);
-          origin = normalizeDomainOrigin(answer);
-          if (origin) break;
-          log(copy.setup.originDomainInvalid);
-        }
-      } else {
-        const fallback = keepCurrent || (reachability === "ip" ? publicDefault : detected);
-        const question = reachability === "ip" ? copy.setup.originIpQuestion : copy.setup.originLanQuestion;
-        for (;;) {
-          const answer = await io.ask(withFallback(question, fallback), fallback);
-          origin = normalizeHostOrigin(answer, port);
-          if (origin) break;
-          log(copy.setup.originInvalid);
-        }
-      }
-      log(`  ${copy.setup.originLine(origin)}`);
+      log(copy.setup.originLine(origin));
+      log(`  ${copy.setup.originNote}`);
     }
 
     log("");
@@ -599,7 +527,7 @@ export async function runWizard({
       log(`  ${copy.setup.modelLine(model, baseUrl)}`);
       if (target === "docker") {
         log(`  ${copy.setup.originLine(origin)}`);
-        if (reachability === "domain") log(`  ${copy.setup.originTlsReminder}`);
+        log(`  ${copy.setup.originNote}`);
         log(`  ${values.CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN === "1" ? copy.setup.privateAllowed : copy.setup.privateDenied}`);
         if (secrets.generated.length) log(`  ${copy.setup.generated(secrets.generated)}`);
         if (secrets.kept.length) log(`  ${copy.setup.kept(secrets.kept)}`);

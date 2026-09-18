@@ -20,7 +20,6 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import {
   runWizard, parseEnvFile, applyEnvValues, isPrivateHostname, derivePrivateOrigin, normalizeOrigin,
-  normalizeDomainOrigin, normalizeHostOrigin, reachabilityOf,
   lanAddress, generatedSecrets, defaultOrigin, TOKEN_KEYS, PASSWORD_KEYS, writeModelConfig,
 } from "../scripts/setup.mjs";
 
@@ -117,7 +116,7 @@ test("without --target the run-mode question chooses the file; '2' means Docker 
   const { paths, cleanup } = await tempRoot();
   try {
     providerOk(t);
-    const io = scriptedIo(["", "nope", "2", "1", KEY, "gpt-test", "2", "agent.example.com"]);
+    const io = scriptedIo(["", "nope", "2", "1", KEY, "gpt-test"]);
     const code = await runWizard({ argv: [], env: ENV_EN, io, paths });
     assert.equal(code, 0, io.out.join("\n"));
     const output = io.out.join("\n");
@@ -196,17 +195,17 @@ test("Docker on a fresh install: example as the base, secrets generated, private
   const { paths, cleanup } = await tempRoot();
   try {
     providerOk(t);
-    const io = scriptedIo(["", "1", KEY, "gpt-test", "4", ""]);
+    const io = scriptedIo(["", "1", KEY, "gpt-test"]);
     const env = { ...ENV_EN, SITEWAKE_SETUP_HOST_IP: "192.168.1.20" };
     const code = await runWizard({ argv: ["--target", "docker"], env, io, paths });
     assert.equal(code, 0, io.out.join("\n"));
+    assert.equal(io.remaining(), 0, "the server address is announced, never asked");
 
     const text = await readFile(paths.dockerEnvFile, "utf8");
     const written = parseEnvFile(text);
-    assert.match(io.out.join("\n"), /How will visitors reach this server\?/);
-    assert.match(io.out.join("\n"), /4\. On the local network — visitors are on the same LAN  → http:\/\/192\.168\.1\.20:3000/);
-    assert.match(io.out.join("\n"), /\? LAN address or http:\/\/ origin \[http:\/\/192\.168\.1\.20:3000\]/);
-    assert.equal(written.get("SITEWAKE_PUBLIC_ORIGIN"), "http://192.168.1.20:3000", "LAN default was accepted with Enter");
+    assert.match(io.out.join("\n"), /Server address: http:\/\/192\.168\.1\.20:3000\n  Visitors' browsers load the SDK from this address/);
+    assert.doesNotMatch(io.out.join("\n"), /How will visitors reach/);
+    assert.equal(written.get("SITEWAKE_PUBLIC_ORIGIN"), "http://192.168.1.20:3000", "the detected address and compose's port");
     assert.equal(written.get("CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN"), "1");
     assert.match(io.out.join("\n"), /CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN=1\) because the origin is on a private network/);
 
@@ -251,14 +250,13 @@ test("Docker on an existing install keeps real secrets verbatim and regenerates 
     ].join("\n");
     await writeFile(paths.dockerEnvFile, before);
 
-    const io = scriptedIo(["", "1", "", "gpt-new", "", ""]);
+    const io = scriptedIo(["", "1", "", "gpt-new"]);
     const code = await runWizard({ argv: ["--target", "docker"], env: ENV_EN, io, paths });
     assert.equal(code, 0, io.out.join("\n"));
 
     const text = await readFile(paths.dockerEnvFile, "utf8");
     const written = parseEnvFile(text);
-    assert.match(io.out.join("\n"), /2\. Through a domain name[^\n]*\(default — Enter keeps it\)/, "the existing https origin preselects the domain case");
-    assert.match(io.out.join("\n"), /\? Domain name \(with or without https:\/\/\) \[https:\/\/agent\.example\.com\]/);
+    assert.match(io.out.join("\n"), /Server address: https:\/\/agent\.example\.com/, "an existing origin is kept as is");
     assert.equal(written.get("POSTGRES_PASSWORD"), "s3cr3t", "a real password is never regenerated");
     assert.equal(written.get("SITEWAKE_RUNNER_ENROLLMENT_TOKEN"), realToken);
     assert.notEqual(written.get("MINIO_ROOT_PASSWORD"), "change-me-too", "the example placeholder counts as unset");
@@ -282,58 +280,28 @@ test("Docker on an existing install keeps real secrets verbatim and regenerates 
   } finally { await cleanup(); }
 });
 
-test("the domain case refuses paths, http and bare IPs until an https domain is given; the summary reminds about TLS", async (t) => {
-  const { paths, cleanup } = await tempRoot();
-  try {
-    providerOk(t);
-    const io = scriptedIo(["", "1", KEY, "gpt-test", "2", "https://agent.example.com/console", "http://1.2.3.4:3000", "agent.example.com:8443"]);
-    const env = { ...ENV_EN, SITEWAKE_SETUP_RUNNER: "docker" };
-    const code = await runWizard({ argv: ["--target", "docker"], env, io, paths });
-    assert.equal(code, 0, io.out.join("\n"));
-    const output = io.out.join("\n");
-    assert.equal((output.match(/This choice needs https:\/\/ and a domain name/g) || []).length, 2);
-    assert.match(output, /\? Domain name \(with or without https:\/\/\)$/m, "no default when nothing is configured yet");
-    assert.match(output, /3\. By its public IP address — works for HTTP websites only  → http:\/\/<public IP>:3000/, "inside the container with no host IP there is no address to offer");
-    assert.match(output, /Put a TLS reverse proxy in front of port 3000/);
-    const written = parseEnvFile(await readFile(paths.dockerEnvFile, "utf8"));
-    assert.equal(written.get("SITEWAKE_PUBLIC_ORIGIN"), "https://agent.example.com:8443");
-    assert.equal(written.get("CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN"), "0");
-  } finally { await cleanup(); }
-});
-
-test("trying it out on this machine needs no address; the example's own origin is never a default", async (t) => {
+test("the server address is derived, announced with where to change it, and the example's placeholder is never used", async (t) => {
   const { paths, cleanup } = await tempRoot();
   try {
     providerOk(t);
     await writeFile(paths.dockerEnvFile, EXAMPLE);
-    const io = scriptedIo(["", "1", KEY, "gpt-test", "1"]);
+    const io = scriptedIo(["", "1", KEY, "gpt-test"]);
     const env = { ...ENV_EN, SITEWAKE_SETUP_HOST_IP: "10.0.0.7" };
-    const code = await runWizard({ argv: ["--target", "docker"], env, io, paths });
-    assert.equal(code, 0, io.out.join("\n"));
-    assert.equal(io.remaining(), 0, "the localhost case asks nothing further");
+    assert.equal(await runWizard({ argv: ["--target", "docker"], env, io, paths }), 0, io.out.join("\n"));
     const output = io.out.join("\n");
-    assert.doesNotMatch(output.split("How will visitors reach")[1], /\(default — Enter keeps it\)/, "the example's placeholder origin preselects nothing");
-    assert.match(output, /Server address: http:\/\/localhost:3000/);
-    const written = parseEnvFile(await readFile(paths.dockerEnvFile, "utf8"));
-    assert.equal(written.get("SITEWAKE_PUBLIC_ORIGIN"), "http://localhost:3000");
+    assert.match(output, /Server address: http:\/\/10\.0\.0\.7:3000/);
+    assert.match(output, /set SITEWAKE_PUBLIC_ORIGIN in \.env/);
+    assert.match(output, /https:\/\/ address with a TLS reverse proxy in front of port 3000/);
+    let written = parseEnvFile(await readFile(paths.dockerEnvFile, "utf8"));
+    assert.equal(written.get("SITEWAKE_PUBLIC_ORIGIN"), "http://10.0.0.7:3000");
     assert.equal(written.get("CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN"), "1");
-  } finally { await cleanup(); }
-});
 
-test("the public-IP case offers the detected address only when it is public", async (t) => {
-  const { paths, cleanup } = await tempRoot();
-  try {
-    providerOk(t);
-    const lan = scriptedIo(["", "1", KEY, "gpt-test", "3", "203.0.113.9"]);
-    assert.equal(await runWizard({ argv: ["--target", "docker"], env: { ...ENV_EN, SITEWAKE_SETUP_HOST_IP: "10.0.0.7" }, io: lan, paths }), 0, lan.out.join("\n"));
-    assert.match(lan.out.join("\n"), /\? Public IP address or http:\/\/ origin$/m, "a private detected address is not a public-IP default");
-    assert.equal(parseEnvFile(await readFile(paths.dockerEnvFile, "utf8")).get("SITEWAKE_PUBLIC_ORIGIN"), "http://203.0.113.9:3000");
-
+    // Inside the container with no host address at all: localhost, still not a question.
     await rm(paths.dockerEnvFile);
-    const pub = scriptedIo(["", "1", KEY, "gpt-test", "3", ""]);
-    assert.equal(await runWizard({ argv: ["--target", "docker"], env: { ...ENV_EN, SITEWAKE_SETUP_HOST_IP: "203.0.113.9" }, io: pub, paths }), 0, pub.out.join("\n"));
-    assert.match(pub.out.join("\n"), /\? Public IP address or http:\/\/ origin \[http:\/\/203\.0\.113\.9:3000\]/);
-    assert.equal(parseEnvFile(await readFile(paths.dockerEnvFile, "utf8")).get("CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN"), "0");
+    const bare = scriptedIo(["", "1", KEY, "gpt-test"]);
+    assert.equal(await runWizard({ argv: ["--target", "docker"], env: { ...ENV_EN, SITEWAKE_SETUP_RUNNER: "docker" }, io: bare, paths, interfaces: {} }), 0, bare.out.join("\n"));
+    written = parseEnvFile(await readFile(paths.dockerEnvFile, "utf8"));
+    assert.equal(written.get("SITEWAKE_PUBLIC_ORIGIN"), "http://localhost:3000");
   } finally { await cleanup(); }
 });
 
@@ -382,13 +350,13 @@ test("Chinese terminal: every person-facing line is Chinese, identifiers stay as
   const { paths, cleanup } = await tempRoot();
   try {
     providerOk(t);
-    const io = scriptedIo(["", "1", KEY, "gpt-test", "2", "agent.example.com"]);
+    const io = scriptedIo(["", "1", KEY, "gpt-test"]);
     const code = await runWizard({ argv: ["--target", "docker"], env: { LANG: "zh_CN.UTF-8" }, io, paths });
     assert.equal(code, 0, io.out.join("\n"));
     const output = io.out.join("\n");
     assert.match(output, /SiteWake 配置向导/);
     assert.match(output, /2\. 中文  \(default \/ 默认\)/, "Chinese is the default when LANG says so");
-    assert.match(output, /访客怎么访问到这台服务器？/);
+    assert.match(output, /服务器地址：http:\/\/[^\n]+\n  访客的浏览器从这个地址加载 SDK/);
     assert.match(output, /2\. 阿里云百炼\s+https:\/\/dashscope/);
     assert.match(output, /验证成功/);
     assert.match(output, /本次生成：SITEWAKE_RUNNER_ENROLLMENT_TOKEN/);

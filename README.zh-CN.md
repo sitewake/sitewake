@@ -123,11 +123,12 @@ docker compose up -d --build
 3. **模型提供方** —— 从已验证的提供方里选（OpenAI、阿里云百炼、智谱、火山方舟；Base URL 自动填好），或手动填其他 OpenAI 兼容服务的 Base URL。
 4. **API Key** —— 在提供方控制台创建；输入不回显，写入 `.env` 的 `MODEL_API_KEY`，不会发送到访客的浏览器。
 5. **模型** —— 提供方模型列表里的准确 id；必须支持工具调用（向导会列出已验证的家族）。
-6. **访客怎么访问到这台服务器** —— 本机试用、域名（HTTPS 网站必须选这个）、公网 IP，或局域网。向导据此得出网站加载 SDK 的服务器地址，例如 `https://agent.example.com`。
 
-然后它向模型发出两阶段真实请求，都通过才写文件。数据库和 MinIO 的口令、四个 runner 密钥由向导替你生成；以后重跑 `./setup` 会原样保留它们。之后想换模型：重跑 `./setup`（密钥直接回车保留），或者改 `.env` 里的 `MODEL_BASE_URL`、`MODEL_API_KEY`、`MODEL`，再 `docker compose up -d`。
+然后它自己填好**服务器地址**——这台机器的 IP 加 3000 端口，也就是你的网站加载 SDK 的地址——并打印出来。要改用域名或 HTTPS，改 `.env` 里的 `SITEWAKE_PUBLIC_ORIGIN`（HTTPS 网站需要 `https://` 地址，并在 3000 端口前放 Caddy、nginx 之类的 TLS 反向代理）。
 
-**任何 OpenAI 兼容模型服务**都能用，不绑定厂商。整套服务监听 3000 端口；打开你填的那个 Origin。
+写入之前它会向模型发出两阶段真实请求，都通过才写文件。数据库和 MinIO 的口令、四个 runner 密钥由向导替你生成；以后重跑 `./setup` 会原样保留它们。之后想换模型：重跑 `./setup`（密钥直接回车保留），或者改 `.env` 里的 `MODEL_BASE_URL`、`MODEL_API_KEY`、`MODEL`，再 `docker compose up -d`。
+
+**任何 OpenAI 兼容模型服务**都能用，不绑定厂商。整套服务监听 3000 端口；打开向导打印的那个服务器地址。
 
 小机器（2 核 / 2 GB）用紧凑配置 —— 浏览器一次只开一个、单个 worker：
 
