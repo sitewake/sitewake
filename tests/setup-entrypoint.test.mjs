@@ -6,8 +6,8 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { execFile } from "node:child_process";
-import { chmod, mkdtemp, readFile, rm, writeFile, readdir } from "node:fs/promises";
+import { execFile, spawnSync } from "node:child_process";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -36,8 +36,16 @@ exit 0
 `);
     await chmod(join(dir, "docker"), 0o755);
   }
-  // sh, sed, head, awk, id, dirname, hostname live in these on macOS and Linux.
-  const path = `${dir}:/usr/bin:/bin`;
+  // Only the tools the script itself calls, linked from wherever this machine
+  // keeps them. Putting /usr/bin on the PATH would defeat the scenario on a
+  // Linux box (or a CI runner) where node and docker live there too.
+  const tools = join(dir, "tools");
+  await mkdir(tools);
+  for (const name of ["sh", "sed", "head", "awk", "id", "dirname", "hostname", "ipconfig", "uname"]) {
+    const found = spawnSync("sh", ["-c", `command -v ${name}`], { encoding: "utf8" }).stdout.trim();
+    if (found) await symlink(found, join(tools, name));
+  }
+  const path = `${dir}:${tools}`;
   return {
     dir, log, path,
     calls: async () => (await readFile(log, "utf8").catch(() => "")).trim().split("\n").filter(Boolean),
