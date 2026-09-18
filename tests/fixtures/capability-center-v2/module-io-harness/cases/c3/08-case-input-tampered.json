@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-08",
+  "title": "Task 中的 case 输入与 Artifact 不一致",
+  "baseRef": "../../bases/c3-input.json",
+  "inputPatch": {
+    "validationTask": {
+      "runSpec": {
+        "cases": [
+          { "caseId": "case_notebook", "input": { "query": "phone" }, "expected": { "query": "notebook" } },
+          { "caseId": "case_mug", "input": { "query": "mug" }, "expected": { "query": "mug" } }
+        ]
+      }
+    }
+  },
+  "setup": { "hashes": "preserve-mismatch" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "validation_suite_payload_mismatch",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "browserContextCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

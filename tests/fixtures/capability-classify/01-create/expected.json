@@ -1,0 +1,8 @@
+{
+  "assertions": {
+    "disposition": "Created",
+    "task.type": "Discovery",
+    "task.status": "Pending",
+    "task.runSpec.input.parameters.query": "notebook"
+  }
+}

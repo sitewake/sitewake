@@ -1,0 +1,98 @@
+{
+  "siteId": "prestashop_notebook_classify_real",
+  "outcome": "Validated",
+  "package": {
+    "artifact": {
+      "candidateId": "candidate_notebook_fixture_001",
+      "generationTaskId": "b797f218-5fec-4ad7-8e5e-894c6d6c622e",
+      "candidate": {
+        "name": "搜索商品",
+        "description": "在站点内按关键词搜索商品并展示结果",
+        "aliases": ["站内搜索", "商品搜索"],
+        "contract": {
+          "intent": "按用户提供的 query 搜索商品",
+          "inputSchema": {
+            "type": "object",
+            "properties": { "query": { "type": "string", "minLength": 1 } },
+            "required": ["query"],
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "query": { "type": "string" },
+              "resultUrl": { "type": "string" },
+              "heading": { "type": "string" }
+            },
+            "required": ["query", "resultUrl", "heading"],
+            "additionalProperties": false
+          },
+          "preconditions": [{ "type": "inputExists", "path": "query" }],
+          "successConditions": [
+            { "type": "urlTemplate", "template": "/search?controller=search&s={{query}}" },
+            { "type": "outputExists", "path": "heading" }
+          ],
+          "scope": { "kind": "site-global", "onMismatch": "no-match" }
+        },
+        "program": {
+          "schemaVersion": "2.0",
+          "runtime": "BrowserJavaScriptStage",
+          "module": {
+            "contentHash": "ff10dddf810fc22ca21be9161f987611c399000d363c7966c3f5af6e501a260a",
+            "moduleUrl": "/api/capability-v2/modules/ff10dddf810fc22ca21be9161f987611c399000d363c7966c3f5af6e501a260a?siteId=prestashop_notebook_classify_real",
+            "exportName": "capability"
+          },
+          "entry": { "mode": "CurrentPage" },
+          "stages": [
+            { "id": "stage_resolve_target", "title": "Resolve input-driven target", "purpose": "根据公开输入解析搜索目标", "effect": "write", "resumePolicy": "reconcile-before-retry", "io": { "reads": { "input": ["query"], "state": [] }, "writes": { "state": ["targets.query"], "output": [] } }, "navigation": "optional" },
+            { "id": "stage_select_target", "title": "Select matching dynamic target", "purpose": "确认动态搜索目标", "effect": "write", "resumePolicy": "reconcile-before-retry", "io": { "reads": { "input": ["query"], "state": ["targets.query"] }, "writes": { "state": ["targets.query"], "output": [] } }, "navigation": "optional" },
+            { "id": "stage_1", "title": "Fill search query", "purpose": "填写搜索关键词并提交只读查询", "effect": "write", "resumePolicy": "reconcile-before-retry", "io": { "reads": { "input": ["query"], "state": [] }, "writes": { "state": ["query"], "output": [] } }, "navigation": "optional" },
+            { "id": "stage_2", "title": "Read search result", "purpose": "确认搜索结果页已经打开", "effect": "read", "resumePolicy": "skip-completed", "io": { "reads": { "input": [], "state": [] }, "writes": { "state": [], "output": [] } }, "navigation": "optional" },
+            { "id": "stage_verify", "title": "Verify final business result", "purpose": "返回搜索结果并提供确定性证据", "effect": "read", "resumePolicy": "skip-completed", "io": { "reads": { "input": ["query"], "state": ["targets.query"] }, "writes": { "state": [], "output": ["query", "resultUrl", "heading"] } }, "navigation": "none" }
+          ],
+          "parameterRoles": [{ "inputPath": "query", "role": "target" }],
+          "targetBindings": [{ "inputPath": "query", "targetKind": "page-business-object", "identityStatePath": "targets.query", "required": true }],
+          "promptProvenance": []
+        }
+      },
+      "validationSuite": {
+        "cases": [
+          { "caseId": "case_1", "input": { "query": "notebook" }, "expected": {} },
+          { "caseId": "case_2", "input": { "query": "mug" }, "expected": {} }
+        ]
+      },
+      "contractHash": "sha256:d70afcf51f36c2bfae7254c1a459514e84934cd272e2131a0002ff9c0192d7b3",
+      "programHash": "sha256:dcee374d9948efb69f906569fde47485fc69ec77b5917e3910f9375079bb8e64",
+      "caseDiscoveryEvidenceRef": {
+        "artifactRef": "artifact://case-discovery-evidence-b797f218-5fec-4ad7-8e5e-894c6d6c622e",
+        "contentHash": "sha256:9d6ccaf5c138aa879cc06f27ea2dbbebc8972afe2509dd50f1984b34f38a01b6",
+        "byteLength": 1983
+      },
+      "validationSuiteHash": "sha256:141e367570fa3b29f2f2fb56549762b47adeaf9b7770b40b61c25eae2b0750af"
+    },
+    "validationTaskId": "validation_task_notebook_fixture_001",
+    "validation": {
+      "candidateId": "candidate_notebook_fixture_001",
+      "contractHash": "sha256:d70afcf51f36c2bfae7254c1a459514e84934cd272e2131a0002ff9c0192d7b3",
+      "programHash": "sha256:dcee374d9948efb69f906569fde47485fc69ec77b5917e3910f9375079bb8e64",
+      "cases": [
+        {
+          "caseId": "case_1",
+          "outcome": "Passed",
+          "resolvedInput": { "query": "notebook" },
+          "output": { "query": "notebook", "resultUrl": "http://localhost:18081/search?controller=search&s=notebook", "heading": "Search results for \"notebook\"" },
+          "stageReceipts": [],
+          "evidenceRefs": []
+        },
+        {
+          "caseId": "case_2",
+          "outcome": "Passed",
+          "resolvedInput": { "query": "mug" },
+          "output": { "query": "mug", "resultUrl": "http://localhost:18081/search?controller=search&s=mug", "heading": "Search results for \"mug\"" },
+          "stageReceipts": [],
+          "evidenceRefs": []
+        }
+      ]
+    }
+  }
+}

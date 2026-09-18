@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-04",
+  "title": "C2 模型不得返回或修改 Candidate",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "response-includes-mutated-candidate"
+  },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_model_output_unknown_field",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 },
+      { "path": "validationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

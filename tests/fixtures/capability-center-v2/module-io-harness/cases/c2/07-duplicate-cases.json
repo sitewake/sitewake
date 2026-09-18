@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-07",
+  "title": "输入相同的重复用例不得通过门禁",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "duplicate-notebook-cases"
+  },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_inputs_not_distinct",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

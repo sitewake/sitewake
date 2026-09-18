@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-05",
+  "title": "页面能力通过 urlPatterns 约束入口",
+  "baseRef": "../../bases/c1-task.json",
+  "inputPatch": {
+    "runSpec": {
+      "goal": "读取当前商品详情页的商品名称",
+      "browser": { "startUrl": "http://127.0.0.1:18081/product/1-notebook" },
+      "input": { "parameters": {} }
+    }
+  },
+  "setup": { "siteFixture": "prestashop-product-detail", "modelScenario": "valid-page-scope" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "contract.scope.kind", "op": "equals", "value": "page-scoped" },
+      { "path": "contract.scope.match.urlPatterns", "op": "lengthAtLeast", "value": 1 },
+      { "path": "contract.scope.observedPaths", "op": "absent" },
+      { "path": "contract.scope.rationale", "op": "absent" }
+    ],
+    "sideEffects": []
+  }
+}
+

@@ -1,0 +1,15 @@
+{
+  "request": {
+    "goal": "修复商品搜索能力",
+    "normalizedGoal": "修复商品搜索能力",
+    "parameters": {
+      "query": "马克杯"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "source": "Admin",
+  "instruction": {
+    "operation": "repair"
+  }
+}

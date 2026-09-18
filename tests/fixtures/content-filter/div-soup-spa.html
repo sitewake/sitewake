@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>某应用 - 文章详情</title></head>
+<body>
+<div id="root">
+  <div class="sc-a1b2c3">
+    <!-- 同上：div soup 里的导航条，无区域标签可依 -->
+    <div class="sc-d4e5f6" data-expect="gray"><a href="/">首页</a><a href="/list">列表</a><a href="/me">我的</a><a href="/set">设置</a></div>
+  </div>
+
+  <div class="sc-g7h8i9">
+    <div class="sc-j0k1l2">
+      <div class="sc-m3n4o5">文章详情</div>
+      <div class="sc-p6q7r8" data-expect="keep">这套架构把状态管理从组件树里抽了出来，放进一个独立的容器中。组件只负责声明它需要哪些状态切片，容器负责在切片变化时通知对应组件重渲染。这样做的收益是跨层级共享状态不再需要逐层传递属性，代价是调试时需要额外的工具才能看清数据流向。</div>
+      <div class="sc-p6q7r8" data-expect="keep">在实践中我们发现，切片划分的粒度比选择哪个状态库更重要。粒度过粗会导致无关组件被频繁唤醒，粒度过细则会让订阅关系本身成为负担。一个经验法则是按照更新频率划分，把每秒都在变的数据与几乎不变的配置分开存放。</div>
+    </div>
+
+    <div class="sc-s9t0u1" data-expect="drop">
+      <div class="sc-v2w3x4">热门</div>
+      <div class="sc-y5z6a7"><a href="/p/1">性能优化清单</a></div>
+      <div class="sc-y5z6a7"><a href="/p/2">状态管理对比</a></div>
+      <div class="sc-y5z6a7"><a href="/p/3">构建提速实践</a></div>
+      <div class="sc-y5z6a7"><a href="/p/4">类型体操入门</a></div>
+      <div class="sc-y5z6a7"><a href="/p/5">测试策略选型</a></div>
+      <div class="sc-y5z6a7"><a href="/p/6">错误边界设计</a></div>
+    </div>
+  </div>
+
+  <!-- 同上：3 链接 + 无区域标签，属灰区 -->
+  <div class="sc-b8c9d0" data-expect="gray"><a href="/about">关于</a><a href="/privacy">隐私</a><a href="/terms">条款</a></div>
+</div>
+</body>
+</html>

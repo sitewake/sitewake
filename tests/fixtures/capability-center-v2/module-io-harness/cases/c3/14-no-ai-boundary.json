@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-14",
+  "title": "C3 在成功和失败路径都不得调用 AI",
+  "baseRef": "../../bases/c3-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "moduleScenario": "registered-search-module",
+    "hashes": "materialize-valid",
+    "failOnAnyAiCall": true
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Validated" }
+    ],
+    "sideEffects": [
+      { "path": "aiCalls", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

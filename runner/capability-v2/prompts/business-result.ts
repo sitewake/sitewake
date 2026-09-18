@@ -1,0 +1,9 @@
+/** Shared result policy for contract design and source authoring. */
+export const BUSINESS_RESULT_GUIDANCE = [
+  '能力必须回答“实际完成了什么、结果对象是什么”，不只返回动作成功。公开输出来自本次执行的真实业务页面；document.title 是网页标题，不能代替话题/商品/订单的名称。',
+  '契约设计时，打开具体对象优先声明 targetTitle（真实对象名称，string/minLength:1）与 targetUrl（可直达该对象的 http(s) URL）；如页面没有直达链接，targetUrl 可省略，不为拼字段额外跳转。标题可在动作前读取并存入 state，最终 Stage 须验证目标身份后返回。',
+  '契约设计时，仅把用户目标需要且稳定可读取的核心字段设为 required；可选热度、排名、金额、状态、正文摘要等不能取到就省略，不返回空字符串、占位值或猜测。公开字段设置简洁的 JSON Schema title（例如“当前排名”“热度”），供对话直接展示。',
+  'resultSummary 可选，只能是实际页面业务摘要或基于已验证输出的确定性简述。不能用“操作成功”代替业务信息，不为美化答复增加模型调用；不收集整页文本、个人信息、令牌或调试数据。',
+  '“打开第3个热搜”的返回示例结构是 {targetTitle: 本次点开的真实话题名, targetUrl: 该话题的真实详情链接, currentRank: 页面实际显示的当前排名}；请求序号 rank=3 与详情的 currentRank 是不同概念。不能把示例话题、热度或请求值复制成输出。',
+  '搜索/列表类能力返回真实结果条目及其字段，写操作返回已确认对象与结果状态；不要强迫所有能力采用话题字段。完整数据留在 output，保持对话简洁。',
+].join('\n');

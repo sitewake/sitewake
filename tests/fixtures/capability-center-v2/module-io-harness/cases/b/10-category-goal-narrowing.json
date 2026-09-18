@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-10",
+  "title": "固定分类证据必须得到收窄后的通用 Goal",
+  "baseRef": "../../bases/b-episode.json",
+  "inputPatch": {
+    "request": {
+      "goal": "在餐具分类里搜索 mug",
+      "parameters": { "category": "tableware", "query": "mug" },
+      "entryUrl": "http://127.0.0.1:18081/category/tableware"
+    }
+  },
+  "setup": { "siteState": "empty", "modelScenario": "generalize-category-search" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "disposition", "op": "equals", "value": "Created" },
+      { "path": "task.runSpec.goal", "op": "matches", "value": "分类|目录" },
+      { "path": "task.runSpec.input.parameters.category", "op": "equals", "value": "tableware" }
+    ],
+    "sideEffects": []
+  }
+}
+

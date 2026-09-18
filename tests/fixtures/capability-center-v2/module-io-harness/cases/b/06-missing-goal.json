@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-06",
+  "title": "缺少原始 Goal 时拒绝分类",
+  "baseRef": "../../bases/b-episode.json",
+  "removePaths": ["request.goal"],
+  "setup": { "siteState": "empty" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "generation_goal_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "generationTaskCount", "op": "equals", "value": 0 },
+      { "path": "modelCalls", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

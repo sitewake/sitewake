@@ -1,0 +1,120 @@
+{
+  "request": {
+    "goal": "帮我找一个白色的马克杯放到购物车，数量为2",
+    "normalizedGoal": "搜索商品并按指定数量加入购物车",
+    "parameters": {
+      "query": "马克杯",
+      "color": "白色",
+      "quantity": 2
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "source": "Episode",
+  "experience": {
+    "episodeId": "episode_03_cart_quantity_{{RUN_ID}}",
+    "mode": "demonstration",
+    "execution": {
+      "startedAt": "2026-08-18T02:02:00.000Z",
+      "endedAt": "2026-08-18T02:02:25.000Z",
+      "startPage": {
+        "url": "http://localhost:18081/",
+        "title": "PrestaShop",
+        "heading": "Shop"
+      },
+      "actions": [
+        {
+          "action": "fill",
+          "rawAction": "输入马克杯",
+          "input": {
+            "text": "马克杯",
+            "value": "马克杯"
+          },
+          "element": {
+            "role": "searchbox",
+            "placeholder": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "提交搜索",
+          "input": {},
+          "element": {
+            "role": "button",
+            "accessibleName": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "点击白色马克杯商品",
+          "input": {},
+          "element": {
+            "tag": "a",
+            "contextText": "White Ceramic Mug"
+          },
+          "page": {
+            "url": "http://localhost:18081/search?controller=search&s=mug"
+          }
+        },
+        {
+          "action": "fill",
+          "rawAction": "设置商品数量为2",
+          "input": {
+            "text": "2",
+            "value": 2
+          },
+          "element": {
+            "role": "spinbutton",
+            "name": "quantity"
+          },
+          "page": {
+            "url": "http://localhost:18081/19-customizable-mug.html"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "点击加入购物车",
+          "input": {},
+          "element": {
+            "role": "button",
+            "accessibleName": "Add to cart"
+          },
+          "page": {
+            "url": "http://localhost:18081/19-customizable-mug.html"
+          }
+        }
+      ],
+      "endPage": {
+        "url": "http://localhost:18081/19-customizable-mug.html",
+        "title": "Customizable mug",
+        "heading": "Customizable mug"
+      }
+    },
+    "outcome": {
+      "status": "Success",
+      "summary": "白色马克杯按指定数量加入购物车",
+      "checks": [
+        {
+          "type": "business-output",
+          "value": "cart quantity updated"
+        }
+      ]
+    },
+    "evidence": {
+      "observationRefs": [
+        "observation_03_cart_quantity_detail_{{RUN_ID}}"
+      ],
+      "actionReceiptRefs": [
+        "receipt_03_cart_quantity_value_{{RUN_ID}}",
+        "receipt_03_cart_quantity_add_{{RUN_ID}}"
+      ],
+      "source": "MockBoundary"
+    }
+  }
+}

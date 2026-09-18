@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-06",
+  "title": "发布输入中的 Program hash 与持久化 Artifact 不一致",
+  "baseRef": "../../bases/d-input.json",
+  "inputPatch": {
+    "validated": {
+      "artifact": {
+        "programHash": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+      }
+    }
+  },
+  "setup": { "artifactState": "persisted-and-validated" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "WriteConflict" },
+      { "path": "code", "op": "equals", "value": "PUBLISH_COMMAND_MISMATCH" }
+    ],
+    "sideEffects": [
+      { "path": "publishCount", "op": "equals", "value": 0 }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "request": {
+    "goal": "搜索商品",
+    "normalizedGoal": "搜索商品",
+    "parameters": {
+      "query": "马克杯"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "source": "Episode",
+  "experience": {
+    "episodeId": "",
+    "mode": "demonstration",
+    "execution": {
+      "startPage": {
+        "url": "http://localhost:18081/",
+        "title": "PrestaShop",
+        "heading": "Shop"
+      },
+      "actions": [],
+      "endPage": {
+        "url": "http://localhost:18081/",
+        "title": "PrestaShop",
+        "heading": "Shop"
+      }
+    },
+    "outcome": {
+      "status": "NoResult",
+      "summary": "没有可用于分类的 Episode 标识"
+    },
+    "evidence": {
+      "observationRefs": [],
+      "actionReceiptRefs": [],
+      "source": "MockBoundary"
+    }
+  }
+}

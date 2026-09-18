@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-06",
+  "title": "C1 输入拒绝旧 ManagedBrowser 字段",
+  "baseRef": "../../bases/c1-task.json",
+  "inputPatch": { "runSpec": { "browser": { "mode": "ManagedBrowser" } } },
+  "setup": {},
+  "expected": {
+    "outcome": "error",
+    "errorCode": "generation_task_browser_unknown_field",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "authorModelCalls", "op": "equals", "value": 0 },
+      { "path": "moduleCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

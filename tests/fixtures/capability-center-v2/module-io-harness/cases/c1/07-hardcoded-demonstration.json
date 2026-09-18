@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-07",
+  "title": "模块脚本写死 notebook 时质量门禁失败",
+  "baseRef": "../../bases/c1-task.json",
+  "setup": { "siteFixture": "prestashop-search", "modelScenario": "hardcoded-demonstration-value" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "candidate_hardcoded_input",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "c2ModelCalls", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

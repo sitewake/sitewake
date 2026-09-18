@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-10",
+  "title": "没有次数和超时上限的循环必须拒绝",
+  "baseRef": "../../bases/c1-task.json",
+  "setup": { "siteFixture": "prestashop-paginated-search", "modelScenario": "unbounded-loop" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "control_flow_loop_bounds_required",
+    "assertions": [],
+    "sideEffects": []
+  }
+}
+

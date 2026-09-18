@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "Review",
+  "caseId": "REVIEW-09",
+  "title": "Review Approved 只产生授权不直接发布",
+  "baseRef": "../../bases/review-input.json",
+  "setup": { "modelScenario": "approved-with-complete-reason" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Approved" },
+      { "path": "authorization", "op": "present" }
+    ],
+    "sideEffects": [
+      { "path": "capabilityCount", "op": "equals", "value": 0 },
+      { "path": "versionCount", "op": "equals", "value": 0 },
+      { "path": "publishCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

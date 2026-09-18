@@ -1,0 +1,78 @@
+{
+  "request": {
+    "goal": "搜索马克杯",
+    "normalizedGoal": "搜索商品",
+    "parameters": {
+      "query": "马克杯"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "source": "Episode",
+  "experience": {
+    "episodeId": "episode_08_duplicate_broader_{{RUN_ID}}",
+    "mode": "demonstration",
+    "execution": {
+      "startedAt": "2026-08-18T02:08:00.000Z",
+      "endedAt": "2026-08-18T02:08:08.000Z",
+      "startPage": {
+        "url": "http://localhost:18081/",
+        "title": "PrestaShop",
+        "heading": "Shop"
+      },
+      "actions": [
+        {
+          "action": "fill",
+          "rawAction": "输入马克杯",
+          "input": {
+            "text": "马克杯",
+            "value": "马克杯"
+          },
+          "element": {
+            "role": "searchbox",
+            "placeholder": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "提交搜索",
+          "input": {},
+          "element": {
+            "role": "button",
+            "accessibleName": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        }
+      ],
+      "endPage": {
+        "url": "http://localhost:18081/search?controller=search&s=mug",
+        "title": "Search",
+        "heading": "Search results"
+      }
+    },
+    "outcome": {
+      "status": "Success",
+      "summary": "已展示马克杯搜索结果",
+      "checks": [
+        {
+          "type": "business-output",
+          "value": "search results displayed"
+        }
+      ]
+    },
+    "evidence": {
+      "observationRefs": [
+        "observation_08_duplicate_results_{{RUN_ID}}"
+      ],
+      "actionReceiptRefs": [
+        "receipt_08_duplicate_search_{{RUN_ID}}"
+      ],
+      "source": "MockBoundary"
+    }
+  }
+}

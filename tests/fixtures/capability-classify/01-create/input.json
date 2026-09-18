@@ -1,0 +1,24 @@
+{
+  "source": "Episode",
+  "request": {
+    "goal": "搜索 notebook",
+    "normalizedGoal": "搜索 notebook",
+    "parameters": { "query": "notebook" },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "experience": {
+    "episodeId": "case-create-notebook",
+    "mode": "adaptive",
+    "execution": {
+      "startPage": { "url": "http://localhost:18081/", "title": "PrestaShop" },
+      "endPage": { "url": "http://localhost:18081/search?controller=search&s=notebook", "heading": "Search results for notebook" },
+      "actions": [
+        { "action": "fill", "rawAction": "输入 notebook", "input": { "value": "notebook" }, "element": { "role": "searchbox", "placeholder": "Search" }, "page": { "url": "http://localhost:18081/" } },
+        { "action": "unknown", "rawAction": "按 Enter 搜索", "input": { "key": "Enter" }, "page": { "url": "http://localhost:18081/" } }
+      ]
+    },
+    "outcome": { "status": "Success", "summary": "notebook 搜索结果页已打开" },
+    "evidence": { "observationRefs": ["observation-create"], "actionReceiptRefs": ["receipt-create"] }
+  }
+}

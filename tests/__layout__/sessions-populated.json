@@ -1,0 +1,15 @@
+{
+  "headings": [
+    "用户会话",
+    "任务记录"
+  ],
+  "landmarks": {
+    "nav": 1,
+    "tablist": 1,
+    "tabs": 5,
+    "tables": 0,
+    "buttons": 12
+  },
+  "unexpectedOverflow": [],
+  "documentOverflowsViewport": false
+}

@@ -1,0 +1,44 @@
+{
+  "id": "generation_search_001",
+  "siteId": "prestashop_module_io_harness",
+  "source": "Episode",
+  "type": "Discovery",
+  "status": "Pending",
+  "runSpec": {
+    "protocolVersion": "2.0",
+    "id": "runspec_search_001",
+    "goal": "根据用户提供的关键词在站点内搜索商品并展示结果",
+    "guidance": {
+      "requirements": [
+        { "text": "搜索能力不得产生订单或账户写入", "authority": "Policy" }
+      ],
+      "derived": [
+        {
+          "text": "query 必须保持为公开参数，不能写死本次 notebook",
+          "basedOn": [
+            { "kind": "episode", "id": "episode_search_notebook_001" },
+            { "kind": "action-receipt", "id": "receipt_search_notebook_001" }
+          ]
+        }
+      ]
+    },
+    "browser": {
+      "startUrl": "http://127.0.0.1:18081/",
+      "recording": true
+    },
+    "input": {
+      "parameters": { "query": "notebook" },
+      "locale": "zh-CN",
+      "capabilitySeed": {
+        "name": "搜索商品",
+        "description": "根据用户提供的关键词在站点内搜索商品并展示结果",
+        "aliases": ["商品搜索", "站内搜索", "搜索"]
+      },
+      "authoringEvidence": {
+        "episodeRef": "episode_search_notebook_001",
+        "observationRefs": ["observation_search_notebook_001"]
+      }
+    }
+  }
+}
+

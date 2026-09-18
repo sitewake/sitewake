@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-10",
+  "title": "真正默认参数必须覆盖省略场景",
+  "baseRef": "../../bases/c2-input.json",
+  "inputPatch": {
+    "candidate": {
+      "contract": {
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "default": "notebook" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "all-cases-explicit-query"
+  },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_default_omission_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

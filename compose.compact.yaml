@@ -1,0 +1,30 @@
+services:
+  control-plane:
+    mem_limit: 512m
+    environment:
+      POSTGRES_POOL_SIZE: "3"
+      NODE_OPTIONS: --max-old-space-size=384
+  postgres:
+    mem_limit: 384m
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "work_mem=2MB", "-c", "max_connections=20"]
+  minio:
+    mem_limit: 256m
+  capability-v2-runtime-launcher:
+    mem_limit: 900m
+    environment:
+      NODE_OPTIONS: --max-old-space-size=384
+      CAPABILITY_V2_RUNTIME_CONCURRENCY: "1"
+  authoring-worker:
+    mem_limit: 900m
+    environment:
+      # One worker consumes author, validate, and execute leases sequentially
+      # so multiple Chromium processes cannot compete for compact-host memory.
+      SITEWAKE_RUNNER_ROLE: any
+  validation-worker:
+    mem_limit: 900m
+    profiles: ["validation"]
+  # The compact authoring worker already runs with role=any. Keep the
+  # dedicated execute process opt-in on small hosts.
+  execution-worker:
+    mem_limit: 700m
+    profiles: ["execution"]

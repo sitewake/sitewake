@@ -1,0 +1,10 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>索引失效的常见成因</title></head><body>
+<header><nav><a href="/">首页</a><a href="/list">列表</a><a href="/about">关于</a></nav></header>
+<main>
+  <h1>索引失效的常见成因</h1>
+  <p>给字段加了索引之后执行计划依然走全表扫描，最常见的原因是查询条件里对索引列做了函数运算。把运算移到等号右侧之后，执行计划立刻变成索引范围扫描。</p>
+  <p>隐式类型转换是另一类失效场景。当列是字符串类型而查询传入数字时，数据库会把列整体转成数字再比较，同样用不上索引。这类问题在应用层不容易发现。</p>
+  <p>前缀模糊匹配同样无法利用 B 树索引的有序性。若确实需要，应考虑倒排索引或专门的搜索引擎，而不是在关系库里硬扛。</p>
+</main>
+<footer><a href="/privacy">隐私</a><a href="/terms">条款</a><p>© 2026 某站</p></footer>
+</body></html>

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-09",
+  "title": "替换能力发布成功后原子禁用旧能力",
+  "baseRef": "../../bases/d-input.json",
+  "inputPatch": {
+    "validated": {
+      "artifact": {
+        "candidate": {
+          "replacementPlan": {
+            "replacesCapabilityIds": ["capability_search_existing"],
+            "reason": "发布经过完整验证的新搜索实现",
+            "disableAfterPublish": true
+          }
+        }
+      }
+    }
+  },
+  "setup": {
+    "artifactState": "persisted-and-validated-repair",
+    "siteState": "active-base-version-unchanged"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Published" },
+      { "path": "capability.status", "op": "equals", "value": "Active" }
+    ],
+    "sideEffects": [
+      { "path": "oldCapabilityStatus", "op": "equals", "value": "Disabled" },
+      { "path": "publishedVersionCount", "op": "equals", "value": 1 }
+    ]
+  }
+}
+

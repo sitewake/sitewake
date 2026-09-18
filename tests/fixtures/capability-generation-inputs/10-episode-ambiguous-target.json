@@ -1,0 +1,115 @@
+{
+  "request": {
+    "goal": "给我找一个商品并加入购物车",
+    "normalizedGoal": "搜索商品并加入购物车",
+    "parameters": {
+      "query": "shirt"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "en-US"
+  },
+  "guidance": {
+    "derived": [
+      {
+        "text": "当多个候选都满足当前输入但用户没有指定可区分条件时，不能无条件取第一个；需要返回可审计的 Ambiguous 或请求补充条件。",
+        "basedOn": [
+          {
+            "kind": "episode",
+            "id": "episode_10_ambiguous_{{RUN_ID}}"
+          }
+        ]
+      }
+    ]
+  },
+  "source": "Episode",
+  "experience": {
+    "episodeId": "episode_10_ambiguous_{{RUN_ID}}",
+    "mode": "demonstration",
+    "execution": {
+      "startedAt": "2026-08-18T02:10:00.000Z",
+      "endedAt": "2026-08-18T02:10:12.000Z",
+      "startPage": {
+        "url": "http://localhost:18081/",
+        "title": "PrestaShop",
+        "heading": "Shop"
+      },
+      "actions": [
+        {
+          "action": "fill",
+          "rawAction": "搜索shirt",
+          "input": {
+            "text": "shirt",
+            "value": "shirt"
+          },
+          "element": {
+            "role": "searchbox",
+            "placeholder": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "提交搜索",
+          "input": {},
+          "element": {
+            "role": "button",
+            "accessibleName": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "从多个商品候选中选择一个",
+          "input": {},
+          "element": {
+            "tag": "a",
+            "contextText": "Multiple shirt candidates"
+          },
+          "page": {
+            "url": "http://localhost:18081/search?controller=search&s=shirt"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "点击加入购物车",
+          "input": {},
+          "element": {
+            "role": "button",
+            "accessibleName": "Add to cart"
+          },
+          "page": {
+            "url": "http://localhost:18081/search?controller=search&s=shirt"
+          }
+        }
+      ],
+      "endPage": {
+        "url": "http://localhost:18081/search?controller=search&s=shirt",
+        "title": "Search",
+        "heading": "Multiple results"
+      }
+    },
+    "outcome": {
+      "status": "NoResult",
+      "summary": "多个候选缺少足够区分条件，未确认具体商品",
+      "checks": [
+        {
+          "type": "business-output",
+          "value": "ambiguous target is reported instead of selecting first candidate"
+        }
+      ]
+    },
+    "evidence": {
+      "observationRefs": [
+        "observation_10_ambiguous_results_{{RUN_ID}}"
+      ],
+      "actionReceiptRefs": [
+        "receipt_10_ambiguous_not_executed_{{RUN_ID}}"
+      ],
+      "source": "MockBoundary"
+    }
+  }
+}

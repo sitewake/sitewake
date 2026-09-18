@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-11",
+  "title": "Program 未消费声明参数时不得生成测试套件",
+  "baseRef": "../../bases/c2-input.json",
+  "inputPatch": {
+    "candidate": {
+      "program": {
+        "stages": [
+          {
+            "id": "stage_verify",
+            "title": "Verify fixed result",
+            "purpose": "错误地读取固定结果",
+            "effect": "read",
+            "resumePolicy": "skip-completed",
+            "io": {
+              "reads": { "input": [], "state": [] },
+              "writes": { "state": [], "output": ["query", "resultUrl", "heading"] }
+            },
+            "navigation": "none"
+          }
+        ],
+        "parameterRoles": [],
+        "targetBindings": []
+      }
+    }
+  },
+  "setup": { "siteFixture": "prestashop-search-with-notebook-and-mug", "modelScenario": "cases-notebook-and-mug" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_parameter_not_consumed",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "validationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

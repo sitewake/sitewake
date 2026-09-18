@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-03",
+  "title": "实际输出与 expected 不一致时整体验证失败",
+  "baseRef": "../../bases/c3-input.json",
+  "inputPatch": {
+    "artifact": {
+      "validationSuite": {
+        "cases": [
+          { "caseId": "case_notebook", "input": { "query": "notebook" }, "expected": { "query": "mug" } },
+          { "caseId": "case_mug", "input": { "query": "mug" }, "expected": { "query": "mug" } }
+        ]
+      }
+    },
+    "validationTask": {
+      "runSpec": {
+        "cases": [
+          { "caseId": "case_notebook", "input": { "query": "notebook" }, "expected": { "query": "mug" } },
+          { "caseId": "case_mug", "input": { "query": "mug" }, "expected": { "query": "mug" } }
+        ]
+      }
+    }
+  },
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "moduleScenario": "registered-search-module",
+    "hashes": "materialize-valid"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Failed" },
+      { "path": "stage", "op": "equals", "value": "Validation" },
+      { "path": "code", "op": "equals", "value": "validation_expected_mismatch" }
+    ],
+    "sideEffects": [
+      { "path": "reviewTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

@@ -1,0 +1,90 @@
+#!/bin/sh
+# SiteWake setup entrypoint.
+#
+# Runs the setup wizard (scripts/setup.mjs) with whatever this machine has:
+# a recent enough Node directly, otherwise Node inside a throwaway Docker
+# container. The wizard itself never needs `npm install`.
+#
+# Usage: ./setup [--lang en|zh] [--target local|docker]
+# Windows (PowerShell): node scripts/setup.mjs   — or run ./setup from WSL.
+#
+# Keep this POSIX sh: it is the one file that has to run before anything is
+# installed, on whatever /bin/sh the server ships with.
+
+set -u
+
+cd "$(dirname "$0")" || exit 2
+
+NODE_FLAGS="--experimental-strip-types --disable-warning=ExperimentalWarning"
+IMAGE="node:22-alpine"
+
+# The version floor comes from package.json's engines.node (">=22.13.0").
+# Parsed with sed rather than node so the floor is known before we know
+# whether node exists.
+required=$(sed -n 's/.*"node"[[:space:]]*:[[:space:]]*"[^0-9]*\([0-9][0-9.]*\)".*/\1/p' package.json | head -n 1)
+[ -n "$required" ] || required="22.13.0"
+
+# Language for this script's own two messages. The wizard decides for itself.
+case "${LC_ALL:-${LC_MESSAGES:-${LANG:-${LANGUAGE:-}}}}" in
+  zh*|ZH*) say_zh=1 ;;
+  *) say_zh=0 ;;
+esac
+
+# version_ok ACTUAL REQUIRED — 0 when ACTUAL >= REQUIRED (major.minor.patch).
+version_ok() {
+  a1=${1%%.*}; rest=${1#*.}; a2=${rest%%.*}; a3=${rest#*.}; a3=${a3%%[!0-9]*}
+  r1=${2%%.*}; rest=${2#*.}; r2=${rest%%.*}; r3=${rest#*.}; r3=${r3%%[!0-9]*}
+  [ "${a1:-0}" -gt "${r1:-0}" ] && return 0
+  [ "${a1:-0}" -lt "${r1:-0}" ] && return 1
+  [ "${a2:-0}" -gt "${r2:-0}" ] && return 0
+  [ "${a2:-0}" -lt "${r2:-0}" ] && return 1
+  [ "${a3:-0}" -ge "${r3:-0}" ]
+}
+
+# Best-effort LAN address of this host, for the wizard's default public
+# origin. Inside the container the wizard cannot see the host's interfaces.
+host_ip() {
+  if command -v hostname >/dev/null 2>&1; then
+    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -n "$ip" ] && { printf '%s' "$ip"; return; }
+  fi
+  if command -v ipconfig >/dev/null 2>&1; then
+    for iface in en0 en1; do
+      ip=$(ipconfig getifaddr "$iface" 2>/dev/null)
+      [ -n "$ip" ] && { printf '%s' "$ip"; return; }
+    done
+  fi
+  printf ''
+}
+
+if command -v node >/dev/null 2>&1; then
+  actual=$(node -p 'process.versions.node' 2>/dev/null || printf '0.0.0')
+  if version_ok "$actual" "$required"; then
+    # shellcheck disable=SC2086
+    exec node $NODE_FLAGS scripts/setup.mjs "$@"
+  fi
+fi
+
+if command -v docker >/dev/null 2>&1; then
+  tty_flag=""
+  [ -t 0 ] && tty_flag="-t"
+  # shellcheck disable=SC2086
+  exec docker run --rm -i $tty_flag \
+    --user "$(id -u):$(id -g)" \
+    -v "$PWD:/app" -w /app \
+    -e LANG -e LC_ALL -e LANGUAGE \
+    -e SITEWAKE_SETUP_RUNNER=docker \
+    -e SITEWAKE_SETUP_HOST_IP="$(host_ip)" \
+    "$IMAGE" node $NODE_FLAGS scripts/setup.mjs "$@"
+fi
+
+if [ "$say_zh" = 1 ]; then
+  printf '运行 SiteWake 配置向导需要以下之一：\n' >&2
+  printf '  - Node.js >= %s（https://nodejs.org）\n' "$required" >&2
+  printf '  - Docker（向导会在临时容器中运行）\n' >&2
+else
+  printf 'The SiteWake setup wizard needs one of:\n' >&2
+  printf '  - Node.js >= %s (https://nodejs.org)\n' "$required" >&2
+  printf '  - Docker (the wizard runs in a throwaway container)\n' >&2
+fi
+exit 2

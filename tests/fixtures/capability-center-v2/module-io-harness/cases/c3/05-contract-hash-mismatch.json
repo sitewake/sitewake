@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-05",
+  "title": "Validation Task 的 Contract hash 被篡改",
+  "baseRef": "../../bases/c3-input.json",
+  "inputPatch": {
+    "validationTask": {
+      "runSpec": {
+        "contractHash": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+      }
+    }
+  },
+  "setup": { "hashes": "preserve-mismatch" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "validation_contract_hash_mismatch",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "browserContextCount", "op": "equals", "value": 0 },
+      { "path": "aiCalls", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

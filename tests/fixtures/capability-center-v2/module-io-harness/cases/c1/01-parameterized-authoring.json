@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-01",
+  "title": "参数化搜索能力编写成功",
+  "baseRef": "../../bases/c1-task.json",
+  "setup": { "siteFixture": "prestashop-search", "modelScenario": "valid-parameterized-search" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "generationTaskId", "op": "equals", "value": "generation_search_001" },
+      { "path": "contract.inputSchema.required.0", "op": "equals", "value": "query" },
+      { "path": "program.module.contentHash", "op": "sha256" },
+      { "path": "caseContextRef", "op": "absent" },
+      { "path": "validationSuite", "op": "absent" },
+      { "path": "contract.semantic", "op": "absent" },
+      { "path": "program.dependencyLedger", "op": "absent" }
+    ],
+    "sideEffects": [
+      { "path": "modulePersisted", "op": "equals", "value": true },
+      { "path": "c2ModelCalls", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

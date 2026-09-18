@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-06",
+  "title": "跨业务区域参数不得无证据拼接",
+  "baseRef": "../../bases/c2-input.json",
+  "inputPatch": {
+    "candidate": {
+      "contract": {
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "minLength": 1 },
+            "color": { "type": "string", "minLength": 1 }
+          },
+          "required": ["query", "color"],
+          "additionalProperties": false
+        }
+      },
+      "program": {
+        "parameterRoles": [
+          { "inputPath": "query", "role": "target" },
+          { "inputPath": "color", "role": "value" }
+        ]
+      }
+    }
+  },
+  "setup": {
+    "siteFixture": "separate-product-color-regions",
+    "modelScenario": "cross-region-query-color-without-association"
+  },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_parameter_association_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

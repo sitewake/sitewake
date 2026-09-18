@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-02",
+  "title": "管理员 Override 仍只能发布 C3 已验证包",
+  "baseRef": "../../bases/d-input.json",
+  "inputPatch": {
+    "authorization": {
+      "mode": "AdminOverride",
+      "adminId": "admin_harness",
+      "reason": "已人工复核完整 C3 证据并批准发布"
+    }
+  },
+  "setup": {
+    "siteState": "empty-with-valid-classification-reservation",
+    "artifactState": "persisted-and-validated"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Published" },
+      { "path": "version.status", "op": "equals", "value": "Published" }
+    ],
+    "sideEffects": [
+      { "path": "adminOverrideRecorded", "op": "equals", "value": true }
+    ]
+  }
+}
+

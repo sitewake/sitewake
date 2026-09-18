@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-01",
+  "title": "真实页面探索生成差异用例并内部冻结",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "moduleScenario": "registered-search-module",
+    "modelScenario": "cases-notebook-and-mug"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "generationTaskId", "op": "equals", "value": "generation_search_001" },
+      { "path": "candidateArtifact.candidateId", "op": "present" },
+      { "path": "candidateArtifact.validationSuite.cases", "op": "lengthAtLeast", "value": 2 },
+      { "path": "candidateArtifact.validationSuiteHash", "op": "sha256" },
+      { "path": "candidateArtifact.caseDiscoveryEvidenceRef.contentHash", "op": "sha256" },
+      { "path": "validationTaskId", "op": "present" }
+    ],
+    "sideEffects": [
+      { "path": "candidateArtifactCount", "op": "equals", "value": 1 },
+      { "path": "validationTaskCount", "op": "equals", "value": 1 },
+      { "path": "c3ExecutionCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

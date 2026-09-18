@@ -1,0 +1,10 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>分布式数据库的一致性模型</title></head><body>
+<header><nav><a href="/">首页</a><a href="/list">列表</a><a href="/about">关于</a></nav></header>
+<main>
+  <h1>分布式数据库的一致性模型</h1>
+  <p>一致性模型通常分为强一致、顺序一致与最终一致三类。强一致要求任何读操作都能看到此前所有写操作的结果，代价是跨地域场景下的写入延迟显著上升。</p>
+  <p>最终一致允许副本之间在有限时间内存在分歧，换取更高的可用性与吞吐。多数团队会按业务场景混合使用，账务类走强一致，浏览推荐类容忍最终一致。</p>
+  <p>这种混合策略要求存储层能按表甚至按操作粒度配置一致性级别，而不是全局一刀切。选型时应先明确每类操作能容忍的分歧窗口。</p>
+</main>
+<footer><a href="/privacy">隐私</a><a href="/terms">条款</a><p>© 2026 某站</p></footer>
+</body></html>

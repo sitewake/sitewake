@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-13",
+  "title": "expected 不得断言 outputSchema 外字段",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "expected-unknown-result-count"
+  },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_expected_schema_invalid",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

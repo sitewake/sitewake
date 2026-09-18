@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-11",
+  "title": "相同发布命令重试返回已有发布结果",
+  "baseRef": "../../bases/d-input.json",
+  "setup": {
+    "artifactState": "persisted-and-validated",
+    "siteState": "same-command-already-published"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Published" },
+      { "path": "capability.id", "op": "equals", "value": "capability_existing_published" },
+      { "path": "version.id", "op": "equals", "value": "version_existing_published" }
+    ],
+    "sideEffects": [
+      { "path": "capabilityCount", "op": "equals", "value": 1 },
+      { "path": "publishedVersionCount", "op": "equals", "value": 1 }
+    ]
+  }
+}
+

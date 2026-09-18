@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-08",
+  "title": "测试用例缺少 Contract 必填参数",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "one-case-missing-query"
+  },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_input_schema_invalid",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "validationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

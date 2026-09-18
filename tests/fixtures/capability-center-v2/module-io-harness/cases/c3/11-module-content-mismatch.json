@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-11",
+  "title": "模块正文与 module.contentHash 不一致",
+  "baseRef": "../../bases/c3-input.json",
+  "setup": {
+    "moduleScenario": "stored-source-hash-mismatch",
+    "hashes": "materialize-artifact-only"
+  },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "validation_module_hash_mismatch",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "browserContextCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

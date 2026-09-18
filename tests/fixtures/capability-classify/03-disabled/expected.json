@@ -1,0 +1,6 @@
+{
+  "assertions": {
+    "disposition": "Disabled",
+    "match.status": "Disabled"
+  }
+}

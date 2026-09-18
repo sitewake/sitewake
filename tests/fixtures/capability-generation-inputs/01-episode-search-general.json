@@ -1,0 +1,101 @@
+{
+  "request": {
+    "goal": "帮我搜索一个马克杯",
+    "normalizedGoal": "搜索指定商品",
+    "parameters": {
+      "query": "马克杯"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "guidance": {
+    "derived": [
+      {
+        "text": "商品详情页 URL 只能来自当前结果页的动态商品证据，不能固化演示商品 URL。",
+        "basedOn": [
+          {
+            "kind": "episode",
+            "id": "episode_01_search_{{RUN_ID}}"
+          }
+        ]
+      },
+      {
+        "text": "这是只读搜索能力：只需在首页搜索框输入 query 并提交，结果页出现后立即停止探索，不要进入商品详情或执行加入购物车。",
+        "basedOn": [
+          {
+            "kind": "episode",
+            "id": "episode_01_search_{{RUN_ID}}"
+          }
+        ]
+      }
+    ]
+  },
+  "source": "Episode",
+  "experience": {
+    "episodeId": "episode_01_search_{{RUN_ID}}",
+    "mode": "demonstration",
+    "execution": {
+      "startedAt": "2026-08-18T02:00:00.000Z",
+      "endedAt": "2026-08-18T02:00:08.000Z",
+      "startPage": {
+        "url": "http://localhost:18081/",
+        "title": "PrestaShop",
+        "heading": "Shop"
+      },
+      "actions": [
+        {
+          "action": "fill",
+          "rawAction": "在搜索框输入马克杯",
+          "input": {
+            "text": "马克杯",
+            "value": "马克杯"
+          },
+          "element": {
+            "role": "searchbox",
+            "placeholder": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "提交商品搜索",
+          "input": {},
+          "element": {
+            "role": "button",
+            "accessibleName": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        }
+      ],
+      "endPage": {
+        "url": "http://localhost:18081/search?controller=search&s=mug",
+        "title": "Search",
+        "heading": "Search results"
+      }
+    },
+    "outcome": {
+      "status": "Success",
+      "summary": "已展示符合关键词的商品结果",
+      "checks": [
+        {
+          "type": "business-output",
+          "value": "search results displayed"
+        }
+      ]
+    },
+    "evidence": {
+      "observationRefs": [
+        "observation_01_search_start_{{RUN_ID}}",
+        "observation_01_search_results_{{RUN_ID}}"
+      ],
+      "actionReceiptRefs": [
+        "receipt_01_search_submit_{{RUN_ID}}"
+      ],
+      "source": "MockBoundary"
+    }
+  }
+}

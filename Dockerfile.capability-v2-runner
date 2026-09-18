@@ -1,0 +1,11 @@
+FROM mcr.microsoft.com/playwright:v1.61.1-noble
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY scripts/npm-ci-retry.sh scripts/npm-ci-retry.sh
+# This runtime executes the bounded V2 TypeScript/Playwright harness. It does
+# not run the legacy Codex authoring worker, so development dependencies and
+# the global Codex CLI must stay out of this image.
+RUN sh scripts/npm-ci-retry.sh --omit=dev
+COPY . .
+ENV NODE_ENV=production
+CMD ["node", "scripts/capability-v2-runtime-launcher.mjs"]

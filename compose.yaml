@@ -1,0 +1,254 @@
+name: sitewake
+
+services:
+  control-plane:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SITEWAKE_BUILD_SHA: ${SITEWAKE_BUILD_SHA:-development}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sitewake}:${POSTGRES_PASSWORD:-sitewake}@postgres:5432/${POSTGRES_DB:-sitewake}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-sitewake-artifacts}
+      S3_REGION: us-east-1
+      S3_FORCE_PATH_STYLE: "true"
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-sitewake}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-sitewake-local}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL: ${MODEL:-}
+      MODEL_EXECUTION: ${MODEL_EXECUTION:-}
+      MODEL_SEMANTIC: ${MODEL_SEMANTIC:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      SITEWAKE_RUNNER_TOKEN: ${SITEWAKE_RUNNER_TOKEN:-}
+      ACCESS_ADMIN_KEY: ${ACCESS_ADMIN_KEY:-}
+      SITEWAKE_IDEMPOTENCY_SECRET: ${SITEWAKE_IDEMPOTENCY_SECRET:-}
+      SITEWAKE_ANALYTICS_SALT: ${SITEWAKE_ANALYTICS_SALT:-}
+      # Source switch for indexed site-knowledge text and the rollback gate for the whole
+      # filter: "off" returns to indexing the full page text. The verdict is made in the
+      # worker and consumed here, so both must read it.
+      SITEWAKE_CONTENT_FILTER: ${SITEWAKE_CONTENT_FILTER:-on}
+      CAPABILITY_V2_INPUT_KEY: ${CAPABILITY_V2_INPUT_KEY:-}
+      CAPABILITY_V2_AUTO_DISPATCH: ${CAPABILITY_V2_AUTO_DISPATCH:-}
+      POSTGRES_POOL_SIZE: ${POSTGRES_POOL_SIZE:-5}
+      CAPABILITY_V2_RUNNER_SECRET: ${CAPABILITY_V2_RUNNER_SECRET:?set CAPABILITY_V2_RUNNER_SECRET}
+      CAPABILITY_V2_DISPATCH_TOKEN: ${CAPABILITY_V2_DISPATCH_TOKEN:?set CAPABILITY_V2_DISPATCH_TOKEN}
+      CAPABILITY_V2_RUNTIME_LAUNCHER_URL: http://capability-v2-runtime-launcher:3320
+      CAPABILITY_V2_RUNTIME_LAUNCHER_TOKEN: ${CAPABILITY_V2_RUNTIME_LAUNCHER_TOKEN:?set CAPABILITY_V2_RUNTIME_LAUNCHER_TOKEN}
+      CAPABILITY_V2_CONTROL_PLANE_URL: http://control-plane:3000
+      CAPABILITY_V2_BROWSER_PUBLIC_URL: ${CAPABILITY_V2_BROWSER_PUBLIC_URL:-${SITEWAKE_PUBLIC_ORIGIN:-}}
+      CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN: ${CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN:-0}
+      SITEWAKE_RUNNER_ENROLLMENT_TOKEN: ${SITEWAKE_RUNNER_ENROLLMENT_TOKEN:?set SITEWAKE_RUNNER_ENROLLMENT_TOKEN}
+      SITEWAKE_LEGACY_RUNNER_PROTOCOL: ${SITEWAKE_LEGACY_RUNNER_PROTOCOL:-false}
+      SITEWAKE_RUNNER_LEASE_AUTHORITY: ${SITEWAKE_RUNNER_LEASE_AUTHORITY:-central}
+      SITEWAKE_RUNNER_VISIBILITY: ${SITEWAKE_RUNNER_VISIBILITY:-full}
+      SITEWAKE_PUBLIC_ORIGIN: ${SITEWAKE_PUBLIC_ORIGIN:-}
+      SITEWAKE_BUILD_SHA: ${SITEWAKE_BUILD_SHA:-development}
+      # Independent site-level rollout controls: off/on, sites:id-a,id-b, or
+      # percent:10. Evidence V2 is additionally gated by Runtime V2.
+      SITEWAKE_PAGE_AGENT_RUNTIME_V2: ${SITEWAKE_PAGE_AGENT_RUNTIME_V2:-off}
+      SITEWAKE_PAGE_AGENT_EVIDENCE_V2: ${SITEWAKE_PAGE_AGENT_EVIDENCE_V2:-off}
+      SITEWAKE_CAPABILITY_EXPERIENCE_OUTBOX: ${SITEWAKE_CAPABILITY_EXPERIENCE_OUTBOX:-off}
+      # Ephemeral deployment authority is passed only to the control plane.
+      SITEWAKE_MAINTENANCE_TOKEN: ${SITEWAKE_MAINTENANCE_TOKEN:-}
+      # Set the public hostname when a trusted reverse proxy terminates TLS.
+      VINEXT_TRUSTED_HOSTS: ${SITEWAKE_PUBLIC_HOSTNAME:-}
+    ports:
+      - target: 3000
+        published: "${SITEWAKE_PORT:-3000}"
+        host_ip: "${SITEWAKE_BIND_ADDRESS:-0.0.0.0}"
+        protocol: tcp
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+      capability-v2-runtime-launcher: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)})"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  capability-v2-runtime-launcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.capability-v2-runner
+    restart: unless-stopped
+    command: ["node", "scripts/capability-v2-runtime-launcher.mjs"]
+    environment:
+      CAPABILITY_V2_RUNTIME_LAUNCHER_HOST: 0.0.0.0
+      CAPABILITY_V2_RUNTIME_LAUNCHER_PORT: "3320"
+      CAPABILITY_V2_RUNTIME_LAUNCHER_TOKEN: ${CAPABILITY_V2_RUNTIME_LAUNCHER_TOKEN:?set CAPABILITY_V2_RUNTIME_LAUNCHER_TOKEN}
+      CAPABILITY_V2_DISPATCH_TOKEN: ${CAPABILITY_V2_DISPATCH_TOKEN:?set CAPABILITY_V2_DISPATCH_TOKEN}
+      CAPABILITY_V2_CONTROL_PLANE_URL: http://control-plane:3000
+      CAPABILITY_V2_BROWSER_PUBLIC_URL: ${CAPABILITY_V2_BROWSER_PUBLIC_URL:-${SITEWAKE_PUBLIC_ORIGIN:-}}
+      CAPABILITY_V2_RUNTIME_CONCURRENCY: "1"
+      CAPABILITY_V2_DISPATCH_INTERVAL_MS: "5000"
+      CAPABILITY_V2_ARTIFACT_DIR: /tmp/capability-v2-artifacts
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL: ${MODEL:-}
+      MODEL_EXECUTION: ${MODEL_EXECUTION:-}
+      MODEL_SEMANTIC: ${MODEL_SEMANTIC:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3320/health',{headers:{authorization:'Bearer '+process.env.CAPABILITY_V2_RUNTIME_LAUNCHER_TOKEN}}).then(r=>{if(!r.ok)process.exit(1)})"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sitewake}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sitewake}
+      POSTGRES_DB: ${POSTGRES_DB:-sitewake}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sitewake} -d ${POSTGRES_DB:-sitewake}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-sitewake}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-sitewake-local}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD && mc mb --ignore-existing local/$$S3_BUCKET"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-sitewake}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-sitewake-local}
+      S3_BUCKET: ${S3_BUCKET:-sitewake-artifacts}
+
+  authoring-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      SITEWAKE_CONTROL_PLANE_URL: http://control-plane:3000
+      SITEWAKE_BROWSER_PUBLIC_URL: ${SITEWAKE_PUBLIC_ORIGIN:-http://control-plane:3000}
+      SITEWAKE_RUNNER_ID: ${SITEWAKE_AUTHORING_RUNNER_ID:-authoring-primary}
+      SITEWAKE_RUNNER_ENROLLMENT_TOKEN: ${SITEWAKE_RUNNER_ENROLLMENT_TOKEN:?set SITEWAKE_RUNNER_ENROLLMENT_TOKEN}
+      # Lets this optional queue trigger call only the authenticated internal
+      # dispatch endpoint; capability execution still requires task leases.
+      CAPABILITY_V2_DISPATCH_TOKEN: ${CAPABILITY_V2_DISPATCH_TOKEN:?set CAPABILITY_V2_DISPATCH_TOKEN}
+      SITEWAKE_LEGACY_RUNNER_PROTOCOL: ${SITEWAKE_LEGACY_RUNNER_PROTOCOL:-false}
+      SITEWAKE_RUNNER_NAME: Program Author Agent
+      SITEWAKE_RUNNER_ROLE: author
+      SITEWAKE_RUNNER_PREWARM: "0"
+      SITEWAKE_RUNNER_CONCURRENCY: "1"
+      SITEWAKE_AUTHORING_WORKSPACE_ROOT: /workspaces
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL: ${MODEL:-}
+      MODEL_EXECUTION: ${MODEL_EXECUTION:-}
+      MODEL_SEMANTIC: ${MODEL_SEMANTIC:-}
+      # The two comparison layers of the site-knowledge crawl, each with its own switch;
+      # by default they only compute and do not change indexed content (migration step 1).
+      # The shape layer is governed by the control plane's SITEWAKE_CONTENT_FILTER, unrelated to these.
+      SITEWAKE_LAYER_TEMPLATE: ${SITEWAKE_LAYER_TEMPLATE:-off}
+      SITEWAKE_LAYER_TIME: ${SITEWAKE_LAYER_TIME:-off}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      # A coding agent may otherwise keep alternating model turns and browser
+      # tools indefinitely. These are hard per-job budgets, not retry delays.
+      SITEWAKE_CODEX_AUTHORING_TIMEOUT_MS: ${SITEWAKE_CODEX_AUTHORING_TIMEOUT_MS:-600000}
+      SITEWAKE_CODEX_AUTHORING_MAX_TOOL_CALLS: ${SITEWAKE_CODEX_AUTHORING_MAX_TOOL_CALLS:-48}
+    volumes:
+      - authoring-workspaces:/workspaces
+    depends_on:
+      control-plane: { condition: service_healthy }
+
+  validation-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      SITEWAKE_CONTROL_PLANE_URL: http://control-plane:3000
+      SITEWAKE_BROWSER_PUBLIC_URL: ${SITEWAKE_PUBLIC_ORIGIN:-http://control-plane:3000}
+      SITEWAKE_RUNNER_ID: ${SITEWAKE_VALIDATION_RUNNER_ID:-validation-primary}
+      SITEWAKE_RUNNER_ENROLLMENT_TOKEN: ${SITEWAKE_RUNNER_ENROLLMENT_TOKEN:?set SITEWAKE_RUNNER_ENROLLMENT_TOKEN}
+      CAPABILITY_V2_DISPATCH_TOKEN: ${CAPABILITY_V2_DISPATCH_TOKEN:?set CAPABILITY_V2_DISPATCH_TOKEN}
+      SITEWAKE_LEGACY_RUNNER_PROTOCOL: ${SITEWAKE_LEGACY_RUNNER_PROTOCOL:-false}
+      SITEWAKE_RUNNER_NAME: Independent Validation
+      SITEWAKE_RUNNER_ROLE: validate
+      SITEWAKE_RUNNER_PREWARM: "0"
+      SITEWAKE_RUNNER_CONCURRENCY: "1"
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL: ${MODEL:-}
+      MODEL_EXECUTION: ${MODEL_EXECUTION:-}
+      MODEL_SEMANTIC: ${MODEL_SEMANTIC:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+    depends_on:
+      control-plane: { condition: service_healthy }
+
+  execution-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      SITEWAKE_CONTROL_PLANE_URL: http://control-plane:3000
+      SITEWAKE_BROWSER_PUBLIC_URL: ${SITEWAKE_PUBLIC_ORIGIN:-http://control-plane:3000}
+      SITEWAKE_RUNNER_ID: ${SITEWAKE_EXECUTION_RUNNER_ID:-execution-primary}
+      SITEWAKE_RUNNER_ENROLLMENT_TOKEN: ${SITEWAKE_RUNNER_ENROLLMENT_TOKEN:?set SITEWAKE_RUNNER_ENROLLMENT_TOKEN}
+      CAPABILITY_V2_DISPATCH_TOKEN: ${CAPABILITY_V2_DISPATCH_TOKEN:?set CAPABILITY_V2_DISPATCH_TOKEN}
+      SITEWAKE_LEGACY_RUNNER_PROTOCOL: ${SITEWAKE_LEGACY_RUNNER_PROTOCOL:-false}
+      SITEWAKE_RUNNER_NAME: Capability Execution
+      SITEWAKE_RUNNER_ROLE: interactive
+      SITEWAKE_RUNNER_PREWARM: ${SITEWAKE_EXECUTION_RUNNER_PREWARM:-1}
+      SITEWAKE_RUNNER_CONCURRENCY: ${SITEWAKE_EXECUTION_RUNNER_CONCURRENCY:-1}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL: ${MODEL:-}
+      MODEL_EXECUTION: ${MODEL_EXECUTION:-}
+      MODEL_SEMANTIC: ${MODEL_SEMANTIC:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+    depends_on:
+      control-plane: { condition: service_healthy }
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["edge"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    command: tunnel --no-autoupdate run
+    depends_on:
+      control-plane: { condition: service_healthy }
+
+volumes:
+  postgres-data:
+  minio-data:
+  authoring-workspaces:

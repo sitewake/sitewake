@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-07",
+  "title": "B 的分类占位失效时返回写冲突",
+  "baseRef": "../../bases/d-input.json",
+  "setup": {
+    "artifactState": "persisted-and-validated",
+    "siteState": "classification-reservation-lost"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "WriteConflict" },
+      { "path": "code", "op": "equals", "value": "CLASSIFICATION_RESERVATION_LOST" }
+    ],
+    "sideEffects": [
+      { "path": "publishCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

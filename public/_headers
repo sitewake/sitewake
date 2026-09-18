@@ -1,0 +1,7 @@
+/sitewake.js
+  Cache-Control: no-cache, must-revalidate
+  CDN-Cache-Control: no-cache, must-revalidate
+
+/sitewake-adaptive.js
+  Cache-Control: no-cache, must-revalidate
+  CDN-Cache-Control: no-cache, must-revalidate

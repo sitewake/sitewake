@@ -1,0 +1,18 @@
+{
+  "note": "留出集不参与任何参数调整，只在最终验收时跑一次。改参数后若只有 holdout 变红，说明发生了过拟合。",
+  "dev": [
+    { "file": "news-article-with-hot-sidebar.html", "archetype": "资讯文章页（带热搜侧栏）", "focus": "信号 1 + 3：侧栏挂件" },
+    { "file": "docs-site.html", "archetype": "文档站", "focus": "信号 1 + 2：左侧导航树，正文含代码与表格" },
+    { "file": "faq-and-api-list.html", "archetype": "FAQ / API 方法列表页", "focus": "信号 2 的组合逻辑，防误杀重复结构" },
+    { "file": "legal-terms-page.html", "archetype": "条款 / 隐私政策页", "focus": "重复的权利条目列表须全部存活" },
+    { "file": "forum-thread.html", "archetype": "论坛帖子页", "focus": "信号 4：评论区时间戳密集" },
+    { "file": "legacy-layout-table.html", "archetype": "老式布局表网站", "focus": "布局表拆解" },
+    { "file": "pure-ranking-page.html", "archetype": "纯榜单页", "focus": "正确答案就是空" },
+    { "file": "directory-index.html", "archetype": "目录型导航页", "focus": "已知的系统性误杀，方向须为安全" }
+  ],
+  "holdout": [
+    { "file": "wiki-dense-inlinks.html", "archetype": "百科页（内链密集）", "focus": "信号 1 的组合逻辑：链接多但每行长" },
+    { "file": "div-soup-spa.html", "archetype": "满屏 div 的 SPA", "focus": "信号 3 失灵时的压力测试" },
+    { "file": "ecommerce-product.html", "archetype": "电商产品页", "focus": "豁免卡 + 信号 1：规格表 vs 推荐链接墙" }
+  ]
+}

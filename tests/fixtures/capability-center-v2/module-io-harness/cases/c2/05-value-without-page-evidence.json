@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-05",
+  "title": "页面未出现的业务值不得成为测试输入",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-only",
+    "modelScenario": "cases-notebook-and-invented-laptop"
+  },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_input_page_evidence_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 },
+      { "path": "validationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

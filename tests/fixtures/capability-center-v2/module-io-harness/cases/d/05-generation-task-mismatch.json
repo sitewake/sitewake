@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-05",
+  "title": "发布命令与 Artifact generationTaskId 不一致",
+  "baseRef": "../../bases/d-input.json",
+  "inputPatch": { "generationTaskId": "generation_other_999" },
+  "setup": { "artifactState": "persisted-and-validated" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "WriteConflict" },
+      { "path": "code", "op": "equals", "value": "PUBLISH_COMMAND_MISMATCH" }
+    ],
+    "sideEffects": [
+      { "path": "publishCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

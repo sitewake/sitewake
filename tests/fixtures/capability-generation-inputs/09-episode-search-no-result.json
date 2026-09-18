@@ -1,0 +1,78 @@
+{
+  "request": {
+    "goal": "帮我查找不存在的紫色潜水艇",
+    "normalizedGoal": "搜索商品",
+    "parameters": {
+      "query": "紫色潜水艇"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "source": "Episode",
+  "experience": {
+    "episodeId": "episode_09_no_result_{{RUN_ID}}",
+    "mode": "demonstration",
+    "execution": {
+      "startedAt": "2026-08-18T02:09:00.000Z",
+      "endedAt": "2026-08-18T02:09:10.000Z",
+      "startPage": {
+        "url": "http://localhost:18081/",
+        "title": "PrestaShop",
+        "heading": "Shop"
+      },
+      "actions": [
+        {
+          "action": "fill",
+          "rawAction": "搜索紫色潜水艇",
+          "input": {
+            "text": "紫色潜水艇",
+            "value": "紫色潜水艇"
+          },
+          "element": {
+            "role": "searchbox",
+            "placeholder": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "提交搜索",
+          "input": {},
+          "element": {
+            "role": "button",
+            "accessibleName": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        }
+      ],
+      "endPage": {
+        "url": "http://localhost:18081/search?controller=search&s=purple-submarine",
+        "title": "Search",
+        "heading": "No results"
+      }
+    },
+    "outcome": {
+      "status": "NoResult",
+      "summary": "搜索已真实完成，但页面没有匹配商品",
+      "checks": [
+        {
+          "type": "business-output",
+          "value": "empty result state is visible"
+        }
+      ]
+    },
+    "evidence": {
+      "observationRefs": [
+        "observation_09_no_result_search_{{RUN_ID}}"
+      ],
+      "actionReceiptRefs": [
+        "receipt_09_no_result_search_{{RUN_ID}}"
+      ],
+      "source": "MockBoundary"
+    }
+  }
+}

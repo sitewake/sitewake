@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "Review",
+  "caseId": "REVIEW-08",
+  "title": "冻结 Artifact 中出现分析字段时拒绝审核",
+  "baseRef": "../../bases/review-input.json",
+  "inputPatch": {
+    "validated": {
+      "artifact": {
+        "candidate": {
+          "contract": {
+            "semantic": { "schemaVersion": "1.0" },
+            "dependencyLedger": []
+          }
+        }
+      }
+    }
+  },
+  "setup": {},
+  "expected": {
+    "outcome": "error",
+    "errorCode": "review_artifact_unknown_field",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "modelCalls", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

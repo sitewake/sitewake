@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>分布式数据库的一致性模型 - 某科技媒体</title></head>
+<body>
+<header>
+  <div class="logo">某科技媒体</div>
+  <nav>
+    <a href="/">首页</a><a href="/news">资讯</a><a href="/rank">排行</a><a href="/topic">专题</a><a href="/about">关于</a>
+  </nav>
+  <!-- 跨页外壳：由 stripSharedChrome 处理，不由块级信号断言 --><div>登录 注册 搜索</div>
+</header>
+
+<main>
+  <article>
+    <h1>分布式数据库的一致性模型</h1>
+    <p data-expect="keep">近日，某公司发布了新一代分布式数据库，该系统采用去中心化架构，支持跨地域强一致写入，在金融场景下的实测延迟低于同类产品。该架构的核心在于把共识层与存储层解耦，使得扩容不再需要停机迁移数据。</p>
+    <p data-expect="keep">一致性模型通常分为强一致、顺序一致与最终一致三类。强一致要求任何读操作都能看到此前所有写操作的结果，代价是跨地域场景下的写入延迟显著上升；最终一致则允许副本之间在有限时间内存在分歧，换取更高的可用性与吞吐。</p>
+    <p data-expect="keep">在实际选型中，多数团队会按业务场景混合使用：账务类操作走强一致路径，而浏览与推荐类的读多写少场景则容忍最终一致。这种混合策略要求存储层能按表甚至按操作粒度配置一致性级别，而不是全局一刀切。</p>
+    <table data-expect="keep">
+      <thead><tr><th>一致性级别</th><th>写延迟</th><th>适用场景</th></tr></thead>
+      <tbody>
+        <tr><td>强一致</td><td>高</td><td>账务</td></tr>
+        <tr><td>顺序一致</td><td>中</td><td>订单</td></tr>
+        <tr><td>最终一致</td><td>低</td><td>推荐</td></tr>
+      </tbody>
+    </table>
+    <pre data-expect="keep"><code>db.setConsistency("accounts", "strong");
+db.setConsistency("feed", "eventual");</code></pre>
+  </article>
+</main>
+
+<aside>
+  <div class="hot-list" data-expect="drop">
+    <h3>今日热搜</h3>
+    <ul>
+      <li><a href="/h/1">某某新规出台</a></li>
+      <li><a href="/h/2">某地暴雨预警</a></li>
+      <li><a href="/h/3">某明星演唱会</a></li>
+      <li><a href="/h/4">某公司发布财报</a></li>
+      <li><a href="/h/5">某地铁线路调整</a></li>
+      <li><a href="/h/6">某高校公布分数线</a></li>
+      <li><a href="/h/7">某影片票房破亿</a></li>
+      <li><a href="/h/8">某球队晋级决赛</a></li>
+    </ul>
+  </div>
+  <div class="recommend" data-expect="drop">
+    <h3>猜你喜欢</h3>
+    <ul>
+      <li><a href="/a/11">存储引擎选型</a></li>
+      <li><a href="/a/12">索引优化实践</a></li>
+      <li><a href="/a/13">分库分表要点</a></li>
+      <li><a href="/a/14">缓存穿透防护</a></li>
+      <li><a href="/a/15">慢查询排查</a></li>
+    </ul>
+  </div>
+</aside>
+
+<footer>
+  <div data-expect="drop">
+    <a href="/about">关于我们</a><a href="/contact">联系方式</a><a href="/privacy">隐私政策</a><a href="/terms">服务条款</a><a href="/jobs">加入我们</a>
+  </div>
+  <!-- 跨页外壳：由 stripSharedChrome 处理 --><p>© 2026 某科技媒体 版权所有</p>
+</footer>
+</body>
+</html>

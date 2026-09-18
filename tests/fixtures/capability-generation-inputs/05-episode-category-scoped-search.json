@@ -1,0 +1,93 @@
+{
+  "request": {
+    "goal": "在配件目录里找一个黑色的耳机",
+    "normalizedGoal": "在指定目录搜索商品",
+    "parameters": {
+      "query": "耳机",
+      "color": "黑色"
+    },
+    "entryUrl": "http://localhost:18081/6-accessories",
+    "locale": "zh-CN"
+  },
+  "guidance": {
+    "derived": [
+      {
+        "text": "请区分本次目录上下文与能力的通用业务参数；只有确实依赖目录时才标记作用域，不要把目录 URL 变成商品参数。",
+        "basedOn": [
+          {
+            "kind": "episode",
+            "id": "episode_05_category_{{RUN_ID}}"
+          }
+        ]
+      }
+    ]
+  },
+  "source": "Episode",
+  "experience": {
+    "episodeId": "episode_05_category_{{RUN_ID}}",
+    "mode": "demonstration",
+    "execution": {
+      "startedAt": "2026-08-18T02:04:00.000Z",
+      "endedAt": "2026-08-18T02:04:12.000Z",
+      "startPage": {
+        "url": "http://localhost:18081/6-accessories",
+        "title": "Accessories",
+        "heading": "Accessories"
+      },
+      "actions": [
+        {
+          "action": "fill",
+          "rawAction": "在配件目录搜索耳机",
+          "input": {
+            "text": "耳机",
+            "value": "耳机"
+          },
+          "element": {
+            "role": "searchbox",
+            "placeholder": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/6-accessories"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "提交目录搜索",
+          "input": {},
+          "element": {
+            "role": "button",
+            "accessibleName": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/6-accessories"
+          }
+        }
+      ],
+      "endPage": {
+        "url": "http://localhost:18081/6-accessories?q=Color-Black",
+        "title": "Accessories",
+        "heading": "Accessories"
+      }
+    },
+    "outcome": {
+      "status": "Success",
+      "summary": "已在配件目录展示黑色商品搜索结果",
+      "checks": [
+        {
+          "type": "business-output",
+          "value": "scoped search results displayed"
+        }
+      ]
+    },
+    "evidence": {
+      "observationRefs": [
+        "observation_05_category_start_{{RUN_ID}}",
+        "observation_05_category_results_{{RUN_ID}}"
+      ],
+      "actionReceiptRefs": [
+        "receipt_05_category_search_{{RUN_ID}}"
+      ],
+      "source": "MockBoundary"
+    }
+  }
+}

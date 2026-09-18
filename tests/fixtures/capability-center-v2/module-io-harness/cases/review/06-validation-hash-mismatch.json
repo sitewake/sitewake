@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "Review",
+  "caseId": "REVIEW-06",
+  "title": "C3 回执与 Artifact hash 不一致时不得审核",
+  "baseRef": "../../bases/review-input.json",
+  "inputPatch": {
+    "validated": {
+      "validation": {
+        "programHash": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+      }
+    }
+  },
+  "setup": {},
+  "expected": {
+    "outcome": "error",
+    "errorCode": "review_validation_hash_mismatch",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "modelCalls", "op": "equals", "value": 0 },
+      { "path": "publishCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

@@ -1,0 +1,127 @@
+{
+  "schema": "CapabilityGenerationInput",
+  "schemaVersion": "capability-center-v2",
+  "placeholderPolicy": {
+    "RUN_ID": "replaced by the test runner with a unique run identifier",
+    "SITE_ID": "available to the runner for headers, but not required by the logical B input"
+  },
+  "executionOrder": [
+    "01-episode-search-general",
+    "02-episode-add-cart-default",
+    "03-episode-add-cart-explicit-quantity",
+    "04-episode-dynamic-product-detail",
+    "05-episode-category-scoped-search",
+    "06-admin-create-search",
+    "07-episode-duplicate-synonym",
+    "08-episode-duplicate-broader",
+    "09-episode-search-no-result",
+    "10-episode-ambiguous-target",
+    "11-invalid-empty-goal",
+    "12-invalid-empty-entry-url",
+    "13-invalid-episode-id",
+    "14-invalid-admin-repair-target"
+  ],
+  "cases": [
+    {
+      "file": "01-episode-search-general.json",
+      "group": "success",
+      "assertAtB": "Created",
+      "terminal": "Published",
+      "focus": "general search; business values must remain parameters"
+    },
+    {
+      "file": "02-episode-add-cart-default.json",
+      "group": "success",
+      "assertAtB": "Created",
+      "terminal": "Published",
+      "focus": "dynamic product navigation; omitted business quantity can only become a default when evidence supports it"
+    },
+    {
+      "file": "03-episode-add-cart-explicit-quantity.json",
+      "group": "success",
+      "assertAtB": "Created",
+      "terminal": "Published",
+      "focus": "explicit numeric parameter; input must be consumed before the irreversible action"
+    },
+    {
+      "file": "04-episode-dynamic-product-detail.json",
+      "group": "success",
+      "assertAtB": "Created",
+      "terminal": "Published",
+      "focus": "dynamic detail navigation is learned by clicking current evidence, not by hard-coded URL"
+    },
+    {
+      "file": "05-episode-category-scoped-search.json",
+      "group": "scope",
+      "assertAtB": "Created",
+      "terminal": "Published or explicitly scoped/reviewed",
+      "focus": "distinguish a page/category scope from a business parameter"
+    },
+    {
+      "file": "06-admin-create-search.json",
+      "group": "admin",
+      "assertAtB": "Created",
+      "terminal": "Published",
+      "focus": "administrator input converges on the same B→C→Review→D path"
+    },
+    {
+      "file": "07-episode-duplicate-synonym.json",
+      "group": "duplicate",
+      "assertAtB": "Duplicate after a compatible baseline is published; otherwise Created",
+      "terminal": "No second capability/version",
+      "requires": ["01-episode-search-general.json"],
+      "focus": "semantic duplicate despite different natural-language wording"
+    },
+    {
+      "file": "08-episode-duplicate-broader.json",
+      "group": "duplicate",
+      "assertAtB": "Duplicate or a separately scoped Created result, according to semantic coverage",
+      "terminal": "No accidental duplicate version",
+      "requires": ["01-episode-search-general.json"],
+      "focus": "broad goal versus a narrower existing capability; matcher must not use raw text only"
+    },
+    {
+      "file": "09-episode-search-no-result.json",
+      "group": "business-no-result",
+      "assertAtB": "Created",
+      "terminal": "Published search capability or an auditable, fail-closed C gate",
+      "focus": "NoResult is a business observation, not a model/transport error"
+    },
+    {
+      "file": "10-episode-ambiguous-target.json",
+      "group": "ambiguity",
+      "assertAtB": "Created",
+      "expectation": "PublishedOrFailed",
+      "terminal": "Ambiguous/NoResult gate is acceptable; first candidate must never be silently selected",
+      "focus": "candidate ambiguity and protection against first-item selection"
+    },
+    {
+      "file": "11-invalid-empty-goal.json",
+      "group": "boundary-rejection",
+      "assertAtB": "Rejected",
+      "errorCode": "generation_goal_required",
+      "focus": "B rejects an empty goal before model or task creation"
+    },
+    {
+      "file": "12-invalid-empty-entry-url.json",
+      "group": "boundary-rejection",
+      "assertAtB": "Rejected",
+      "errorCode": "generation_entry_url_required",
+      "focus": "B rejects a missing browser start point"
+    },
+    {
+      "file": "13-invalid-episode-id.json",
+      "group": "boundary-rejection",
+      "assertAtB": "Rejected",
+      "errorCode": "generation_episode_required",
+      "focus": "Episode input must carry the upstream logical correlation key"
+    },
+    {
+      "file": "14-invalid-admin-repair-target.json",
+      "group": "boundary-rejection",
+      "assertAtB": "Rejected",
+      "errorCode": "generation_target_capability_required",
+      "focus": "repair cannot silently become create when no target capability is supplied"
+    }
+  ]
+}

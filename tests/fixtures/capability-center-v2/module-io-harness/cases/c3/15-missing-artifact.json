@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-15",
+  "title": "C3 不接受没有冻结 Artifact 的任务",
+  "baseRef": "../../bases/c3-input.json",
+  "removePaths": ["artifact"],
+  "setup": {},
+  "expected": {
+    "outcome": "error",
+    "errorCode": "candidate_artifact_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "browserContextCount", "op": "equals", "value": 0 },
+      { "path": "aiCalls", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

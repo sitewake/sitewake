@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>常见问题与 API 方法 - 某服务</title></head>
+<body>
+<header data-expect="drop"><a href="/">首页</a><a href="/docs">文档</a><a href="/pricing">价格</a></header>
+
+<main>
+  <h1>常见问题</h1>
+  <dl data-expect="keep">
+    <dt>为什么我的任务一直排队？</dt>
+    <dd>排队通常意味着并发额度已经用满。每个项目的默认并发上限是八个任务，超出的任务会按提交顺序等待。可以在项目设置里查看当前占用，或者升级套餐来提高上限。</dd>
+    <dt>删除的数据还能恢复吗？</dt>
+    <dd>删除操作会先把数据移入回收站，保留三十天。在这期间可以从回收站原样恢复；超过三十天后数据会被彻底清除，届时无法通过任何方式找回，请提前做好导出。</dd>
+    <dt>如何更换绑定的邮箱？</dt>
+    <dd>在账户设置页面发起更换，系统会向新旧两个邮箱各发送一封确认邮件。两封都确认之后更换才会生效，这一设计是为了防止账号在邮箱失窃的情况下被单向转移。</dd>
+  </dl>
+
+  <h1>API 方法</h1>
+  <ul class="method-list" data-expect="keep">
+    <li>
+      <h3>createTask(input)</h3>
+      <p>创建一个任务并立即返回任务标识。该调用是异步的，返回时任务尚未执行完毕，需要通过轮询或回调获取结果。输入超过一兆字节时会被拒绝。</p>
+    </li>
+    <li>
+      <h3>getTask(id)</h3>
+      <p>按标识查询任务的当前状态与结果。任务完成后结果保留七天，过期后该接口只返回状态而不返回结果体，需要重新发起任务。</p>
+    </li>
+    <li>
+      <h3>cancelTask(id)</h3>
+      <p>取消一个尚未完成的任务。已经进入执行阶段的任务不保证能立即停止，该调用只保证不再产生新的计费，实际停止可能有数秒延迟。</p>
+    </li>
+  </ul>
+</main>
+
+<aside data-expect="drop">
+  <h3>相关链接</h3>
+  <ul>
+    <li><a href="/docs/quickstart">快速开始</a></li>
+    <li><a href="/docs/limits">配额说明</a></li>
+    <li><a href="/status">服务状态</a></li>
+    <li><a href="/changelog">更新日志</a></li>
+  </ul>
+</aside>
+
+<footer data-expect="drop"><a href="/privacy">隐私</a><a href="/terms">条款</a><a href="/contact">联系</a></footer>
+</body>
+</html>

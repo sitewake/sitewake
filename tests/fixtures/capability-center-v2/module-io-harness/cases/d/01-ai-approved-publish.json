@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-01",
+  "title": "AI Review 授权后发布新 Capability 和 Version",
+  "baseRef": "../../bases/d-input.json",
+  "setup": {
+    "siteState": "empty-with-valid-classification-reservation",
+    "artifactState": "persisted-and-validated"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Published" },
+      { "path": "capability.status", "op": "equals", "value": "Active" },
+      { "path": "version.status", "op": "equals", "value": "Published" },
+      { "path": "capability.currentVersionId", "op": "present" }
+    ],
+    "sideEffects": [
+      { "path": "capabilityCount", "op": "equals", "value": 1 },
+      { "path": "publishedVersionCount", "op": "equals", "value": 1 }
+    ]
+  }
+}
+

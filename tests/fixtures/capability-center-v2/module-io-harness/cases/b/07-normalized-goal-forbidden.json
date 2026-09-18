@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-07",
+  "title": "调用方不得预先传入 normalizedGoal",
+  "baseRef": "../../bases/b-episode.json",
+  "inputPatch": { "request": { "normalizedGoal": "搜索商品" } },
+  "setup": { "siteState": "empty" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "generation_input_unknown_field",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "generationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

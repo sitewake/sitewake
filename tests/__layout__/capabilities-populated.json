@@ -1,0 +1,14 @@
+{
+  "headings": [
+    "能力"
+  ],
+  "landmarks": {
+    "nav": 2,
+    "tablist": 1,
+    "tabs": 5,
+    "tables": 0,
+    "buttons": 18
+  },
+  "unexpectedOverflow": [],
+  "documentOverflowsViewport": false
+}

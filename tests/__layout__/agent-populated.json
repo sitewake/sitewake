@@ -1,0 +1,19 @@
+{
+  "headings": [
+    "智能体",
+    "快速配置",
+    "名称与欢迎语",
+    "外观与位置",
+    "外观预览",
+    "想在示例商城完成什么？"
+  ],
+  "landmarks": {
+    "nav": 1,
+    "tablist": 1,
+    "tabs": 5,
+    "tables": 0,
+    "buttons": 34
+  },
+  "unexpectedOverflow": [],
+  "documentOverflowsViewport": false
+}

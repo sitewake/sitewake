@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>配置参考 - 某 SDK 文档</title></head>
+<body>
+<header><div>某 SDK 文档</div><input placeholder="搜索文档"></header>
+
+<nav class="sidebar" data-expect="drop">
+  <ul>
+    <li><a href="/docs/start">快速开始</a></li>
+    <li><a href="/docs/install">安装</a></li>
+    <li><a href="/docs/config">配置参考</a></li>
+    <li><a href="/docs/api">API 参考</a></li>
+    <li><a href="/docs/cli">命令行</a></li>
+    <li><a href="/docs/deploy">部署</a></li>
+    <li><a href="/docs/faq">常见问题</a></li>
+    <li><a href="/docs/changelog">更新日志</a></li>
+  </ul>
+</nav>
+
+<main>
+  <h1>配置参考</h1>
+  <p data-expect="keep">配置文件默认位于项目根目录的 config.yaml。所有字段都是可选的，未显式设置的字段会使用下表列出的默认值。修改配置后需要重启服务才能生效，热重载仅对日志级别一项有效。</p>
+
+  <h2>字段说明</h2>
+  <table data-expect="keep">
+    <thead><tr><th>字段</th><th>类型</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>timeout</td><td>number</td><td>15000</td><td>单次请求超时毫秒数</td></tr>
+      <tr><td>retries</td><td>number</td><td>3</td><td>失败重试次数</td></tr>
+      <tr><td>concurrency</td><td>number</td><td>8</td><td>并发上限</td></tr>
+      <tr><td>logLevel</td><td>string</td><td>info</td><td>日志级别，支持热重载</td></tr>
+    </tbody>
+  </table>
+
+  <h2>示例</h2>
+  <pre data-expect="keep"><code>timeout: 30000
+retries: 5
+concurrency: 16
+logLevel: debug</code></pre>
+
+  <p data-expect="keep">并发上限受运行环境的文件描述符限制约束。在容器中运行时，建议把该值设为可用 CPU 核心数的两倍以内，超过之后吞吐不再提升，反而会因为上下文切换而增加尾延迟。</p>
+
+  <nav class="pagination" data-expect="drop">
+    <a href="/docs/install">上一页：安装</a>
+    <a href="/docs/api">下一页：API 参考</a>
+  </nav>
+</main>
+
+<footer data-expect="drop"><a href="/">首页</a><a href="/docs">文档</a><a href="/gh">GitHub</a></footer>
+</body>
+</html>

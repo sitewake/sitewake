@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-04",
+  "title": "分类范围使用精简 Scope",
+  "baseRef": "../../bases/c1-task.json",
+  "inputPatch": {
+    "runSpec": {
+      "goal": "在指定商品分类中按照关键词搜索商品",
+      "browser": { "startUrl": "http://127.0.0.1:18081/category/tableware" },
+      "input": { "parameters": { "category": "tableware", "query": "mug" } }
+    }
+  },
+  "setup": { "siteFixture": "prestashop-category-search", "modelScenario": "valid-category-scope" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "contract.scope.kind", "op": "equals", "value": "category-scoped" },
+      { "path": "contract.scope.match.requiredInputPaths.0", "op": "equals", "value": "category" },
+      { "path": "contract.scope.onMismatch", "op": "equals", "value": "clarify" },
+      { "path": "contract.scope.binding", "op": "absent" },
+      { "path": "contract.entryPolicy", "op": "absent" }
+    ],
+    "sideEffects": []
+  }
+}
+

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>关于索引失效的讨论 - 某论坛</title></head>
+<body>
+<header data-expect="drop"><a href="/">论坛首页</a><a href="/new">发帖</a><a href="/me">我的</a></header>
+
+<main>
+  <h1>关于索引失效的讨论</h1>
+  <div class="post-main" data-expect="keep">
+    <p>最近排查一个慢查询，发现给字段加了索引之后执行计划依然走全表扫描。反复对比才定位到原因：查询条件里对索引列做了函数运算，导致索引失效。把运算移到等号右侧之后，执行计划立刻变成索引范围扫描，耗时从两秒降到十毫秒以内。</p>
+    <p>类似的失效场景还有隐式类型转换。当列是字符串类型而查询传入数字时，数据库会把列整体转成数字再比较，同样用不上索引。这类问题在应用层不容易发现，因为查询本身是正确的，只是慢。</p>
+  </div>
+
+  <!-- 语料发现：评论区成句、无链接、且在 main 里，只有信号 4 会注意到它 = 1 票。
+       信号 2 正确地不认它是"空壳名单"（每项二十余字且有标点）。故属灰区，
+       生产上由 LLM 仲裁。真实论坛的用户名通常是链接，届时信号 1 会补第二票。 -->
+  <div class="comments" data-expect="gray">
+    <div class="comment"><span class="time">3 分钟前</span><p>楼主说得对，我也踩过这个坑。</p></div>
+    <div class="comment"><span class="time">刚刚</span><p>补充一下，前缀模糊匹配也用不上索引。</p></div>
+    <div class="comment"><span class="time">2 小时前</span><p>收藏了，感谢分享。</p></div>
+    <div class="comment"><span class="time">昨天</span><p>请问这个在 MySQL 8 上还有吗？</p></div>
+    <div class="comment"><span class="time">3 天前</span><p>有的，跟版本无关。</p></div>
+  </div>
+
+  <!-- 仅 3 个链接、页面无语义页脚：确定性内核判为灰区，生产上交 LLM 仲裁 -->
+  <div class="signature" data-expect="gray">
+    <a href="/u/1">个人主页</a><a href="/u/1/posts">我的帖子</a><a href="/u/1/fav">我的收藏</a>
+  </div>
+</main>
+
+<footer data-expect="drop"><a href="/rules">版规</a><a href="/report">举报</a><a href="/about">关于</a></footer>
+</body>
+</html>

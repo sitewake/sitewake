@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-01",
+  "title": "两个冻结用例在独立上下文中全部通过",
+  "baseRef": "../../bases/c3-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "moduleScenario": "registered-search-module",
+    "hashes": "materialize-valid"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Validated" },
+      { "path": "package.validation.cases", "op": "lengthAtLeast", "value": 2 },
+      { "path": "package.validation.cases.0.outcome", "op": "equals", "value": "Passed" },
+      { "path": "package.validation.cases.1.outcome", "op": "equals", "value": "Passed" }
+    ],
+    "sideEffects": [
+      { "path": "browserContextCount", "op": "equals", "value": 2 },
+      { "path": "aiCalls", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

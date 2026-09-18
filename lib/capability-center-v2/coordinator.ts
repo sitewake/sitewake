@@ -1,0 +1,293 @@
+import {
+  appendTaskEvent,
+  beginVersionReview,
+  createCapabilityTask,
+  getCapability,
+  getSetting,
+  getTask,
+  getGenerationPublication,
+  getVersion,
+  listTasks,
+  publishValidatedCapability,
+  recordCapabilityTaskPublication,
+  reviewVersion,
+} from "../../db/capability-center-v2-store";
+import { getModelConfig } from "../model-config";
+import type { CapabilityPublishResult, CapabilityTask, JsonObject, JsonValue, ValidatedCapabilityPackage } from "./model";
+import { requestStructuredModelJson } from "./model-json";
+import { promptHash, type VersionedPrompt } from "./prompt";
+import { PUBLISH_REVIEW_PROMPT } from "./prompts/publish-review";
+import { inspectCapabilityQuality, qualityReportJson } from "./quality";
+import { decodeC2CaseGenerationOutput } from "./case-generation";
+
+/** Review is a read-only gate over the exact persisted C3 package. */
+function assertValidatedPackageForReview(validated: ValidatedCapabilityPackage) {
+  if (!validated || typeof validated !== "object" || !validated.artifact || !validated.validation) {
+    throw new Error("validated_package_required");
+  }
+  const artifact = validated.artifact;
+  if (
+    validated.validation.candidateId !== artifact.candidateId ||
+    validated.validation.contractHash !== artifact.contractHash ||
+    validated.validation.programHash !== artifact.programHash
+  ) {
+    throw new Error("review_validation_hash_mismatch");
+  }
+  try {
+    decodeC2CaseGenerationOutput({
+      generationTaskId: artifact.generationTaskId,
+      candidate: artifact.candidate,
+      validationSuite: artifact.validationSuite,
+      caseDiscoveryEvidenceRef: artifact.caseDiscoveryEvidenceRef,
+      validationSuiteHash: artifact.validationSuiteHash,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(/semantic|dependencyLedger|entryPolicy|unknown|fields_invalid/iu.test(message)
+      ? "review_artifact_unknown_field"
+      : "review_validation_hash_mismatch");
+  }
+}
+
+function reviewPrompt(value: JsonObject | undefined): VersionedPrompt {
+  const prompt = value?.prompt ?? value?.value;
+  const adminCriteria = typeof prompt === "string" && prompt.trim()
+    ? `管理员附加审核要求（只补充审核标准，不得改变输出协议）：\n${prompt.trim()}`
+    : "";
+  return { ...PUBLISH_REVIEW_PROMPT, text: [PUBLISH_REVIEW_PROMPT.text, adminCriteria].filter(Boolean).join("\n\n") };
+}
+
+export function parseReviewDecision(value: Record<string, unknown>) {
+  if (value.decision !== "Approved" && value.decision !== "Rejected") throw new Error("ai_review_decision_invalid");
+  const reason = String(value.reason || "").trim();
+  if (value.decision === "Approved") {
+    // A provider can return a valid, explicit Approved enum while truncating
+    // only the free-form explanation (observed with JSON mode on long-thinking
+    // models). The deterministic quality gate and independent Validation have
+    // already passed at this point, so preserve the AI decision and replace
+    // only an unauditable explanation with a fact-based canonical receipt.
+    return {
+      decision: value.decision,
+      reason: reason.length >= 20 && /[。！？.!?]$/u.test(reason)
+        ? reason
+        : "AI 审核结论为 Approved；确定性质量门禁与独立 Validation 回放证据均已通过，可以发布。",
+    } as const;
+  }
+  if (reason.length < 20 || !/[。！？.!?]$/u.test(reason)) throw new Error("ai_review_reason_incomplete");
+  if (
+    reason.length < 40
+    || !/(?:Stage|源码|代码|Contract|Validation|验证|管理员附加)/iu.test(reason)
+    || !/(?:deterministicQuality|确定性|质量门禁|硬门禁)/iu.test(reason)
+  ) throw new Error("ai_review_rejection_evidence_required");
+  return { decision: value.decision, reason } as const;
+}
+
+export async function reviewValidatedVersion(siteId: string, versionId: string) {
+  const [version, setting] = await Promise.all([getVersion(siteId, versionId), getSetting(siteId, "review.prompt")]);
+  if (!version) throw new Error("version_not_found");
+  const capability = await getCapability(siteId, version.capabilityId, true);
+  if (!capability) throw new Error("capability_not_found");
+  const validation = (await listTasks(siteId, { type: "Validation", versionId, includeDeleted: true, includeArchived: true })).tasks.find((task) => task.status === "Succeeded");
+  if (!validation) throw new Error("validation_required");
+  const validationCases = Array.isArray(validation.input.context.validationCases)
+    ? validation.input.context.validationCases.filter((value): value is Record<string, JsonValue> => Boolean(value) && typeof value === "object" && !Array.isArray(value))
+    : [];
+  const rerunSourceTask = validation.rerunOfTaskId ? await getTask(siteId, validation.rerunOfTaskId, true) : undefined;
+  const sourceTask = rerunSourceTask?.result?.candidateSource
+    ? rerunSourceTask
+    : (await listTasks(siteId, { versionId, includeDeleted: true, includeArchived: true })).tasks
+      .find((task) => (task.type === "Discovery" || task.type === "Repair") && task.status === "Succeeded" && task.result?.outcome === "Success" && Boolean(task.result.candidateSource));
+  const quality = inspectCapabilityQuality(capability.contract, version.program, {
+    demonstrationParameters: validation.input.parameters,
+    validationCases,
+    // C3 requires one deterministic validation case. Multiple independent
+    // cases improve confidence, but are not a hard publication gate: a
+    // narrow capability can legitimately have only one executable case.
+    requireTargetEvidence: version.program.targetBindings.length > 0,
+    targetEvidence: validation.result?.targetEvidence,
+    source: sourceTask?.result?.candidateSource,
+    summary: { name: capability.name, description: capability.description, aliases: capability.aliases },
+  });
+  if (!quality.valid) throw new Error(`capability_quality_rejected:${quality.issues.map((issue) => issue.code).join(",")}`);
+  const prompt = reviewPrompt(setting?.settingValue);
+  const compiledPromptHash = await promptHash(prompt);
+  const config = getModelConfig("semantic");
+  if (!config.configured) {
+    return reviewVersion(siteId, versionId, { decision: "Error", reason: "AI review model is not configured", promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
+  }
+  await appendTaskEvent(siteId, validation.id, { eventType: "PhaseChanged", payload: { phase: "Reviewing", message: "AI 正在审核已验证版本" } });
+  await beginVersionReview(siteId, versionId, { promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
+  try {
+    const requiredInputs = Array.isArray(capability.contract.inputSchema.required)
+      ? capability.contract.inputSchema.required.filter((value): value is string => typeof value === "string")
+      : [];
+    const reviewFacts = {
+      deterministicQualityPassed: true,
+      requiredInputs,
+      targetBindings: version.program.targetBindings.map((binding) => binding.inputPath),
+      validationCaseCount: validationCases.length,
+      parameterizationMode: requiredInputs.length > 0
+        ? "parameterized"
+        : version.program.targetBindings.length > 0
+          ? "target-bound"
+          : "intrinsically-parameterless",
+      parameterlessScope: requiredInputs.length === 0 && version.program.targetBindings.length === 0
+        ? "该能力作用于当前页面/会话中已经确定的业务状态，不需要虚构一个用户输入。"
+        : undefined,
+    };
+    const response = await requestStructuredModelJson(config, {
+      system: prompt.text,
+      payload: { capability: { name: capability.name, description: capability.description, contract: capability.contract }, version: { id: version.id, program: version.program, source: sourceTask?.result?.candidateSource || "" }, validation: { taskId: validation.id, cases: validationCases, result: validation.result }, reviewFacts, deterministicQuality: qualityReportJson(quality) },
+      timeoutMs: Number(process.env.CAPABILITY_V2_MODEL_TIMEOUT_MS || 180_000),
+      maxTokens: 4096,
+      attempts: 3,
+      jsonSchema: prompt.outputSchema,
+      validate: (value) => { parseReviewDecision(value); },
+      onAttempt: (attempt) => {
+        if (attempt.error) console.warn("[capability-v2] AI review JSON attempt failed", { versionId, ...attempt });
+      },
+    });
+    const decision = parseReviewDecision(response);
+    await appendTaskEvent(siteId, validation.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: decision.decision, reason: decision.reason } });
+    return reviewVersion(siteId, versionId, { ...decision, promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    await appendTaskEvent(siteId, validation.id, { eventType: "ReviewFailed", payload: { phase: "Reviewing", reason } });
+    return reviewVersion(siteId, versionId, { decision: "Error", reason, promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
+  }
+}
+
+export async function advanceCompletedTask(task: CapabilityTask) {
+  if (task.status !== "Succeeded") return { task };
+  const moduleV2 = task.input.context.__pipelineVersion === "2.0";
+  if (moduleV2 && (task.type === "Discovery" || task.type === "Repair") && task.result?.outcome === "Success") {
+    const validationTaskId = task.result.validationTaskId;
+    const nextTask = validationTaskId ? await getTask(task.siteId, validationTaskId, true) : undefined;
+    return { task, ...(nextTask ? { nextTask } : {}) };
+  }
+  if (moduleV2 && task.type === "Validation" && task.result?.outcome === "Success") {
+    const buildResult = task.result.buildResult;
+    if (!buildResult || buildResult.outcome !== "Validated") return { task, buildResult: undefined };
+    const review = await getGenerationPublication(task.siteId, buildResult.package.artifact.generationTaskId) || await reviewValidatedCandidate(task.siteId, task, buildResult.package);
+    if (review.outcome === "Published") {
+      // D's transaction is authoritative.  Persist its identifiers back onto
+      // both task projections so the task chain and Debug workbench resolve
+      // the published Version rather than the pre-Candidate draft id.
+      await recordCapabilityTaskPublication(task.siteId, task.id, { capabilityId: review.capability.id, versionId: review.version.id });
+      await recordCapabilityTaskPublication(task.siteId, buildResult.package.artifact.generationTaskId, { capabilityId: review.capability.id, versionId: review.version.id });
+    }
+    return { task, buildResult, review };
+  }
+  if ((task.type === "Discovery" || task.type === "Repair") && task.result?.outcome === "Success") {
+    const versionId = task.result.versionId || task.versionId;
+    const existing = (await listTasks(task.siteId, { type: "Validation", versionId, includeDeleted: true, includeArchived: true })).tasks.find((item) => item.status !== "Deleted");
+    if (existing) return { task, nextTask: existing };
+    const created = await createCapabilityTask(task.siteId, {
+      type: "Validation",
+      versionId,
+      goal: task.goal,
+      guidance: "独立回放候选 Program，并严格验证 Contract 成功条件。",
+      input: task.input,
+      rerunOfTaskId: task.id,
+    });
+    if (created.task.status === "Pending" && process.env.CAPABILITY_V2_AUTO_DISPATCH !== "0") {
+      const { RuntimeLauncher } = await import("../../runner/capability-v2/runtime-launcher");
+      // The completing Runner still occupies a broker slot until this request
+      // returns and its finally block terminates the process.  Dispatch is a
+      // best-effort wake-up; the broker's pending-task loop will retry once the
+      // slot is free.  A transient launch failure must not turn an already
+      // persisted successful task result into an HTTP 500.
+      void new RuntimeLauncher().dispatchOne(task.siteId, created.task.id).catch(() => undefined);
+    }
+    return { task, nextTask: created.task };
+  }
+  if (task.type === "Validation" && task.result?.outcome === "Success") {
+    return { task, review: await reviewValidatedVersion(task.siteId, task.versionId) };
+  }
+  return { task };
+}
+
+/** Execute the production AI review protocol without performing D's publish mutation. */
+export async function authorizeValidatedCandidate(siteId: string, task: CapabilityTask, validated: ValidatedCapabilityPackage): Promise<
+  | { outcome: "Approved"; review: ReturnType<typeof parseReviewDecision>; authorization: { mode: "AIApproved"; reviewId: string } }
+  | { outcome: "Rejected" | "Error"; reason: string }
+> {
+  assertValidatedPackageForReview(validated);
+  const [setting] = await Promise.all([getSetting(siteId, "review.prompt")]);
+  const prompt = reviewPrompt(setting?.settingValue);
+  const compiledPromptHash = await promptHash(prompt);
+  const config = getModelConfig("semantic");
+  if (!config.configured) {
+    await appendTaskEvent(siteId, task.id, { eventType: "ReviewFailed", payload: { phase: "Reviewing", reason: "AI review model is not configured", ai: true } }).catch(() => undefined);
+    return { outcome: "Error", reason: "AI review model is not configured" };
+  }
+  try {
+    await appendTaskEvent(siteId, task.id, { eventType: "PhaseChanged", payload: { phase: "Reviewing", message: "AI 审核已验证 Candidate" } }).catch(() => undefined);
+    const response = await requestStructuredModelJson(config, {
+      system: prompt.text,
+      payload: {
+        capability: {
+          name: validated.artifact.candidate.name,
+          description: validated.artifact.candidate.description,
+          contract: validated.artifact.candidate.contract,
+        },
+        version: { id: validated.artifact.candidateId, program: validated.artifact.candidate.program, source: "candidate-artifact" },
+        validation: validated.validation,
+        deterministicQuality: { valid: true, issues: [] },
+      },
+      timeoutMs: Number(process.env.CAPABILITY_V2_MODEL_TIMEOUT_MS || 180_000),
+      maxTokens: 4096,
+      attempts: 3,
+      jsonSchema: prompt.outputSchema,
+      validate: (value) => { parseReviewDecision(value); },
+    });
+    const decision = parseReviewDecision(response);
+    await appendTaskEvent(siteId, task.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: decision.decision, reason: decision.reason, ai: true } }).catch(() => undefined);
+    if (decision.decision !== "Approved") return { outcome: "Rejected", reason: decision.reason };
+    return {
+      outcome: "Approved",
+      review: decision,
+      authorization: { mode: "AIApproved", reviewId: `${prompt.key}:${compiledPromptHash}` },
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    await appendTaskEvent(siteId, task.id, { eventType: "ReviewFailed", payload: { phase: "Reviewing", reason, ai: true } }).catch(() => undefined);
+    return { outcome: "Error", reason };
+  }
+}
+
+/** C3 result → AI review → D authorization, without creating a Draft. */
+type ReviewPublishResult = CapabilityPublishResult | { outcome: "ReviewPending" | "Rejected" | "Error"; reason: string };
+// Coalesce automatic completion and an administrator retry within this process.
+// Across processes, D's database transaction remains the idempotency authority.
+const publicationFlights = new Map<string, Promise<ReviewPublishResult>>();
+export async function reviewValidatedCandidate(siteId: string, task: CapabilityTask, validated: ValidatedCapabilityPackage): Promise<ReviewPublishResult> {
+  const key = `${siteId}:${task.id}`;
+  const existing = publicationFlights.get(key);
+  if (existing) return existing;
+  const flight = (async (): Promise<ReviewPublishResult> => {
+    await appendTaskEvent(siteId, task.id, { eventType: "ReviewStarted", payload: { phase: "Reviewing" } });
+    const reviewed = await authorizeValidatedCandidate(siteId, task, validated);
+    if (reviewed.outcome !== "Approved") return reviewed;
+    await appendTaskEvent(siteId, task.id, { eventType: "PublicationStarted", payload: { phase: "Publishing" } });
+    try {
+      const result = await publishValidatedCapability(siteId, { generationTaskId: validated.artifact.generationTaskId, validated, authorization: reviewed.authorization });
+      if (result.outcome === "WriteConflict") {
+        await appendTaskEvent(siteId, task.id, { eventType: "PublicationFailed", payload: { phase: "Publishing", code: result.code, reason: result.reason, conflict: true } });
+      }
+      return result;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      await appendTaskEvent(siteId, task.id, { eventType: "PublicationFailed", payload: { phase: "Publishing", code: "publication_failed", reason, conflict: false } });
+      return { outcome: "Error", reason };
+    }
+  })();
+  publicationFlights.set(key, flight);
+  try { return await flight; } finally { publicationFlights.delete(key); }
+}
+
+export async function advanceTaskById(siteId: string, taskId: string) {
+  const task = await getTask(siteId, taskId, true);
+  if (!task) throw new Error("task_not_found");
+  return advanceCompletedTask(task);
+}
