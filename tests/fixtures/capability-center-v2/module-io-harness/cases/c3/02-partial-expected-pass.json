@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-02",
+  "title": "expected 只匹配声明的顶层字段",
+  "baseRef": "../../bases/c3-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "moduleScenario": "registered-search-module",
+    "hashes": "materialize-valid"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Validated" },
+      { "path": "package.validation.cases.0.output.heading", "op": "present" }
+    ],
+    "sideEffects": [
+      { "path": "aiCalls", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

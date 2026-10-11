@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-14",
+  "title": "C2 冻结前拒绝不可确定执行的条件",
+  "baseRef": "../../bases/c2-input.json",
+  "inputPatch": {
+    "candidate": {
+      "contract": {
+        "successConditions": [
+          { "type": "modelGoal", "goal": "判断搜索看起来是否成功" }
+        ]
+      }
+    }
+  },
+  "setup": { "siteFixture": "prestashop-search-with-notebook-and-mug" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "candidate_deterministic_contract_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "modelCalls", "op": "equals", "value": 0 },
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

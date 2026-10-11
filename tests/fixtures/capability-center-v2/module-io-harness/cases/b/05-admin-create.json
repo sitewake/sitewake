@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-05",
+  "title": "管理员创建能力时由 B 统一抽象 Goal",
+  "baseRef": "../../bases/b-admin.json",
+  "setup": { "siteState": "empty", "modelScenario": "generalize-search" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "disposition", "op": "equals", "value": "Created" },
+      { "path": "task.runSpec.goal", "op": "present" },
+      { "path": "task.runSpec.input.capabilitySeed.name", "op": "equals", "value": "搜索商品" },
+      { "path": "task.runSpec.guidance.requirements.0.authority", "op": "equals", "value": "Admin" }
+    ],
+    "sideEffects": []
+  }
+}
+

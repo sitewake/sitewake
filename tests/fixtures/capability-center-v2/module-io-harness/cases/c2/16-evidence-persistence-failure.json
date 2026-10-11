@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-16",
+  "title": "证据持久化失败不得留下半成品",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "cases-notebook-and-mug",
+    "fault": "evidence-persist-fails"
+  },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_discovery_evidence_persist_failed",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 },
+      { "path": "validationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

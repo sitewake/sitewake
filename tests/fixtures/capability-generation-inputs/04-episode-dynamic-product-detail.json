@@ -1,0 +1,105 @@
+{
+  "request": {
+    "goal": "帮我打开白色T恤的商品详情",
+    "normalizedGoal": "搜索并打开指定商品详情",
+    "parameters": {
+      "query": "T恤",
+      "color": "白色"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "guidance": {
+    "derived": [
+      {
+        "text": "静态导航不固化为能力步骤；商品详情页属于动态目标，必须点击当前结果中的匹配商品进入。",
+        "basedOn": [
+          {
+            "kind": "episode",
+            "id": "episode_04_detail_{{RUN_ID}}"
+          }
+        ]
+      }
+    ]
+  },
+  "source": "Episode",
+  "experience": {
+    "episodeId": "episode_04_detail_{{RUN_ID}}",
+    "mode": "demonstration",
+    "execution": {
+      "startedAt": "2026-08-18T02:03:00.000Z",
+      "endedAt": "2026-08-18T02:03:15.000Z",
+      "startPage": {
+        "url": "http://localhost:18081/",
+        "title": "PrestaShop",
+        "heading": "Shop"
+      },
+      "actions": [
+        {
+          "action": "fill",
+          "rawAction": "搜索T恤",
+          "input": {
+            "text": "T恤",
+            "value": "T恤"
+          },
+          "element": {
+            "role": "searchbox",
+            "placeholder": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "click",
+          "rawAction": "提交搜索",
+          "input": {},
+          "element": {
+            "role": "button",
+            "accessibleName": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "click",
+            "rawAction": "点击结果中的白色T恤",
+          "input": {},
+          "element": {
+            "tag": "a",
+            "contextText": "Hummingbird printed t-shirt"
+          },
+          "page": {
+            "url": "http://localhost:18081/search?controller=search&s=shirt"
+          }
+        }
+      ],
+      "endPage": {
+        "url": "http://localhost:18081/1-1-hummingbird-printed-t-shirt.html#/1-size-s/8-color-white",
+        "title": "Hummingbird printed t-shirt",
+        "heading": "Hummingbird printed t-shirt"
+      }
+    },
+    "outcome": {
+      "status": "Success",
+      "summary": "已打开与商品类别和颜色条件匹配的动态商品详情页",
+      "checks": [
+        {
+          "type": "business-output",
+          "value": "product detail displayed"
+        }
+      ]
+    },
+    "evidence": {
+      "observationRefs": [
+        "observation_04_detail_results_{{RUN_ID}}",
+        "observation_04_detail_page_{{RUN_ID}}"
+      ],
+      "actionReceiptRefs": [
+        "receipt_04_detail_navigation_{{RUN_ID}}"
+      ],
+      "source": "MockBoundary"
+    }
+  }
+}

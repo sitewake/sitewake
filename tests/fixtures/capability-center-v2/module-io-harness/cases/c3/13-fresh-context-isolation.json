@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-13",
+  "title": "case 之间不得共享 Cookie、页面和 Stage state",
+  "baseRef": "../../bases/c3-input.json",
+  "setup": {
+    "siteFixture": "state-leak-detector",
+    "moduleScenario": "registered-search-module",
+    "hashes": "materialize-valid"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Validated" }
+    ],
+    "sideEffects": [
+      { "path": "browserContextCount", "op": "equals", "value": 2 },
+      { "path": "sharedCookieLeakCount", "op": "equals", "value": 0 },
+      { "path": "sharedStageStateLeakCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

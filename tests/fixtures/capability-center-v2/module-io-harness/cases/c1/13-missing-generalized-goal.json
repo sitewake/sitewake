@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-13",
+  "title": "C1 Task 缺少 B 生成的通用 Goal",
+  "baseRef": "../../bases/c1-task.json",
+  "removePaths": ["runSpec.goal"],
+  "setup": {},
+  "expected": {
+    "outcome": "error",
+    "errorCode": "generation_task_goal_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "authorModelCalls", "op": "equals", "value": 0 },
+      { "path": "moduleCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

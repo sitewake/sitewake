@@ -1,0 +1,6 @@
+{
+  "cases": [
+    { "input": { "query": "notebook" }, "expected": {} },
+    { "input": { "query": "mug" }, "expected": {} }
+  ]
+}

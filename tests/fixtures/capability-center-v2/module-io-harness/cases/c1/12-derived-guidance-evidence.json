@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-12",
+  "title": "C1 必须消费 B 生成且有证据的 derived guidance",
+  "baseRef": "../../bases/c1-task.json",
+  "setup": { "siteFixture": "prestashop-search", "modelScenario": "valid-parameterized-search" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "contract.inputSchema.required.0", "op": "equals", "value": "query" },
+      { "path": "contract.inputSchema.properties.query.default", "op": "absent" }
+    ],
+    "sideEffects": [
+      { "path": "authorPromptContainsDerivedGuidance", "op": "equals", "value": true }
+    ]
+  }
+}
+

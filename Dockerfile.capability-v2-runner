@@ -1,0 +1,23 @@
+# The dependency layer is keyed on a manifest that holds only what npm ci
+# reads, so a script edit or the version bump of a release does not rebuild
+# node_modules (see scripts/dependency-manifest.mjs).
+FROM mcr.microsoft.com/playwright:v1.61.1-noble AS manifest
+WORKDIR /manifest
+COPY package.json package-lock.json scripts/dependency-manifest.mjs ./
+RUN node dependency-manifest.mjs package.json package.json
+
+FROM mcr.microsoft.com/playwright:v1.61.1-noble
+WORKDIR /app
+COPY --from=manifest /manifest/package.json /manifest/package-lock.json ./
+COPY scripts/npm-ci-retry.sh scripts/npm-ci-retry.sh
+# Where npm downloads from: ./setup passes the registry that answers fastest
+# from this machine. The lockfile's integrity hashes verify every package
+# whichever registry serves it, and the setting is not kept in the image.
+ARG SITEWAKE_NPM_REGISTRY=https://registry.npmjs.org
+# This runtime executes the bounded V2 TypeScript/Playwright harness. It does
+# not run the legacy Codex authoring worker, so development dependencies and
+# the global Codex CLI must stay out of this image.
+RUN npm_config_registry="$SITEWAKE_NPM_REGISTRY" sh scripts/npm-ci-retry.sh --omit=dev
+COPY . .
+ENV NODE_ENV=production
+CMD ["node", "scripts/capability-v2-runtime-launcher.mjs"]

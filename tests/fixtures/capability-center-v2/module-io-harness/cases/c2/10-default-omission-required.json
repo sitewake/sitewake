@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-10",
+  "title": "真正默认参数：推导出的用例里必有一个省略它",
+  "baseRef": "../../bases/c2-input.json",
+  "inputPatch": {
+    "candidate": {
+      "contract": {
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "default": "notebook"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "all-cases-explicit-query"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      {
+        "path": "candidateArtifact.validationSuite.cases",
+        "op": "lengthAtLeast",
+        "value": 2
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.0.input.query",
+        "op": "equals",
+        "value": "notebook"
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.2.input.query",
+        "op": "absent",
+        "value": "Mug"
+      }
+    ],
+    "sideEffects": [
+      {
+        "path": "validationTaskCount",
+        "op": "equals",
+        "value": 1
+      }
+    ]
+  },
+  "removePaths": [
+    "candidate.contract.inputSchema.required"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-03",
+  "title": "缺少 Review 或管理员授权时不得发布",
+  "baseRef": "../../bases/d-input.json",
+  "removePaths": ["authorization"],
+  "setup": { "artifactState": "persisted-and-validated" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "publish_authorization_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "capabilityCount", "op": "equals", "value": 0 },
+      { "path": "versionCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

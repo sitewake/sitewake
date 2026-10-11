@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Product search</title></head>
+  <body>
+    <main>
+      <h1>Product search</h1>
+      <form id="search-form" action="/search" method="get">
+        <label for="query">Search</label>
+        <input id="query" name="query" aria-label="Search products" type="search">
+        <button type="submit">Search</button>
+      </form>
+      <section aria-label="Product catalog">
+        <article data-product-card>
+          <h2>Notebook</h2>
+          <p>Hardcover ruled notebook</p>
+        </article>
+        <article data-product-card>
+          <h2>Mug</h2>
+          <p>Ceramic coffee mug</p>
+        </article>
+      </section>
+    </main>
+    <script>
+      document.querySelector("#search-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const value = document.querySelector("#query").value;
+        const target = new URL("/search", location.origin);
+        target.searchParams.set("controller", "search");
+        target.searchParams.set("s", value);
+        location.assign(target.href);
+      });
+    </script>
+  </body>
+</html>

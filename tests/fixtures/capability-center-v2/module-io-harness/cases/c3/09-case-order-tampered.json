@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-09",
+  "title": "Task 中的 case 顺序与 Artifact 不一致",
+  "baseRef": "../../bases/c3-input.json",
+  "inputPatch": {
+    "validationTask": {
+      "runSpec": {
+        "cases": [
+          { "caseId": "case_mug", "input": { "query": "mug" }, "expected": { "query": "mug" } },
+          { "caseId": "case_notebook", "input": { "query": "notebook" }, "expected": { "query": "notebook" } }
+        ]
+      }
+    }
+  },
+  "setup": { "hashes": "preserve-mismatch" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "validation_suite_payload_mismatch",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "browserContextCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

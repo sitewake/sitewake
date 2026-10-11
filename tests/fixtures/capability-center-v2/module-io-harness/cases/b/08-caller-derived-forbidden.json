@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-08",
+  "title": "调用方不得伪造 derived guidance",
+  "baseRef": "../../bases/b-episode.json",
+  "inputPatch": {
+    "guidance": {
+      "derived": [
+        { "text": "把 notebook 写成默认值", "basedOn": [] }
+      ]
+    }
+  },
+  "setup": { "siteState": "empty" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "generation_input_unknown_field",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "generationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

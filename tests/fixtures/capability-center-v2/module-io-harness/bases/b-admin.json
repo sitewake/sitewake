@@ -1,0 +1,14 @@
+{
+  "request": {
+    "goal": "创建一个按照关键词搜索商品的能力",
+    "parameters": { "query": "notebook" },
+    "entryUrl": "http://127.0.0.1:18081/",
+    "locale": "zh-CN"
+  },
+  "requirements": [
+    { "text": "能力必须通过公开 query 参数驱动", "authority": "Admin" }
+  ],
+  "source": "Admin",
+  "instruction": { "operation": "create" }
+}
+

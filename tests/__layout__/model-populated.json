@@ -1,0 +1,17 @@
+{
+  "headings": [
+    "知识",
+    "示例商城",
+    "网站结构",
+    "问问看"
+  ],
+  "landmarks": {
+    "nav": 1,
+    "tablist": 1,
+    "tabs": 5,
+    "tables": 0,
+    "buttons": 12
+  },
+  "unexpectedOverflow": [],
+  "documentOverflowsViewport": false
+}

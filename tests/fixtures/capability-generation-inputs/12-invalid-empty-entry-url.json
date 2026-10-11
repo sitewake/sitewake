@@ -1,0 +1,15 @@
+{
+  "request": {
+    "goal": "搜索商品",
+    "normalizedGoal": "搜索商品",
+    "parameters": {
+      "query": "马克杯"
+    },
+    "entryUrl": "",
+    "locale": "zh-CN"
+  },
+  "source": "Admin",
+  "instruction": {
+    "operation": "create"
+  }
+}

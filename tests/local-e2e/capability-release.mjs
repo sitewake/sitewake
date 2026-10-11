@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import { mkdir } from 'node:fs/promises';
+import { chromium } from 'playwright';
+const artifacts = new URL('../../.artifacts/capability-release/', import.meta.url);
+await mkdir(artifacts, { recursive: true });
+const browser = await chromium.launch();
+const errors = [];
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('http://localhost:3000/?site=shop&view=capabilities');
+  await page.getByRole('heading', { name: '让网站学会做事' }).waitFor();
+  await page.locator('.ccv2-layout').waitFor();
+  await page.screenshot({ path: new URL('capability-desktop.png', artifacts).pathname, fullPage: true });
+  await page.getByRole('button', { name: '＋ 新建能力' }).click();
+  const modal = page.getByRole('dialog', { name: '新建能力' });
+  await modal.getByRole('textbox', { name: '要完成什么任务' }).fill('搜索测试商品');
+  await modal.getByRole('textbox', { name: '要求与边界' }).fill('只读查询');
+  let submitted;
+  await page.route('**/api/capability-v2/generation', async route => { submitted = route.request().postDataJSON(); await route.fulfill({ status: 503, json: { message: '测试：生成服务暂不可用' } }); });
+  await modal.getByRole('button', { name: '开始生成' }).click();
+  await modal.getByRole('status').filter({ hasText: '生成服务暂不可用' }).waitFor();
+  assert.equal(await modal.getByRole('textbox', { name: '要完成什么任务' }).inputValue(), '搜索测试商品');
+  assert.deepEqual(submitted.requirements, [{ text: '只读查询', authority: 'Admin' }]);
+  await page.keyboard.press('Escape');
+  assert.equal(await modal.isVisible(), false);
+  await page.getByRole('button', { name: /生产记录/ }).click();
+  if (await page.locator('.ccv2-row').count()) await page.locator('[data-testid="capability-production-progress"]').waitFor();
+  await page.screenshot({ path: new URL('production-desktop.png', artifacts).pathname, fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'mobile overflow');
+  await page.screenshot({ path: new URL('capability-mobile.png', artifacts).pathname, fullPage: true });
+  // Actual built SDK, served by the app. Simulate exactly the host framework's cleanup.
+  const sdk = await browser.newPage();
+  sdk.setDefaultTimeout(20000);
+  await sdk.goto('http://localhost:4001');
+  await sdk.waitForFunction(() => window.SiteWake && document.querySelector('[data-sitewake-agent="widget"]'));
+  const restored = await sdk.evaluate(async () => {
+    const api = window.SiteWake;
+    const source = [...document.scripts].find(script => script.dataset.siteAgent);
+    if (!source) throw new Error('integration script missing');
+    const clone = document.createElement("script");
+    for (const attr of source.attributes) clone.setAttribute(attr.name, attr.value);
+    source.remove();
+    document.querySelectorAll('[data-sitewake-agent]').forEach(node => node.remove());
+    await new Promise((resolve, reject) => { clone.onload = resolve; clone.onerror = reject; document.body.append(clone); });
+    await new Promise(resolve => setTimeout(resolve, 100));
+    return { same: window.SiteWake === api, widgets: document.querySelectorAll('[data-sitewake-agent="widget"]').length };
+  });
+  assert.deepEqual(restored, { same: true, widgets: 1 });
+  assert.deepEqual(errors, []);
+  console.log('PASS: real UI desktop/mobile, creation error preserves draft, requirements contract, SDK host-remount keeps one live runtime.');
+} finally { await browser.close(); }

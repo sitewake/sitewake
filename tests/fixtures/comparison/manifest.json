@@ -1,0 +1,89 @@
+{
+  "note": "第二层（跨实例）与第四层（跨时间）的回归语料。期望写在这里而不是 HTML 里，因为断言的对象是一组页面之间的关系，不是单页内的某个元素。",
+  "templates": [
+    {
+      "group": "data-template",
+      "archetype": "数据型模板：实例间只差短字段",
+      "instances": [
+        "Ella.html",
+        "Andy.html",
+        "Hebe.html"
+      ],
+      "expect": "data",
+      "why": "姓名、身份、次数、热度、排名都是短字段；介绍与说明在实例间逐字相同",
+      "expectConstantContains": [
+        "本页展示该人物的历史上榜记录",
+        "数据每日更新"
+      ],
+      "expectVariantContains": [
+        "Ella",
+        "27427",
+        "437.0"
+      ]
+    },
+    {
+      "group": "content-template",
+      "archetype": "内容型模板：实例间差异是成段长文",
+      "instances": [
+        "consistency.html",
+        "indexing.html",
+        "caching.html"
+      ],
+      "expect": "content",
+      "why": "三篇文章的正文完全不同且都是成段散文，只有导航与页脚是常量",
+      "expectConstantContains": [
+        "首页",
+        "© 2026 某站"
+      ],
+      "expectVariantContains": [
+        "一致性模型通常分为强一致",
+        "缓存穿透指查询一个数据库里根本不存在的键"
+      ],
+      "note": "页脚里 <a> 的文字采不到（容器同时有块级子元素时，行内元素文本未被测量），故改用页头导航与版权行作探针；见 design.md 已知缺口"
+    },
+    {
+      "group": "edge",
+      "archetype": "只有单个实例的模板",
+      "instances": [
+        "lonely-instance.html"
+      ],
+      "expect": "undetermined",
+      "why": "没有兄弟实例可比，不做跨实例判定，退回形状层处置"
+    }
+  ],
+  "timeSeries": [
+    {
+      "group": "time-series",
+      "archetype": "同一页三个版本",
+      "versions": [
+        "v1.html",
+        "v2.html",
+        "v3.html"
+      ],
+      "expectDroppedAtV3": [
+        {
+          "contains": "实时 · 2026-08-14",
+          "why": "时钟连续两次都变"
+        },
+        {
+          "contains": "高考志愿填报",
+          "why": "每日摘要连续两次都变"
+        }
+      ],
+      "expectKeptAtV3": [
+        {
+          "contains": "服务时间调整为工作日八点半",
+          "why": "只变了一次，是一次性修订，不是动态内容"
+        },
+        {
+          "contains": "本站能查什么",
+          "why": "三版逐字未变"
+        },
+        {
+          "contains": "数据从哪里来",
+          "why": "三版逐字未变"
+        }
+      ]
+    }
+  ]
+}

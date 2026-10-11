@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>共识算法 - 某百科</title></head>
+<body>
+<header data-expect="drop"><a href="/">首页</a><a href="/random">随机条目</a><a href="/recent">最近更改</a></header>
+
+<main>
+  <h1>共识算法</h1>
+
+  <p data-expect="keep"><a href="/w/consensus">共识算法</a>是<a href="/w/distributed">分布式系统</a>中用于让多个<a href="/w/node">节点</a>就某个值达成一致的算法族。经典实现包括 <a href="/w/paxos">Paxos</a>、<a href="/w/raft">Raft</a> 与 <a href="/w/zab">ZAB</a>，它们在<a href="/w/fault">故障模型</a>与<a href="/w/liveness">活性保证</a>上各有取舍，但都要求在<a href="/w/quorum">多数派</a>存活时保证安全性。</p>
+
+  <p data-expect="keep">在 <a href="/w/raft">Raft</a> 中，集群通过<a href="/w/election">选举</a>产生唯一的<a href="/w/leader">领导者</a>，所有写入先经由领导者追加到<a href="/w/log">日志</a>，再复制到<a href="/w/follower">跟随者</a>。当多数派确认后该条目被视为已提交，这一设计把复杂的<a href="/w/paxos">Paxos</a> 状态空间收敛成了更易实现的形态，因而在工业界被广泛采用。</p>
+
+  <p data-expect="keep">与之相对，<a href="/w/bft">拜占庭容错</a>算法额外假设节点可能任意作恶，因此需要更多的副本与更高的消息复杂度。这类算法常见于<a href="/w/blockchain">区块链</a>场景，其中参与方之间缺乏信任基础，无法沿用崩溃故障模型下的简化假设。</p>
+
+  <div class="seealso" data-expect="drop">
+    <h2>参见</h2>
+    <ul>
+      <li><a href="/w/paxos">Paxos</a></li>
+      <li><a href="/w/raft">Raft</a></li>
+      <li><a href="/w/zab">ZAB</a></li>
+      <li><a href="/w/bft">拜占庭容错</a></li>
+      <li><a href="/w/quorum">多数派</a></li>
+      <li><a href="/w/log">日志复制</a></li>
+    </ul>
+  </div>
+</main>
+
+<footer data-expect="drop">
+  <a href="/about">关于</a><a href="/license">许可协议</a><a href="/donate">捐赠</a><a href="/contact">联系</a>
+</footer>
+</body>
+</html>

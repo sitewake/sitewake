@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-04",
+  "title": "管理员对已有能力发起 Repair",
+  "baseRef": "../../bases/b-admin.json",
+  "inputPatch": {
+    "request": { "goal": "修复商品搜索能力" },
+    "instruction": { "operation": "repair", "targetCapabilityId": "capability_search_existing" }
+  },
+  "setup": { "siteState": "active-search-with-id", "modelScenario": "generalize-search-repair" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "disposition", "op": "equals", "value": "Created" },
+      { "path": "task.type", "op": "equals", "value": "Repair" },
+      { "path": "task.runSpec.replacementPlan", "op": "present" }
+    ],
+    "sideEffects": [
+      { "path": "repairTaskCount", "op": "equals", "value": 1 }
+    ]
+  }
+}
+

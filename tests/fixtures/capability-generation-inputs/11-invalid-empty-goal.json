@@ -1,0 +1,15 @@
+{
+  "request": {
+    "goal": "",
+    "normalizedGoal": "",
+    "parameters": {
+      "query": "马克杯"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "source": "Admin",
+  "instruction": {
+    "operation": "create"
+  }
+}

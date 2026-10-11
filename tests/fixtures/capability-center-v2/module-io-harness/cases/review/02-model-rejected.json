@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "Review",
+  "caseId": "REVIEW-02",
+  "title": "AI Review 明确拒绝时不产生发布授权",
+  "baseRef": "../../bases/review-input.json",
+  "setup": { "modelScenario": "rejected-with-quality-evidence" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "Rejected" },
+      { "path": "reason", "op": "present" },
+      { "path": "authorization", "op": "absent" }
+    ],
+    "sideEffects": [
+      { "path": "publishCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

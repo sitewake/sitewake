@@ -1,0 +1,23 @@
+{
+  "request": {
+    "goal": "按关键词搜索商品并返回结果",
+    "normalizedGoal": "按关键词搜索商品",
+    "parameters": {
+      "query": "马克杯"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "guidance": {
+    "requirements": [
+      {
+        "text": "能力应接受调用方提供的搜索关键词，不能把本次示例关键词固化到描述或脚本中。",
+        "authority": "Admin"
+      }
+    ]
+  },
+  "source": "Admin",
+  "instruction": {
+    "operation": "create"
+  }
+}

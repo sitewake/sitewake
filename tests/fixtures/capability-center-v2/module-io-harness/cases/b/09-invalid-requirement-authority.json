@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-09",
+  "title": "非 Admin/Policy 要求不得进入 B",
+  "baseRef": "../../bases/b-episode.json",
+  "inputPatch": {
+    "requirements": [
+      { "text": "模型自己提出的规则", "authority": "Model" }
+    ]
+  },
+  "setup": { "siteState": "empty" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "generation_requirement_authority_invalid",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "generationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

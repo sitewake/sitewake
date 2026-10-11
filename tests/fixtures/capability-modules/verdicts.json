@@ -1,0 +1,51 @@
+{
+  "rank-detail-01-slice-close-badge.js": {
+    "expected": "capability_module_input_not_acted_on",
+    "about": "the first published version: the action stage ignored rank (void input) and clicked a fixed position; the title was also sliced between 'Close' and a badge phrase, which is refused once the input is used",
+    "requiredInputs": [
+      "rank"
+    ]
+  },
+  "rank-detail-02-empty-guard.js": {
+    "expected": "capability_module_empty_branch",
+    "about": "the identity guard with an empty body; title fell back to a heading scan and returned the site title for every rank",
+    "requiredInputs": [
+      "rank"
+    ]
+  },
+  "rank-detail-03-verified.js": {
+    "expected": "ok",
+    "about": "the version validated 4/4 with four distinct topics: throws on mismatch, reads the link, reads heat off the dialog as a number",
+    "requiredInputs": [
+      "rank"
+    ]
+  },
+  "rank-detail-04-rewrites-title.js": {
+    "expected": "capability_module_identity_check_overruled",
+    "about": "the guard's body rewrote the title until identityMatches would pass; URL assembled from the title when no link was found",
+    "requiredInputs": [
+      "rank"
+    ]
+  },
+  "rank-detail-05-slice-before-badge.js": {
+    "expected": "capability_module_verification_text_slicing",
+    "about": "title sliced out of dialog.innerText on one line, anchored on a badge phrase",
+    "requiredInputs": [
+      "rank"
+    ]
+  },
+  "history-search-01-structural.js": {
+    "expected": "ok",
+    "about": "titles from h3>mark, counts and dates off each result's own spans; refused three times by the old character-counting rule",
+    "requiredInputs": [
+      "keyword"
+    ]
+  },
+  "keyword-history-01-list-map.js": {
+    "expected": "ok",
+    "about": "a list output built the ordinary way: Array.from(container.querySelectorAll(…)).map(link => { … }) with a block body, then .filter(…). Authoring refused it twice in a row for unreadable provenance and gave up, because the chain scanner allowed a call to nest parentheses only one level deep",
+    "requiredInputs": [
+      "keyword"
+    ]
+  }
+}

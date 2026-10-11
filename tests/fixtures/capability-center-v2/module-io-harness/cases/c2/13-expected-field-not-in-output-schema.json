@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-13",
+  "title": "expected 出现 outputSchema 没有的字段：该用例的补充被忽略",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "expected-unknown-result-count"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      {
+        "path": "candidateArtifact.validationSuite.cases.0.expected.resultCount",
+        "op": "absent"
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.0.expected.query",
+        "op": "equals",
+        "value": "notebook"
+      }
+    ],
+    "sideEffects": [
+      {
+        "path": "validationTaskCount",
+        "op": "equals",
+        "value": 1
+      }
+    ]
+  }
+}

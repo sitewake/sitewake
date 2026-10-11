@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "Review",
+  "caseId": "REVIEW-05",
+  "title": "没有 C3 ValidatedPackage 时不得调用 Review 模型",
+  "baseRef": "../../bases/review-input.json",
+  "removePaths": ["validated"],
+  "setup": {},
+  "expected": {
+    "outcome": "error",
+    "errorCode": "validated_package_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "modelCalls", "op": "equals", "value": 0 },
+      { "path": "publishCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

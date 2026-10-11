@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "capability-module-harness-manifest.v1",
+  "contractRef": "module-io-contracts (maintainers' documentation, not shipped with the repository)",
+  "caseSchemaVersion": "capability-module-harness-case.v1",
+  "caseRoot": "cases",
+  "modules": [
+    {
+      "module": "B",
+      "expectedCaseCount": 11,
+      "caseGlob": "cases/b/*.json",
+      "covers": [
+        "Episode/Admin 创建",
+        "Active 重复与 Disabled 阻断",
+        "Repair",
+        "B 自己抽象 Goal",
+        "B 生成 derived guidance",
+        "旧 normalizedGoal 和调用方 derived 拒绝",
+        "要求权威校验",
+        "分类范围收窄",
+        "模型非法输出"
+      ]
+    },
+    {
+      "module": "C1",
+      "expectedCaseCount": 13,
+      "caseGlob": "cases/c1/*.json",
+      "covers": [
+        "参数化和无参数能力",
+        "演示参数不得成为默认值",
+        "精简 Category/Page Scope",
+        "删除 ManagedBrowser",
+        "脚本硬编码和不可确定条件门禁",
+        "有限循环与无界循环",
+        "分析字段禁止进入输出",
+        "derived guidance 消费",
+        "缺少通用 Goal"
+      ]
+    },
+    {
+      "module": "C2",
+      "expectedCaseCount": 19,
+      "caseGlob": "cases/c2/*.json",
+      "covers": [
+        "真实页面证据与认证快照",
+        "删除 ManagedBrowser",
+        "Candidate 不可修改",
+        "无证据值和跨区域拼接",
+        "重复、缺参和额外参数",
+        "默认参数省略覆盖",
+        "Program 参数消费",
+        "expected 部分匹配和 Schema",
+        "确定性 Contract",
+        "副作用探索阻断",
+        "证据持久化失败回滚",
+        "C2 内部 Artifact 提交的幂等与冲突",
+        "缺少 Candidate"
+      ]
+    },
+    {
+      "module": "C3",
+      "expectedCaseCount": 15,
+      "caseGlob": "cases/c3/*.json",
+      "covers": [
+        "多 case 真实执行",
+        "expected 部分匹配和空 expected",
+        "Contract/Program/Suite/Evidence/Module hash 防篡改",
+        "case 输入和顺序防篡改",
+        "单 case 失败导致整体失败",
+        "FreshContextPerCase 隔离",
+        "完全无 AI",
+        "缺少 Artifact"
+      ]
+    },
+    {
+      "module": "Review",
+      "expectedCaseCount": 9,
+      "caseGlob": "cases/review/*.json",
+      "covers": [
+        "Approved/Rejected/Error",
+        "拒绝理由完整性",
+        "必须有 C3 ValidatedPackage",
+        "Validation hash 血缘",
+        "站点附加规则",
+        "分析字段禁止",
+        "Review 不直接发布"
+      ]
+    },
+    {
+      "module": "D",
+      "expectedCaseCount": 11,
+      "caseGlob": "cases/d/*.json",
+      "covers": [
+        "AIApproved 和 AdminOverride",
+        "授权与完整 Validation 门禁",
+        "generationTask 血缘",
+        "Artifact hash",
+        "分类占位和基础版本并发冲突",
+        "替换后禁用旧能力",
+        "事务回滚",
+        "发布幂等"
+      ]
+    }
+  ],
+  "totalExpectedCaseCount": 78
+}

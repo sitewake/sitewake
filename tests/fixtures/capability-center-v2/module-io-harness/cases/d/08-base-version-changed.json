@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-08",
+  "title": "Repair 期间基础版本变化时不得覆盖发布",
+  "baseRef": "../../bases/d-input.json",
+  "inputPatch": {
+    "validated": {
+      "artifact": {
+        "candidate": {
+          "replacementPlan": {
+            "replacesCapabilityIds": ["capability_search_existing"],
+            "reason": "修复搜索页面变化",
+            "disableAfterPublish": true
+          }
+        }
+      }
+    }
+  },
+  "setup": {
+    "artifactState": "persisted-and-validated-repair",
+    "siteState": "base-version-changed-after-generation"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "WriteConflict" },
+      { "path": "code", "op": "equals", "value": "BASE_VERSION_CHANGED" }
+    ],
+    "sideEffects": [
+      { "path": "oldCapabilityStatus", "op": "equals", "value": "Active" }
+    ]
+  }
+}
+

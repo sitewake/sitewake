@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-08",
+  "title": "自然语言成功条件不得进入 Contract",
+  "baseRef": "../../bases/c1-task.json",
+  "setup": { "siteFixture": "prestashop-search", "modelScenario": "nondeterministic-success-condition" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "candidate_deterministic_contract_required",
+    "assertions": [],
+    "sideEffects": []
+  }
+}
+

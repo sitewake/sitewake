@@ -1,0 +1,20 @@
+.git
+.next
+# Local playground only. Demo sites and their launcher never ship in an image.
+demos
+scripts/serve-demo-sites.mjs
+scripts/seed-demo-sites.mjs
+scripts/demo-sites.mjs
+scripts/setup.mjs
+scripts/preflight.mjs
+scripts/dev-local.mjs
+.vinext
+.wrangler
+node_modules
+.env*
+.artifacts
+.agent-lab
+.evolution-lab
+outputs
+work
+*.log

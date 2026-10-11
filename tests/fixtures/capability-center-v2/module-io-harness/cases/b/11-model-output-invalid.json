@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-11",
+  "title": "B 模型输出缺少通用 Goal 时不得创建任务",
+  "baseRef": "../../bases/b-episode.json",
+  "setup": { "siteState": "empty", "modelScenario": "missing-generalized-goal" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "capability_abstraction_invalid",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "generationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C3",
+  "caseId": "C3-03",
+  "title": "实际输出与 expected 不一致：验证通过，差异随用例记录",
+  "baseRef": "../../bases/c3-input.json",
+  "inputPatch": {
+    "artifact": {
+      "validationSuite": {
+        "cases": [
+          {
+            "caseId": "case_notebook",
+            "input": {
+              "query": "notebook"
+            },
+            "expected": {
+              "query": "mug"
+            }
+          },
+          {
+            "caseId": "case_mug",
+            "input": {
+              "query": "mug"
+            },
+            "expected": {
+              "query": "mug"
+            }
+          }
+        ]
+      }
+    },
+    "validationTask": {
+      "runSpec": {
+        "cases": [
+          {
+            "caseId": "case_notebook",
+            "input": {
+              "query": "notebook"
+            },
+            "expected": {
+              "query": "mug"
+            }
+          },
+          {
+            "caseId": "case_mug",
+            "input": {
+              "query": "mug"
+            },
+            "expected": {
+              "query": "mug"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "moduleScenario": "registered-search-module",
+    "hashes": "materialize-valid"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      {
+        "path": "outcome",
+        "op": "equals",
+        "value": "Validated"
+      },
+      {
+        "path": "package.validation.cases.0.outcome",
+        "op": "equals",
+        "value": "Passed"
+      },
+      {
+        "path": "package.validation.cases.0.outputDrift.0.key",
+        "op": "equals",
+        "value": "query"
+      },
+      {
+        "path": "package.validation.cases.0.outputDrift.0.expected",
+        "op": "equals",
+        "value": "mug"
+      },
+      {
+        "path": "package.validation.cases.1.outputDrift",
+        "op": "absent"
+      }
+    ],
+    "sideEffects": [
+      {
+        "path": "aiCalls",
+        "op": "equals",
+        "value": 0
+      }
+    ]
+  }
+}

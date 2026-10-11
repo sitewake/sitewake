@@ -1,0 +1,378 @@
+#!/bin/sh
+# SiteWake setup entrypoint.
+#
+# Runs the setup wizard (scripts/setup.mjs) with whatever this machine has:
+# a recent enough Node directly, otherwise Node inside a throwaway Docker
+# container. The wizard itself never needs `npm install`.
+#
+# Usage: ./setup [--lang en|zh] [--no-start]
+# The wizard asks only the language and writes .env; this script then runs
+# `docker compose pull` + `up -d` (or `up -d --build` when the prebuilt
+# images cannot be pulled), waits for the control plane's health endpoint and
+# prints a report with the address to open. The model is connected
+# afterwards, in the console.
+# Windows (PowerShell): node scripts/setup.mjs   — or run ./setup from WSL.
+#
+# Keep this POSIX sh: it is the one file that has to run before anything is
+# installed, on whatever /bin/sh the server ships with.
+
+set -u
+
+cd "$(dirname "$0")" || exit 2
+
+NODE_FLAGS="--experimental-strip-types --disable-warning=ExperimentalWarning"
+IMAGE="node:22-alpine"
+
+# The version floor comes from package.json's engines.node (">=22.13.0").
+# Parsed with sed rather than node so the floor is known before we know
+# whether node exists.
+required=$(sed -n 's/.*"node"[[:space:]]*:[[:space:]]*"[^0-9]*\([0-9][0-9.]*\)".*/\1/p' package.json | head -n 1)
+[ -n "$required" ] || required="22.13.0"
+
+# Language for this script's own two messages. The wizard decides for itself.
+case "${LC_ALL:-${LC_MESSAGES:-${LANG:-${LANGUAGE:-}}}}" in
+  zh*|ZH*) say_zh=1 ;;
+  *) say_zh=0 ;;
+esac
+
+# version_ok ACTUAL REQUIRED — 0 when ACTUAL >= REQUIRED (major.minor.patch).
+version_ok() {
+  a1=${1%%.*}; rest=${1#*.}; a2=${rest%%.*}; a3=${rest#*.}; a3=${a3%%[!0-9]*}
+  r1=${2%%.*}; rest=${2#*.}; r2=${rest%%.*}; r3=${rest#*.}; r3=${r3%%[!0-9]*}
+  [ "${a1:-0}" -gt "${r1:-0}" ] && return 0
+  [ "${a1:-0}" -lt "${r1:-0}" ] && return 1
+  [ "${a2:-0}" -gt "${r2:-0}" ] && return 0
+  [ "${a2:-0}" -lt "${r2:-0}" ] && return 1
+  [ "${a3:-0}" -ge "${r3:-0}" ]
+}
+
+# Best-effort LAN address of this host, for the wizard's default public
+# origin. Inside the container the wizard cannot see the host's interfaces.
+host_ip() {
+  if command -v hostname >/dev/null 2>&1; then
+    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    [ -n "$ip" ] && { printf '%s' "$ip"; return; }
+  fi
+  if command -v ipconfig >/dev/null 2>&1; then
+    for iface in en0 en1; do
+      ip=$(ipconfig getifaddr "$iface" 2>/dev/null)
+      [ -n "$ip" ] && { printf '%s' "$ip"; return; }
+    done
+  fi
+  printf ''
+}
+
+# The public address of a cloud VM is not on any interface, only in the
+# cloud's metadata service. Asked with a one-second budget per cloud; on a
+# machine that is not a cloud VM every probe fails quickly and the LAN address
+# stays the default. SITEWAKE_SETUP_PUBLIC_IP set in the environment wins.
+public_ip() {
+  if [ -n "${SITEWAKE_SETUP_PUBLIC_IP:-}" ]; then printf '%s' "$SITEWAKE_SETUP_PUBLIC_IP"; return; fi
+  command -v curl >/dev/null 2>&1 || { printf ''; return; }
+  probe() { curl -fsS --max-time 1 "$@" 2>/dev/null | head -n 1 | tr -d '[:space:]'; }
+  valid() { case "$1" in "") return 1;; *[!0-9.]*) return 1;; esac; return 0; }
+  ip=$(probe http://metadata.tencentyun.com/latest/meta-data/public-ipv4); valid "$ip" && { printf '%s' "$ip"; return; }
+  ip=$(probe http://100.100.100.200/latest/meta-data/eipv4); valid "$ip" && { printf '%s' "$ip"; return; }
+  token=$(curl -fsS --max-time 1 -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token 2>/dev/null)
+  ip=$(probe -H "X-aws-ec2-metadata-token: $token" http://169.254.169.254/latest/meta-data/public-ipv4); valid "$ip" && { printf '%s' "$ip"; return; }
+  ip=$(probe -H 'Metadata-Flavor: Google' 'http://169.254.169.254/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip'); valid "$ip" && { printf '%s' "$ip"; return; }
+  ip=$(probe -H 'Metadata: true' 'http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text'); valid "$ip" && { printf '%s' "$ip"; return; }
+  printf ''
+}
+SITEWAKE_SETUP_PUBLIC_IP="$(public_ip)"
+export SITEWAKE_SETUP_PUBLIC_IP
+
+# Data volumes an earlier install of this project left behind. Postgres keeps
+# the password it was initialised with, so a freshly generated one would not
+# open them; the wizard warns when it generates secrets next to such a volume.
+existing_volumes() {
+  command -v docker >/dev/null 2>&1 || return 0
+  docker volume ls -q 2>/dev/null | grep -E '_(postgres|minio)-data$' | tr '\n' ',' | sed 's/,$//'
+}
+SITEWAKE_SETUP_EXISTING_VOLUMES="$(existing_volumes)"
+export SITEWAKE_SETUP_EXISTING_VOLUMES
+
+# Docker that is installed but unusable is a dead end for the whole install
+# (the stack itself runs on it), so name the cause and the fix here instead
+# of failing on the first docker command with a bare "permission denied".
+# The usual case on a fresh Ubuntu: the account is not in the docker group.
+if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+  reason=$(docker info 2>&1 >/dev/null | head -n 1)
+  case "$reason" in
+    *ermission\ denied*)
+      # Fix it here when we can: add the account to the docker group (sudo
+      # may ask for a password on a terminal; never prompts otherwise), then
+      # continue in a shell that already has the group — `sg` reads the new
+      # membership without a fresh login.
+      me=$(id -un)
+      if [ -z "${SITEWAKE_SETUP_REEXEC:-}" ] && command -v sudo >/dev/null 2>&1 && command -v sg >/dev/null 2>&1 \
+        && { if [ -t 0 ]; then sudo usermod -aG docker "$me"; else sudo -n usermod -aG docker "$me"; fi; } 2>/dev/null; then
+        if [ "$say_zh" = 1 ]; then
+          printf '已把 %s 加入 docker 组，继续。\n' "$me" >&2
+        else
+          printf 'Added %s to the docker group; continuing.\n' "$me" >&2
+        fi
+        quoted=""
+        for arg in "$@"; do quoted="$quoted '$(printf '%s' "$arg" | sed "s/'/'\\\\''/g")'"; done
+        SITEWAKE_SETUP_REEXEC=1 exec sg docker -c "sh '$0'$quoted"
+      fi
+      if [ "$say_zh" = 1 ]; then
+        printf 'Docker 已安装，但当前用户没有权限使用它。\n' >&2
+        printf '  修复：sudo usermod -aG docker %s ，然后退出并重新登录（或执行 newgrp docker），再运行 ./setup\n' "$me" >&2
+      else
+        printf 'Docker is installed, but this user is not allowed to use it.\n' >&2
+        printf '  Fix: sudo usermod -aG docker %s , then log out and back in (or run: newgrp docker), then ./setup again\n' "$me" >&2
+      fi
+      ;;
+    *)
+      if [ "$say_zh" = 1 ]; then
+        printf 'Docker 已安装，但现在用不了：%s\n' "$reason" >&2
+        printf '  启动 Docker 后再运行 ./setup\n' >&2
+      else
+        printf 'Docker is installed but not usable right now: %s\n' "$reason" >&2
+        printf '  Start Docker, then run ./setup again\n' >&2
+      fi
+      ;;
+  esac
+  exit 2
+fi
+
+# How the wizard runs on this machine: node directly, or node in a container.
+runner=""
+if command -v node >/dev/null 2>&1; then
+  actual=$(node -p 'process.versions.node' 2>/dev/null || printf '0.0.0')
+  version_ok "$actual" "$required" && runner=node
+fi
+[ -n "$runner" ] || { command -v docker >/dev/null 2>&1 && runner=docker; }
+
+run_wizard() {
+  if [ "$runner" = node ]; then
+    # shellcheck disable=SC2086
+    node $NODE_FLAGS scripts/setup.mjs "$@"
+  else
+    tty_flag=""
+    [ -t 0 ] && tty_flag="-t"
+    # shellcheck disable=SC2086
+    docker run --rm -i $tty_flag \
+      --user "$(id -u):$(id -g)" \
+      -v "$PWD:/app" -w /app \
+      -e LANG -e LC_ALL -e LANGUAGE \
+      -e SITEWAKE_SETUP_RUNNER=docker \
+      -e SITEWAKE_SETUP_HOST_IP="$(host_ip)" \
+      -e SITEWAKE_SETUP_PUBLIC_IP \
+      -e SITEWAKE_SETUP_EXISTING_VOLUMES \
+      -e SITEWAKE_SETUP_HEALTH_JSON \
+      -e SITEWAKE_SETUP_EVENTS \
+      "$IMAGE" node $NODE_FLAGS scripts/setup.mjs "$@"
+  fi
+}
+
+if [ -n "$runner" ]; then
+  start_marker=".sitewake-setup-start"
+  rm -f "$start_marker"
+  run_wizard "$@"
+  status=$?
+  # The wizard leaves the marker (holding the chosen language) when the stack
+  # is to be started; that part needs docker on the host.
+  [ "$status" -eq 0 ] && [ -f "$start_marker" ] || exit "$status"
+  lang=$(head -n 1 "$start_marker" | tr -d '[:space:]')
+  rm -f "$start_marker"
+  [ -n "$lang" ] || lang=en
+  if ! command -v docker >/dev/null 2>&1; then
+    printf 'Docker is not available here; start SiteWake with: docker compose up -d --build\n' >&2
+    exit 0
+  fi
+
+  env_value() { sed -n "s/^$1=//p" .env | head -n 1 | tr -d '[:space:]' | sed "s/^[\"']//; s/[\"']\$//"; }
+  events=""
+  note() { events="$events$1
+"; printf '%s\n' "$1" >&2; }
+  report() { SITEWAKE_SETUP_HEALTH_JSON="$1" SITEWAKE_SETUP_EVENTS="$events" run_wizard --report --lang "$lang" ${2:-}; }
+  # Which npm registry a source build downloads from. A route to npm's own
+  # registry that crawls (tens of KB/s across some borders, on some days)
+  # turns a four-minute build into an hour, so the known registries are
+  # measured on one tarball from the lockfile and a mirror is used only when
+  # it is clearly faster. Every package is still verified against the
+  # lockfile's integrity hashes, whichever registry serves it.
+  npm_registry_default=https://registry.npmjs.org
+  npm_registry_mirrors="https://registry.npmmirror.com"
+  npm_registry_speed() { curl -sSL -o /dev/null --max-time 6 -w '%{speed_download}' "$1/typescript/-/typescript-5.9.3.tgz" 2>/dev/null | sed 's/[.].*$//'; }
+  fastest_npm_registry() {
+    command -v curl >/dev/null 2>&1 || { printf '%s' "$npm_registry_default"; return; }
+    best=$npm_registry_default
+    default_speed=$(npm_registry_speed "$best"); default_speed=${default_speed:-0}
+    best_speed=$default_speed
+    for candidate in $npm_registry_mirrors; do
+      speed=$(npm_registry_speed "$candidate"); speed=${speed:-0}
+      if [ "$speed" -gt "$((default_speed * 2))" ] && [ "$speed" -gt "$best_speed" ]; then best=$candidate; best_speed=$speed; fi
+    done
+    printf '%s' "$best"
+  }
+  health_wait() {
+    # Up to five minutes for the control plane to answer ready on the host
+    # port. stdout carries only the last health JSON — the report parses it —
+    # so the waiting line and its dots go to the terminal on stderr.
+    command -v curl >/dev/null 2>&1 || { printf ''; return; }
+    printf 'Waiting for the control plane on port %s ' "$port" >&2
+    i=0
+    while [ "$i" -lt 60 ]; do
+      h=$(curl -sS --max-time 5 "http://127.0.0.1:$port/api/health" 2>/dev/null)
+      case "$h" in *'"status":"ready"'*) break;; esac
+      # A password mismatch will not heal by waiting.
+      case "$h" in *'"database":"auth_failed"'*) break;; esac
+      i=$((i + 1)); printf '.' >&2; sleep 5
+    done
+    printf '\n' >&2
+    printf '%s' "$h"
+  }
+
+  project=$(env_value COMPOSE_PROJECT_NAME)
+  port=$(env_value SITEWAKE_PORT)
+  [ -n "$port" ] || port=3000
+
+  # 1. The port must be free, or held by an earlier SiteWake install (which is
+  #    then stopped with its data volumes kept). Anything else is reported.
+  holder=$(docker ps --filter "publish=$port" --format '{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.service"}}|{{.Names}}' 2>/dev/null | head -n 1)
+  if [ -n "$holder" ]; then
+    holder_project=${holder%%|*}
+    rest=${holder#*|}
+    holder_service=${rest%%|*}
+    holder_name=${rest#*|}
+    if [ "$holder_project" = "$project" ]; then
+      :
+    elif [ "$holder_service" = control-plane ] && [ -n "$holder_project" ]; then
+      docker compose -p "$holder_project" down >/dev/null 2>&1 || true
+      note "stopped:$holder_project"
+    else
+      events="${events}port-busy:$port:${holder_name:-$holder}
+"
+      report "" --failed
+      exit 1
+    fi
+  fi
+
+  # 2. Start. The prebuilt images of this version are pulled when this machine
+  #    can reach them (a cold install in about a minute); otherwise the stack is
+  #    built from source, which takes a few minutes and produces the same thing.
+  #    Neither path is a failure, so neither is announced as one. A cheap
+  #    manifest probe decides up front, so an unreachable or private registry
+  #    does not first spray pull errors over the terminal. One retry covers the
+  #    transient failures a cold build hits.
+  control_plane_image=$(docker compose config --images 2>/dev/null | grep 'sitewake-control-plane:' | head -n 1)
+  prebuilt=0
+  anonymous_config=""
+  registry_reachable() { [ -n "$control_plane_image" ] && docker manifest inspect "$control_plane_image" >/dev/null 2>&1; }
+  # Published images need no account at all. Docker still presents whatever
+  # credential this machine stored for the registry earlier, and an expired or
+  # revoked one is refused even for a public image — so the same probe is made
+  # again with an empty credential store, and the pull then uses it too.
+  registry_reachable_anonymously() {
+    [ -n "$control_plane_image" ] || return 1
+    anonymous_config=$(mktemp -d 2>/dev/null) || return 1
+    DOCKER_CONFIG="$anonymous_config" docker manifest inspect "$control_plane_image" >/dev/null 2>&1
+  }
+  # The images may be published privately while a release is still in testing.
+  # Whoever cloned this repository has already proved to GitHub who they are,
+  # so nobody is asked a second time: the credential that clone used is
+  # borrowed from git, along with an environment token or the gh CLI, and signs
+  # the registry in once, quietly. Nothing is printed and nothing is stored
+  # here; a machine with no GitHub credential simply builds from source.
+  github_credential() {
+    printf '%s' "${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    [ -z "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ] || return 0
+    gh auth token 2>/dev/null && return 0
+    # `git credential fill` asks every configured helper (keychain, store,
+    # cache, or a token embedded in the clone URL). GIT_TERMINAL_PROMPT=0 keeps
+    # it from turning into a prompt when no helper has one.
+    command -v git >/dev/null 2>&1 || return 1
+    printf 'protocol=https\nhost=github.com\n\n' \
+      | GIT_TERMINAL_PROMPT=0 git credential fill 2>/dev/null \
+      | sed -n 's/^password=//p' \
+      | head -n 1
+  }
+  registry_sign_in() {
+    case "$control_plane_image" in ghcr.io/*) ;; *) return 1 ;; esac
+    token=$(github_credential)
+    [ -n "$token" ] || return 1
+    printf '%s' "$token" | docker login ghcr.io -u "${GITHUB_ACTOR:-x-access-token}" --password-stdin >/dev/null 2>&1
+  }
+  if registry_reachable; then prebuilt=1; anonymous_config=""
+  elif registry_reachable_anonymously; then prebuilt=1
+  elif registry_sign_in && registry_reachable; then prebuilt=1; anonymous_config=""
+  fi
+  # Every registry command below runs with whichever credential store answered.
+  compose_registry() { if [ -n "$anonymous_config" ]; then DOCKER_CONFIG="$anonymous_config" docker "$@"; else docker "$@"; fi; }
+  if [ "$prebuilt" = 1 ]; then
+    printf '\n$ docker compose pull\n'
+    if ! compose_registry compose pull; then
+      # A probe can answer for a cached manifest the pull still cannot fetch.
+      # One credentialed retry before giving up on the published images.
+      prebuilt=0
+      if [ -n "$anonymous_config" ] && registry_sign_in; then
+        anonymous_config=""
+        docker compose pull && prebuilt=1
+      fi
+    fi
+  fi
+  if [ "$prebuilt" = 1 ]; then
+    printf '\n$ docker compose up -d --no-build\n'
+    compose_registry compose up -d --no-build || { report "" --failed; exit 1; }
+    [ -z "$anonymous_config" ] || rm -rf "$anonymous_config"
+  else
+    [ -z "$anonymous_config" ] || rm -rf "$anonymous_config"
+    if [ "$lang" = zh ]; then
+      printf '\n正在为这台机器构建 SiteWake（首次需要几分钟，之后启动很快）。\n' >&2
+    else
+      printf '\nBuilding SiteWake for this machine (a few minutes the first time; later starts are quick).\n' >&2
+    fi
+    # SITEWAKE_NPM_REGISTRY in .env skips the measurement.
+    npm_registry=$(env_value SITEWAKE_NPM_REGISTRY)
+    [ -n "$npm_registry" ] || npm_registry=$(fastest_npm_registry)
+    if [ "$npm_registry" != "$npm_registry_default" ]; then
+      if [ "$lang" = zh ]; then
+        printf 'npm 源：%s（从这台机器下载明显更快；每个包仍按 lockfile 的哈希校验）\n' "$npm_registry" >&2
+      else
+        printf 'npm registry: %s (clearly faster from this machine; every package is still verified against the lockfile)\n' "$npm_registry" >&2
+      fi
+    fi
+    export SITEWAKE_NPM_REGISTRY="$npm_registry"
+    printf '\n$ docker compose up -d --build\n'
+    if ! docker compose up -d --build; then
+      printf '\nRetrying once...\n' >&2
+      docker compose up -d --build || { report "" --failed; exit 1; }
+    fi
+  fi
+
+  # 3. Wait; on a password mismatch with this project's own volumes, move the
+  #    install to a fresh project name (old volumes stay for manual recovery).
+  health=$(health_wait)
+  case "$health" in
+    *'"database":"auth_failed"'*)
+      fresh="sitewake-$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')"
+      docker compose down >/dev/null 2>&1 || true
+      if grep -q '^COMPOSE_PROJECT_NAME=' .env; then
+        sed -i.bak "s/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=$fresh/" .env && rm -f .env.bak
+      else
+        printf 'COMPOSE_PROJECT_NAME=%s\n' "$fresh" >> .env
+      fi
+      note "rotated:${project:-sitewake}:$fresh"
+      project=$fresh
+      docker compose up -d || { report "" --failed; exit 1; }
+      health=$(health_wait)
+      ;;
+  esac
+
+  report "$health"
+  exit $?
+fi
+
+if [ "$say_zh" = 1 ]; then
+  printf '运行 SiteWake 配置向导需要以下之一：\n' >&2
+  printf '  - Node.js >= %s（https://nodejs.org）\n' "$required" >&2
+  printf '  - Docker（向导会在临时容器中运行）\n' >&2
+else
+  printf 'The SiteWake setup wizard needs one of:\n' >&2
+  printf '  - Node.js >= %s (https://nodejs.org)\n' "$required" >&2
+  printf '  - Docker (the wizard runs in a throwaway container)\n' >&2
+fi
+exit 2

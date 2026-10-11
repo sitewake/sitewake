@@ -1,0 +1,220 @@
+{
+  "generationTaskId": "b797f218-5fec-4ad7-8e5e-894c6d6c622e",
+  "siteId": "prestashop_notebook_classify_real",
+  "candidate": {
+    "name": "搜索商品",
+    "description": "在站点内按关键词搜索商品并展示结果",
+    "aliases": [
+      "站内搜索",
+      "商品搜索"
+    ],
+    "contract": {
+      "intent": "按用户提供的 query 搜索商品",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "resultUrl": {
+            "type": "string"
+          },
+          "heading": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "resultUrl",
+          "heading"
+        ],
+        "additionalProperties": false
+      },
+      "preconditions": [
+        {
+          "type": "inputExists",
+          "path": "query"
+        }
+      ],
+      "successConditions": [
+        {
+          "type": "urlTemplate",
+          "template": "/search?controller=search&s={{query}}"
+        },
+        {
+          "type": "outputExists",
+          "path": "heading"
+        }
+      ],
+      "scope": {
+        "kind": "site-global",
+        "onMismatch": "no-match"
+      }
+    },
+    "program": {
+      "schemaVersion": "2.0",
+      "runtime": "BrowserJavaScriptStage",
+      "module": {
+        "contentHash": "ff10dddf810fc22ca21be9161f987611c399000d363c7966c3f5af6e501a260a",
+        "moduleUrl": "/api/capability-v2/modules/ff10dddf810fc22ca21be9161f987611c399000d363c7966c3f5af6e501a260a?siteId=prestashop_notebook_classify_real",
+        "exportName": "capability"
+      },
+      "entry": {
+        "mode": "CurrentPage"
+      },
+      "stages": [
+        {
+          "id": "stage_resolve_target",
+          "title": "Resolve input-driven target",
+          "purpose": "根据公开输入解析搜索目标",
+          "effect": "write",
+          "resumePolicy": "reconcile-before-retry",
+          "io": {
+            "reads": {
+              "input": [
+                "query"
+              ],
+              "state": []
+            },
+            "writes": {
+              "state": [
+                "targets.query"
+              ],
+              "output": []
+            }
+          },
+          "navigation": "optional"
+        },
+        {
+          "id": "stage_select_target",
+          "title": "Select matching dynamic target",
+          "purpose": "确认动态搜索目标",
+          "effect": "write",
+          "resumePolicy": "reconcile-before-retry",
+          "io": {
+            "reads": {
+              "input": [
+                "query"
+              ],
+              "state": [
+                "targets.query"
+              ]
+            },
+            "writes": {
+              "state": [
+                "targets.query"
+              ],
+              "output": []
+            }
+          },
+          "navigation": "optional"
+        },
+        {
+          "id": "stage_1",
+          "title": "Fill search query",
+          "purpose": "填写搜索关键词并提交只读查询",
+          "effect": "write",
+          "resumePolicy": "reconcile-before-retry",
+          "io": {
+            "reads": {
+              "input": [
+                "query"
+              ],
+              "state": []
+            },
+            "writes": {
+              "state": [
+                "query"
+              ],
+              "output": []
+            }
+          },
+          "navigation": "optional"
+        },
+        {
+          "id": "stage_2",
+          "title": "Read search result",
+          "purpose": "确认搜索结果页已经打开",
+          "effect": "read",
+          "resumePolicy": "skip-completed",
+          "io": {
+            "reads": {
+              "input": [],
+              "state": []
+            },
+            "writes": {
+              "state": [],
+              "output": []
+            }
+          },
+          "navigation": "optional"
+        },
+        {
+          "id": "stage_verify",
+          "title": "Verify final business result",
+          "purpose": "返回搜索结果并提供确定性证据",
+          "effect": "read",
+          "resumePolicy": "skip-completed",
+          "io": {
+            "reads": {
+              "input": [
+                "query"
+              ],
+              "state": [
+                "targets.query"
+              ]
+            },
+            "writes": {
+              "state": [],
+              "output": [
+                "query",
+                "resultUrl",
+                "heading"
+              ]
+            }
+          },
+          "navigation": "none"
+        }
+      ],
+      "parameterRoles": [
+        {
+          "inputPath": "query",
+          "role": "target"
+        }
+      ],
+      "targetBindings": [
+        {
+          "inputPath": "query",
+          "targetKind": "page-business-object",
+          "identityStatePath": "targets.query",
+          "required": true
+        }
+      ],
+      "promptProvenance": []
+    }
+  },
+  "demonstrationParameters": {
+    "query": "notebook"
+  },
+  "browser": {
+    "baseUrl": "http://127.0.0.1:18091",
+    "startUrl": "http://127.0.0.1:18091/",
+    "recording": false,
+    "session": {
+      "mode": "Anonymous"
+    }
+  }
+}

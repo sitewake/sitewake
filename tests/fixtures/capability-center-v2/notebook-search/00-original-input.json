@@ -1,0 +1,64 @@
+{
+  "request": {
+    "goal": "搜索 notebook",
+    "parameters": {
+      "query": "notebook"
+    },
+    "entryUrl": "http://localhost:18081/",
+    "locale": "zh-CN"
+  },
+  "source": "Episode",
+  "experience": {
+    "episodeId": "episode_notebook_001",
+    "mode": "demonstration",
+    "execution": {
+      "startPage": {
+        "url": "http://localhost:18081/",
+        "title": "PrestaShop"
+      },
+      "actions": [
+        {
+          "action": "fill",
+          "rawAction": "在搜索框输入 notebook",
+          "input": {
+            "text": "notebook",
+            "value": "notebook"
+          },
+          "element": {
+            "role": "searchbox",
+            "placeholder": "Search"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        },
+        {
+          "action": "unknown",
+          "rawAction": "按 Enter 提交搜索",
+          "input": {
+            "key": "Enter"
+          },
+          "page": {
+            "url": "http://localhost:18081/"
+          }
+        }
+      ],
+      "endPage": {
+        "url": "http://localhost:18081/search?controller=search&s=notebook",
+        "heading": "Search results for \"notebook\""
+      }
+    },
+    "outcome": {
+      "status": "Success",
+      "summary": "notebook 搜索结果页已打开"
+    },
+    "evidence": {
+      "observationRefs": [
+        "observation_notebook_results_001"
+      ],
+      "actionReceiptRefs": [
+        "receipt_notebook_search_001"
+      ]
+    }
+  }
+}

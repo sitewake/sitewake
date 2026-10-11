@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-03",
+  "title": "C2 输入拒绝旧 ManagedBrowser 字段",
+  "baseRef": "../../bases/c2-input.json",
+  "inputPatch": { "browser": { "mode": "ManagedBrowser" } },
+  "setup": {},
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_generation_browser_unknown_field",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "modelCalls", "op": "equals", "value": 0 },
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

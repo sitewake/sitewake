@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-19",
+  "title": "C2 缺少 C1 Candidate 时立即失败",
+  "baseRef": "../../bases/c2-input.json",
+  "removePaths": ["candidate"],
+  "setup": {},
+  "expected": {
+    "outcome": "error",
+    "errorCode": "case_generation_candidate_required",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "browserContextCount", "op": "equals", "value": 0 },
+      { "path": "modelCalls", "op": "equals", "value": 0 },
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

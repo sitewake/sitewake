@@ -1,0 +1,32 @@
+# The dependency layer is keyed on a manifest that holds only what npm ci
+# reads, so a script edit or the version bump of a release does not rebuild
+# node_modules (see scripts/dependency-manifest.mjs).
+FROM mcr.microsoft.com/playwright:v1.61.1-noble AS manifest
+WORKDIR /manifest
+COPY package.json package-lock.json scripts/dependency-manifest.mjs ./
+RUN node dependency-manifest.mjs package.json package.json
+
+FROM mcr.microsoft.com/playwright:v1.61.1-noble
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=manifest /manifest/package.json /manifest/package-lock.json ./
+COPY scripts/npm-ci-retry.sh scripts/npm-ci-retry.sh
+# Where npm downloads from: ./setup passes the registry that answers fastest
+# from this machine. The lockfile's integrity hashes verify every package
+# whichever registry serves it, and the setting is not kept in the image.
+ARG SITEWAKE_NPM_REGISTRY=https://registry.npmjs.org
+# Keep dependency and browser installation in separate cacheable layers. A
+# browser download failure must not discard a successful npm install, and vice
+# versa, because this image is also built on compact production hosts.
+RUN npm_config_registry="$SITEWAKE_NPM_REGISTRY" sh scripts/npm-ci-retry.sh \
+ && npm prune --omit=dev \
+ && npm cache clean --force
+ARG CODEX_CLI_VERSION=0.69.0
+RUN npm_config_registry="$SITEWAKE_NPM_REGISTRY" npm install -g "@openai/codex@${CODEX_CLI_VERSION}" \
+ && vendor_root="$(npm root -g)/@openai/codex/vendor" \
+ && case "$(uname -m)" in x86_64) keep=x86_64-unknown-linux-musl ;; aarch64) keep=aarch64-unknown-linux-musl ;; *) exit 1 ;; esac \
+ && find "$vendor_root" -mindepth 1 -maxdepth 1 -type d ! -name "$keep" -exec rm -rf -- {} + \
+ && codex --version
+COPY . .
+ENV NODE_ENV=production SITEWAKE_RUNNER_PREWARM=0 SITEWAKE_RUNNER_CONCURRENCY=1
+CMD ["npm", "run", "runner"]

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-02",
+  "title": "已有 Active 等价能力时返回 Duplicate",
+  "baseRef": "../../bases/b-episode.json",
+  "setup": { "siteState": "active-equivalent-search", "modelScenario": "generalize-search" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "disposition", "op": "equals", "value": "Duplicate" },
+      { "path": "match.status", "op": "equals", "value": "Active" },
+      { "path": "match.capabilityId", "op": "present" }
+    ],
+    "sideEffects": [
+      { "path": "generationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

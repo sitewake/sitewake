@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-03",
+  "title": "真正无参数的当前页读取能力",
+  "baseRef": "../../bases/c1-task.json",
+  "inputPatch": {
+    "runSpec": {
+      "goal": "读取当前页面标题",
+      "input": {
+        "parameters": {},
+        "capabilitySeed": {
+          "name": "读取当前页标题",
+          "description": "读取当前页面标题并返回",
+          "aliases": ["页面标题"]
+        }
+      }
+    }
+  },
+  "setup": { "siteFixture": "prestashop-home", "modelScenario": "valid-parameterless-read" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "contract.inputSchema.required", "op": "absent" },
+      { "path": "program.parameterRoles", "op": "equals", "value": [] },
+      { "path": "program.targetBindings", "op": "equals", "value": [] }
+    ],
+    "sideEffects": []
+  }
+}
+

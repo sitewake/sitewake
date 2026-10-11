@@ -1,0 +1,21 @@
+{
+  "kind": "AuthorizedRepair",
+  "experience": {
+    "schemaVersion": "1.0",
+    "episodeId": "case-repair-notebook",
+    "agentRunId": "run-repair-notebook",
+    "browserSessionId": "browser-repair-notebook",
+    "originalGoal": "搜索 notebook",
+    "outcome": "Success",
+    "outcomeSummary": "修复后 notebook 搜索结果页已打开",
+    "startedAt": "2026-08-18T00:00:00.000Z",
+    "endedAt": "2026-08-18T00:00:03.000Z",
+    "startPage": { "url": "http://localhost:18081/", "title": "PrestaShop" },
+    "endPage": { "url": "http://localhost:18081/search?controller=search&s=notebook", "heading": "Search results for notebook" },
+    "actions": [
+      { "action": "fill", "rawAction": "输入 notebook", "input": { "value": "notebook" }, "element": { "role": "searchbox", "placeholder": "Search" }, "page": { "url": "http://localhost:18081/" }, "observedAt": "2026-08-18T00:00:01.000Z" },
+      { "action": "unknown", "rawAction": "按 Enter 搜索", "input": { "key": "Enter" }, "page": { "url": "http://localhost:18081/" }, "observedAt": "2026-08-18T00:00:02.000Z" }
+    ],
+    "output": { "status": "Success", "summary": "修复后搜索成功" }
+  }
+}

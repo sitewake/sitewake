@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-12",
+  "title": "expected：同名同型输出回显输入，模型补充的观察值保留",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "cases-with-query-partial-expected",
+    "moduleScenario": "registered-search-module"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      {
+        "path": "candidateArtifact.validationSuite.cases.0.expected.query",
+        "op": "equals",
+        "value": "notebook"
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.0.expected.heading",
+        "op": "equals",
+        "value": "Notebook"
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.1.expected.query",
+        "op": "equals",
+        "value": "Notebook"
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.1.expected.heading",
+        "op": "equals",
+        "value": "Mug"
+      },
+      {
+        "path": "candidateArtifact.validationSuiteHash",
+        "op": "sha256"
+      }
+    ],
+    "sideEffects": [
+      {
+        "path": "validationTaskCount",
+        "op": "equals",
+        "value": 1
+      }
+    ]
+  }
+}

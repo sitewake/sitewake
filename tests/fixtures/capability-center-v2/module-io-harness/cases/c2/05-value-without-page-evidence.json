@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-05",
+  "title": "页面未出现的业务值可以作为测试输入：由契约决定能不能用，由运行决定行不行",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-only",
+    "modelScenario": "cases-notebook-and-invented-laptop"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      {
+        "path": "candidateArtifact.validationSuite.cases.0.input.query",
+        "op": "equals",
+        "value": "laptop"
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.1.input.query",
+        "op": "equals",
+        "value": "Notebook"
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.2.input.query",
+        "op": "equals",
+        "value": "Mug"
+      }
+    ],
+    "sideEffects": [
+      {
+        "path": "validationTaskCount",
+        "op": "equals",
+        "value": 1
+      }
+    ]
+  }
+}

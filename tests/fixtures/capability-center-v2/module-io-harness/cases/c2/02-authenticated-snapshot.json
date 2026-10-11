@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-02",
+  "title": "需要登录态时使用受控认证快照",
+  "baseRef": "../../bases/c2-input.json",
+  "inputPatch": {
+    "browser": { "session": { "mode": "AuthenticatedSnapshot" } }
+  },
+  "setup": {
+    "siteFixture": "authenticated-search",
+    "authenticatedSnapshot": "valid",
+    "moduleScenario": "registered-search-module",
+    "modelScenario": "cases-notebook-and-mug"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "candidateArtifact.candidateId", "op": "present" },
+      { "path": "validationTaskId", "op": "present" }
+    ],
+    "sideEffects": [
+      { "path": "usedAuthenticatedSnapshot", "op": "equals", "value": true }
+    ]
+  }
+}
+

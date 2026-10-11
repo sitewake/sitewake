@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-01",
+  "title": "Episode 首次生成 Discovery Task",
+  "baseRef": "../../bases/b-episode.json",
+  "setup": { "siteState": "empty", "modelScenario": "generalize-search" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "disposition", "op": "equals", "value": "Created" },
+      { "path": "task.type", "op": "equals", "value": "Discovery" },
+      { "path": "task.runSpec.goal", "op": "present" },
+      { "path": "task.runSpec.goal", "op": "notEquals", "value": "搜索 notebook" },
+      { "path": "task.runSpec.guidance.derived", "op": "lengthAtLeast", "value": 1 },
+      { "path": "task.runSpec.browser.mode", "op": "absent" }
+    ],
+    "sideEffects": [
+      { "path": "generationTaskCount", "op": "equals", "value": 1 }
+    ]
+  }
+}
+

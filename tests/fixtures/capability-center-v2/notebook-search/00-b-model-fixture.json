@@ -1,0 +1,19 @@
+{
+  "name": "搜索商品",
+  "description": "在站点内按关键词搜索商品并展示结果",
+  "aliases": ["站内搜索", "商品搜索", "搜索"],
+  "intent": "根据用户提供的关键词在站点内搜索商品并展示结果",
+  "parameters": [
+    {
+      "name": "query",
+      "type": "string",
+      "description": "要搜索的商品关键词",
+      "required": true,
+      "exampleValue": "notebook"
+    }
+  ],
+  "scope": {
+    "kind": "site-global",
+    "onMismatch": "no-match"
+  }
+}

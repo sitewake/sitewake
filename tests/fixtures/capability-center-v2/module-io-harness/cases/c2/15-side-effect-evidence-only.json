@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-15",
+  "title": "有副作用能力探索只能收集证据不得提交",
+  "baseRef": "../../bases/c2-input.json",
+  "inputPatch": {
+    "candidate": {
+      "name": "删除购物车商品",
+      "description": "删除指定购物车商品",
+      "contract": { "intent": "删除指定购物车商品" },
+      "program": {
+        "stages": [
+          {
+            "id": "stage_delete",
+            "title": "Delete cart item",
+            "purpose": "删除指定购物车商品",
+            "effect": "write",
+            "resumePolicy": "reconcile-before-retry",
+            "io": {
+              "reads": { "input": ["query"], "state": [] },
+              "writes": { "state": ["query"], "output": [] }
+            },
+            "navigation": "optional"
+          }
+        ]
+      }
+    }
+  },
+  "setup": {
+    "siteFixture": "prestashop-cart-with-items",
+    "modelScenario": "safe-cart-item-cases",
+    "moduleScenario": "registered-delete-module"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "candidateArtifact.caseDiscoveryEvidenceRef", "op": "present" },
+      { "path": "validationTaskId", "op": "present" }
+    ],
+    "sideEffects": [
+      { "path": "caseDiscovery.explorationMode", "op": "equals", "value": "evidence-only" },
+      { "path": "businessMutationCount", "op": "equals", "value": 0 },
+      { "path": "blockedSubmitCount", "op": "lengthAtLeast", "value": 1 }
+    ]
+  }
+}
+

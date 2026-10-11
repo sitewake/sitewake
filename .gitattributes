@@ -1,0 +1,42 @@
+# Paths below stay in the maintainers' repository and never reach the public
+# GitHub repository: `git archive` (which scripts/export-public.mjs uses to
+# build each release) omits everything marked export-ignore, and
+# tests/public-export-purity.test.mjs reads the same attribute to decide which
+# files must be free of internal references. Add a line here to keep something
+# private; there is no second list to update.
+
+# Patterns name files or directories as git stores them; a directory prunes its
+# whole subtree (a trailing slash or `/**` is not needed and not used).
+
+# Internal documentation, meeting notes, operations manuals, design drafts.
+docs                                         export-ignore
+
+# Agent operating rules and CI/CD for the maintainers' own deployment.
+AGENTS.md                                    export-ignore
+.agents                                      export-ignore
+.openai                                      export-ignore
+.cnb.yml                                     export-ignore
+.cnb                                         export-ignore
+
+# Local demo sites used as debugging targets, and the real-site e2e harness.
+demos                                        export-ignore
+demo                                         export-ignore
+
+# Scripts that only make sense with the paths above.
+scripts/internal                             export-ignore
+
+# Tests that need the demo sites, the internal docs, or recorded real-site data.
+tests/console-redesign.test.mjs              export-ignore
+tests/internal-deployment-pipeline.test.mjs  export-ignore
+tests/capability-center-v2.integration.mjs   export-ignore
+tests/capability-center-v2.real.e2e.mjs      export-ignore
+tests/local-e2e/product-workspace.mjs        export-ignore
+tests/stable-schema-definitions.test.mjs     export-ignore
+tests/unit/page-agent/recorded-fill-search   export-ignore
+tests/unit/page-agent/recorded-read-only     export-ignore
+
+# Internal marker list for the export guard; never exported.
+scripts/internal/markers.json                export-ignore
+# Replay corpus: recorded tasks from the maintainers' production sites (page
+# contents included). tests/capability-v2-replay.test.mjs skips without it.
+tests/fixtures/capability-v2-replays export-ignore

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-11",
+  "title": "模型不得把 semantic 和 dependencyLedger 写入正式输出",
+  "baseRef": "../../bases/c1-task.json",
+  "setup": { "siteFixture": "prestashop-search", "modelScenario": "inject-analysis-fields" },
+  "expected": {
+    "outcome": "error",
+    "errorCode": "c1_output_unknown_field",
+    "assertions": [],
+    "sideEffects": [
+      { "path": "candidateArtifactCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

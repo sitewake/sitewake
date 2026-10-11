@@ -1,0 +1,60 @@
+{
+  "parameterPlan": {
+    "intent": "根据用户提供的 query 搜索商品并展示结果",
+    "name": "搜索商品",
+    "description": "在站点内按关键词搜索商品并展示结果",
+    "aliases": ["站内搜索", "商品搜索"],
+    "parameters": [
+      {
+        "name": "query",
+        "type": "string",
+        "description": "要搜索的商品关键词",
+        "required": true,
+        "exampleValue": "notebook"
+      }
+    ],
+    "groundingExamples": [
+      { "query": "notebook" },
+      { "query": "mug" }
+    ],
+    "siteTerms": [],
+    "scope": {
+      "kind": "site-global",
+      "onMismatch": "no-match"
+    }
+  },
+  "explorerActions": [
+    { "action": "fill", "index": 0, "inputPath": "query" },
+    { "action": "click", "index": 1 }
+  ],
+  "contractDesign": {
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string" },
+        "resultUrl": { "type": "string" },
+        "heading": { "type": "string" }
+      },
+      "required": ["query", "resultUrl", "heading"],
+      "additionalProperties": false
+    },
+    "preconditions": [
+      { "type": "inputExists", "path": "query" }
+    ],
+    "successConditions": [
+      { "type": "urlTemplate", "template": "/search?controller=search&s={{query}}" },
+      { "type": "outputExists", "path": "heading" }
+    ],
+    "scope": {
+      "kind": "site-global",
+      "onMismatch": "no-match"
+    }
+  },
+  "author": {
+    "writeFile": {
+      "path": "capability.ts",
+      "contentFile": "01-c1-module.ts"
+    },
+    "runDraft": {}
+  }
+}

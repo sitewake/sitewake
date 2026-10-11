@@ -1,0 +1,37 @@
+name: CI
+
+# The public release gate, run on every pull request and on main. It is the
+# same command scripts/export-public.mjs runs on an exported tree before a
+# release: typecheck, build, every test suite except the ones registered in
+# scripts/test-public.mjs, then the unit suite.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - run: npm ci
+
+      # Seventeen suites drive a real Chromium; --with-deps installs the
+      # system libraries the runner image does not ship.
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:public

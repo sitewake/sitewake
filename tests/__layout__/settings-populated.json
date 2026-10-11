@@ -1,0 +1,18 @@
+{
+  "headings": [
+    "系统设置",
+    "常规",
+    "个人偏好",
+    "显示语言",
+    "当前部署"
+  ],
+  "landmarks": {
+    "nav": 2,
+    "tablist": 1,
+    "tabs": 5,
+    "tables": 0,
+    "buttons": 16
+  },
+  "unexpectedOverflow": [],
+  "documentOverflowsViewport": false
+}

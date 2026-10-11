@@ -1,0 +1,27 @@
+{
+  "id": "b797f218-5fec-4ad7-8e5e-894c6d6c622e",
+  "siteId": "prestashop_notebook_classify_real",
+  "source": "Episode",
+  "type": "Discovery",
+  "status": "Pending",
+  "runSpec": {
+    "protocolVersion": "2.0",
+    "id": "9ceb6b52-b483-4f74-81e8-180ae30ae996",
+    "goal": "根据用户提供的关键词在站点内搜索商品并展示结果",
+    "browser": {
+      "startUrl": "http://localhost:18081/",
+      "recording": true
+    },
+    "input": {
+      "parameters": {
+        "query": "notebook"
+      },
+      "locale": "zh-CN",
+      "capabilitySeed": {
+        "name": "搜索商品",
+        "description": "在站点搜索框中输入关键词并提交，打开对应搜索结果页",
+        "aliases": ["站内搜索", "商品搜索", "搜索"]
+      }
+    }
+  }
+}

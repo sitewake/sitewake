@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "D",
+  "caseId": "D-04",
+  "title": "验证结果缺少冻结 case 时不得发布",
+  "baseRef": "../../bases/d-input.json",
+  "inputPatch": {
+    "validated": {
+      "validation": {
+        "cases": [
+          {
+            "caseId": "case_notebook",
+            "outcome": "Passed",
+            "resolvedInput": { "query": "notebook" },
+            "output": { "query": "notebook" },
+            "stageReceipts": [],
+            "evidenceRefs": []
+          }
+        ]
+      }
+    }
+  },
+  "setup": { "artifactState": "persisted-and-validated" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "outcome", "op": "equals", "value": "WriteConflict" },
+      { "path": "code", "op": "equals", "value": "PUBLISH_COMMAND_MISMATCH" }
+    ],
+    "sideEffects": [
+      { "path": "publishCount", "op": "equals", "value": 0 }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+SiteWake includes the OpenCLI adapter page contract selected for authored
+capabilities (`run(page, args)`, `page.goto`, `page.evaluate`, `page.wait`).
+
+OpenCLI
+Copyright OpenCLI contributors
+Licensed under the Apache License, Version 2.0.
+https://github.com/jackwener/OpenCLI
+
+The transport implementation targets SiteWake's in-page and Playwright
+drivers; the public adapter contract is copied from OpenCLI's `src/types.ts`.

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "B",
+  "caseId": "B-03",
+  "title": "匹配 Disabled 能力时禁止自动新建",
+  "baseRef": "../../bases/b-episode.json",
+  "setup": { "siteState": "disabled-equivalent-search", "modelScenario": "generalize-search" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "disposition", "op": "equals", "value": "Disabled" },
+      { "path": "match.status", "op": "equals", "value": "Disabled" }
+    ],
+    "sideEffects": [
+      { "path": "generationTaskCount", "op": "equals", "value": 0 }
+    ]
+  }
+}
+

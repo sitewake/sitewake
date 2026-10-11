@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C1",
+  "caseId": "C1-02",
+  "title": "演示参数 notebook 不得变成 Contract 默认值",
+  "baseRef": "../../bases/c1-task.json",
+  "setup": { "siteFixture": "prestashop-search", "modelScenario": "attempt-demonstration-default" },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      { "path": "contract.inputSchema.properties.query.default", "op": "absent" },
+      { "path": "contract.inputSchema.required.0", "op": "equals", "value": "query" }
+    ],
+    "sideEffects": []
+  }
+}
+

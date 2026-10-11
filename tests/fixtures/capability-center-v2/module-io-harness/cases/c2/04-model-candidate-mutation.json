@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "capability-module-harness-case.v1",
+  "module": "C2",
+  "caseId": "C2-04",
+  "title": "模型试图改写候选：整份补充被忽略，用例仍由证据推导",
+  "baseRef": "../../bases/c2-input.json",
+  "setup": {
+    "siteFixture": "prestashop-search-with-notebook-and-mug",
+    "modelScenario": "response-includes-mutated-candidate"
+  },
+  "expected": {
+    "outcome": "success",
+    "assertions": [
+      {
+        "path": "candidateArtifact.validationSuite.cases.0.input.query",
+        "op": "equals",
+        "value": "notebook"
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.1.input.query",
+        "op": "equals",
+        "value": "Notebook"
+      },
+      {
+        "path": "candidateArtifact.validationSuite.cases.2.input.query",
+        "op": "equals",
+        "value": "Mug"
+      }
+    ],
+    "sideEffects": [
+      {
+        "path": "validationTaskCount",
+        "op": "equals",
+        "value": 1
+      }
+    ]
+  }
+}

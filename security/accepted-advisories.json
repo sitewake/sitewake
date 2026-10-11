@@ -1,0 +1,34 @@
+{
+  "$comment": [
+    "Advisories against production dependencies that have no patched release, with the reasoning that lets this release ship anyway.",
+    "The release gate reads this file: a critical or high advisory that is neither fixed nor listed here fails the build, and so does an entry whose reviewBy date has passed.",
+    "An entry is a dated decision, not a permanent exemption. When reviewBy arrives the gate goes red again and the call surface has to be re-checked against the code as it is then.",
+    "Record the advisory id, never a count. npm reports one advisory once per node of the dependency path, so the same finding can look like six."
+  ],
+  "accepted": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "vulnerableRange": "<=3.0.3",
+      "severity": "high",
+      "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+      "noFixExists": "3.0.3 is both the latest published version and inside the vulnerable range, so there is no version to upgrade to.",
+      "reachedThrough": [
+        "vinext",
+        "vite-plugin-commonjs",
+        "vite-plugin-dynamic-import",
+        "fast-glob",
+        "micromatch",
+        "braces"
+      ],
+      "callSurface": [
+        "No file under app/, lib/, db/, client/, runner/, worker/, scripts/ or components/ imports braces, micromatch, fast-glob or either vite plugin.",
+        "None of the five packages appears anywhere in dist/server or dist/client, so the built production artifact does not contain them.",
+        "The glob patterns reaching this matcher come from Vite plugin configuration authored in this repository, during a build. Nothing on a request path supplies them."
+      ],
+      "mitigation": "The advisory needs attacker-controlled brace patterns. A build runs on a machine the operator already controls, with patterns from this repository, so the exposure is to a developer's own build rather than to a deployment. No runtime mitigation is required because the code is not present at runtime.",
+      "reviewBy": "2026-12-31",
+      "recordedOn": "2026-10-03"
+    }
+  ]
+}

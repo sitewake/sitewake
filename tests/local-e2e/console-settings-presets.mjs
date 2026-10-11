@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+import { chromium } from "playwright";
+const origin = "http://localhost:3000";
+const output = new URL("../../.artifacts/system-settings-presets/", import.meta.url).pathname;
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ headless: true });
+try {
+  const context = await browser.newContext({ locale: "zh-CN", viewport: { width: 1440, height: 1000 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  let siteReads = 0;
+  page.on("request", req => { if (/\/api\/site-agents\/shop$/.test(req.url())) siteReads++; });
+  await page.goto(`${origin}/?site=shop&view=settings`);
+  await page.getByRole("heading", { name: "当前部署", exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.has("site"), false);
+  assert.equal(await page.locator(".sw-site-switcher").count(), 0);
+  assert.equal(siteReads, 0, "global settings must not load current website details");
+  await page.screenshot({ path: `${output}settings-general.png`, fullPage: true });
+  await page.getByRole("button", { name: "模型", exact: true }).click();
+  await page.getByRole("heading", { name: "模型分工", exact: true }).waitFor();
+  await page.screenshot({ path: `${output}settings-runtime.png`, fullPage: true });
+  await page.reload();
+  await page.getByRole("heading", { name: "模型分工", exact: true }).waitFor();
+  await page.getByRole("button", { name: "管理执行服务", exact: false }).click();
+  assert.equal(new URL(page.url()).searchParams.get("view"), "runners");
+  assert.equal(new URL(page.url()).searchParams.has("siteAgentId"), false, "runner management is not filtered by website");
+  await page.goBack();
+  await page.getByRole("button", { name: /返回网站工作区/ }).click();
+  await page.locator(".sw-site-switcher").waitFor();
+  assert.ok(new URL(page.url()).searchParams.get("site"), "return from global settings chooses an available website");
+  await page.getByRole("button", { name: "系统设置", exact: true }).click();
+  await page.getByRole("button", { name: /^网站管理/ }).click();
+  await page.locator(".sw-managed-sites > button").first().waitFor();
+  await page.screenshot({ path: `${output}settings-sites.png`, fullPage: true });
+  await page.locator(".sw-managed-sites > button").filter({ hasText: "Nimbus 商城" }).click();
+  await page.getByRole("heading", { name: "网站信息", exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.get("view"), "connection");
+  assert.equal(new URL(page.url()).searchParams.get("site"), "shop");
+  await page.locator("summary").filter({ hasText: "接入代码" }).click();
+  assert.match(await page.locator(".sw-setting-disclosure pre").innerText(), /data-site-agent="shop"/);
+  await page.getByRole("button", { name: "系统设置", exact: true }).click();
+  await page.getByRole("button", { name: "访问与安全", exact: true }).click();
+  await page.locator(".sw-settings-access .sw-mng").waitFor();
+  await page.screenshot({ path: `${output}settings-access.png`, fullPage: true });
+  await page.route("**/api/site-agents", route => route.fulfill({ json: { agents: [] } }));
+  await page.goto(`${origin}/?view=settings&section=runtime`);
+  await page.getByRole("heading", { name: "模型分工", exact: true }).waitFor();
+  assert.equal(await page.getByText("选择一个网站后查看其连接信息。", { exact: true }).count(), 0);
+  await page.getByRole("button", { name: /^网站管理/ }).click();
+  await page.getByText("还没有接入网站", { exact: true }).waitFor();
+  await page.unroute("**/api/site-agents");
+  let writes = 0;
+  let lastPayload;
+  await page.route("**/api/site-agents/shop", async route => {
+    if (route.request().method() !== "PATCH") return route.continue();
+    writes++; lastPayload = route.request().postDataJSON();
+    await route.fulfill({ json: {} });
+  });
+  await page.goto(`${origin}/?site=shop&view=agent`);
+  const name = page.getByRole("textbox", { name: "名称", exact: true });
+  await name.waitFor();
+  await name.fill("我的专属助手");
+  const welcome = page.getByRole("textbox", { name: "欢迎标题", exact: true });
+  await welcome.fill("保留我写好的欢迎语");
+  await page.getByRole("button", { name: "左下角", exact: true }).click();
+  for (const [label, surface] of [["经典", "clean"], ["极简", "clean"], ["柔和", "soft"], ["鲜明", "contrast"]]) {
+    await page.locator(".sw-style-presets button").filter({ hasText: label }).click();
+    assert.equal(await name.inputValue(), "我的专属助手");
+    assert.equal(await welcome.inputValue(), "保留我写好的欢迎语");
+    assert.equal(await page.getByRole("button", { name: "左下角", exact: true }).getAttribute("aria-pressed"), "true");
+    assert.equal(await page.locator(`.sw-chat-preview.surface-${surface}`).count(), 1);
+    assert.equal(writes, 0, "style trials never write configuration");
+  }
+  await page.screenshot({ path: `${output}agent-expressive.png`, fullPage: true });
+  await page.getByRole("button", { name: "保存并应用", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "已应用到网站" }).waitFor();
+  assert.equal(lastPayload.agentConfig.appearance.surface, "contrast");
+  assert.equal(lastPayload.agentConfig.overrides.displayName, "我的专属助手");
+  await page.locator(".sw-welcome-templates summary").click();
+  await page.getByRole("button", { name: "简洁介绍", exact: true }).click();
+  assert.equal(await welcome.inputValue(), "有什么可以帮你？");
+  assert.equal(writes, 1);
+  await page.getByRole("button", { name: "撤销修改", exact: true }).click();
+  assert.equal(await welcome.inputValue(), "保留我写好的欢迎语");
+  for (const width of [768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const view of ["agent", "settings", "connection"]) {
+      await page.goto(`${origin}/?site=shop&view=${view}`);
+      await page.locator(view === "agent" ? ".sw-style-presets" : ".sw-system-settings").waitFor();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${view} fits ${width}px`);
+    }
+    await page.goto(`${origin}/?view=settings&section=runtime`);
+    await page.getByRole("heading", { name: "模型分工", exact: true }).waitFor();
+    await page.screenshot({ path: `${output}settings-runtime-${width}.png`, fullPage: true });
+  }
+  assert.deepEqual(errors, []);
+  console.log("PASS: site-independent settings, empty installations, scoped website links, global runner management, style preservation, save payload, template undo and responsive layouts.");
+} finally { await browser.close(); }
