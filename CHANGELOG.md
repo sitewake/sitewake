@@ -5,6 +5,14 @@ All notable changes to SiteWake are recorded here. The format follows
 [Semantic Versioning](https://semver.org/). Each entry corresponds to a git tag
 `vX.Y.Z` and a GitHub Release with the same notes.
 
+## 1.0.1 - 2026-10-15
+
+Object storage images follow MinIO's withdrawal from free distribution.
+
+### Fixed
+
+- **`./setup` could not bring up the stack on a fresh machine** — MinIO made its `minio/minio` and `minio/mc` repositories non-public on both Docker Hub and quay.io, and withdrew the binaries from `dl.min.io`, so `docker compose pull` ended in `401 UNAUTHORIZED` and the stack never started. Object storage now uses the Pigsty project's community builds of the same AGPL sources (`pgsty/minio`, `pgsty/mc`), pinned to a release. Nothing else about the stack changes: the same `server /data` command, the same `/data` volume, the same health check and the same bucket initialisation. A registry mirror cannot reach a repository that is no longer public, so the troubleshooting entry that recommended one is corrected in both READMEs.
+
 ## 1.0.0 - 2026-10-04
 
 First public release.
