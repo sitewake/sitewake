@@ -185,7 +185,7 @@ Windows 上没有 WSL 的话，`./setup` 就是 `node scripts/setup.mjs` —— 
 
 **从源码构建远不止几分钟** —— 构建要从 npm 源下载依赖，这台机器到 npm 官方源的线路很慢时，光这一步就可能要大半个小时。`./setup` 会先实测几个已知的 npm 源，哪个明显更快就用哪个构建（会打印选中的源；每个包仍按 lockfile 里的哈希校验）。要固定用某个源，把 `SITEWAKE_NPM_REGISTRY` 写进 `.env`，例如 `https://registry.npmmirror.com`，再运行一次 `./setup`。
 
-**`docker compose` 拉不到 `minio/minio`** —— MinIO 已不再发布到 Docker Hub，SiteWake 改从 `quay.io` 拉取。如果这台机器只能访问某个镜像仓库加速器，把 `.env` 里的 `SITEWAKE_MINIO_IMAGE` 和 `SITEWAKE_MC_IMAGE` 指向加速器上的副本，再运行一次 `./setup`。
+**`docker compose` 拉不到 `minio/minio`** —— MinIO 已撤掉免费分发：`minio/minio` 和 `minio/mc` 仓库在 Docker Hub 和 `quay.io` 上都拒绝匿名拉取，`dl.min.io` 返回 `410 Gone`。SiteWake 改用 Pigsty 项目基于同一份 AGPL 源码构建的社区镜像（`pgsty/minio`、`pgsty/mc`）。仓库既然已经不公开，镜像加速器也绕不过去；要用自己的副本，把 `.env` 里的 `SITEWAKE_MINIO_IMAGE` 和 `SITEWAKE_MC_IMAGE` 指过去，再运行一次 `./setup`。
 
 **控制台说「创建网站没有成功」，或提示这个控制台地址没有管理权限** —— 管理操作必须来自打开控制台的那个地址。用 `http://localhost:3000` 或局域网 IP 打开时无需配置；通过代理或隧道打开时，让代理转发 `X-Forwarded-Proto` 与 `X-Forwarded-Host`，或把 `.env` 里的 `SITEWAKE_PUBLIC_ORIGIN` 设成你实际打开的地址（`https://console.example.com`）再重启。设置过控制台密码的，先登录。
 

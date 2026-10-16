@@ -81,7 +81,7 @@ if set(config.get("volumes",{})) != allowed_volumes:
 for name, volume in config.get("volumes", {}).items():
   if isinstance(volume, dict) and (volume.get("driver_opts") or volume.get("external") or volume.get("name") not in (None, f"sitewake_{name}")):
     raise SystemExit(f"volume driver options are forbidden: {name}")
-expected_images={"postgres":"postgres:16-alpine","minio":"quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z","minio-init":"quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z","cloudflared":"cloudflare/cloudflared:latest"}
+expected_images={"postgres":"postgres:16-alpine","minio":"docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z","minio-init":"docker.io/pgsty/mc:RELEASE.2026-09-16T00-00-00Z","cloudflared":"cloudflare/cloudflared:latest"}
 expected_dockerfiles={"control-plane":"Dockerfile","capability-v2-runtime-launcher":"Dockerfile.capability-v2-runner","authoring-worker":"Dockerfile.worker","validation-worker":"Dockerfile.worker","execution-worker":"Dockerfile.worker"}
 expected_commands={
  "control-plane": None,

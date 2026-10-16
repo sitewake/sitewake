@@ -7,7 +7,7 @@ services:
   # default tag is this release's version; scripts/export-public.mjs refuses
   # to export when it and package.json disagree.
   control-plane:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-control-plane:${SITEWAKE_IMAGE_TAG:-1.0.0}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-control-plane:${SITEWAKE_IMAGE_TAG:-1.0.1}
     build:
       context: .
       dockerfile: Dockerfile
@@ -81,7 +81,7 @@ services:
       retries: 10
 
   capability-v2-runtime-launcher:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-launcher:${SITEWAKE_IMAGE_TAG:-1.0.0}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-launcher:${SITEWAKE_IMAGE_TAG:-1.0.1}
     build:
       context: .
       dockerfile: Dockerfile.capability-v2-runner
@@ -123,10 +123,13 @@ services:
       retries: 20
 
   minio:
-    # MinIO left Docker Hub (minio/minio no longer exists there); quay.io is
-    # its registry, pinned to the last community release. Behind a registry
-    # mirror, point SITEWAKE_MINIO_IMAGE / SITEWAKE_MC_IMAGE at your copies.
-    image: ${SITEWAKE_MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z}
+    # MinIO withdrew its free distribution: the minio/minio repositories on
+    # Docker Hub and quay.io refuse anonymous pulls, and dl.min.io answers
+    # 410 Gone. These are the Pigsty project's community builds of the same
+    # AGPL sources, pinned to a release. A registry mirror cannot reach a
+    # repository that is no longer public, so point SITEWAKE_MINIO_IMAGE /
+    # SITEWAKE_MC_IMAGE at your own copies instead.
+    image: ${SITEWAKE_MINIO_IMAGE:-docker.io/pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
     restart: unless-stopped
     command: server /data --console-address :9001
     environment:
@@ -141,7 +144,7 @@ services:
       retries: 20
 
   minio-init:
-    image: ${SITEWAKE_MC_IMAGE:-quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z}
+    image: ${SITEWAKE_MC_IMAGE:-docker.io/pgsty/mc:RELEASE.2026-09-16T00-00-00Z}
     depends_on:
       minio: { condition: service_healthy }
     entrypoint: ["/bin/sh", "-c"]
@@ -152,7 +155,7 @@ services:
       S3_BUCKET: ${S3_BUCKET:-sitewake-artifacts}
 
   authoring-worker:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.0}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.1}
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -191,7 +194,7 @@ services:
       control-plane: { condition: service_healthy }
 
   validation-worker:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.0}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.1}
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -214,7 +217,7 @@ services:
       control-plane: { condition: service_healthy }
 
   execution-worker:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.0}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.1}
     build:
       context: .
       dockerfile: Dockerfile.worker
