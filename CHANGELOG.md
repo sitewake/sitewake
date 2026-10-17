@@ -5,6 +5,22 @@ All notable changes to SiteWake are recorded here. The format follows
 [Semantic Versioning](https://semver.org/). Each entry corresponds to a git tag
 `vX.Y.Z` and a GitHub Release with the same notes.
 
+## 1.0.2 - 2026-10-17
+
+What `./setup` reports about its own result.
+
+### Fixed
+
+- **`./setup` called a working stack "not ready"** — the port check only looked at containers (`docker ps --filter publish`), so a server that is not a container, such as a development server, went unseen. Docker could then still bind the port on one address family while every health probe reached the other server, and the report blamed a slow machine for a stack that had been ready for seconds. The port is now asked what it is before the stack starts and again if the wait ends on a reply that is not SiteWake's, and the report names the other server instead of guessing.
+- **The console address could be one this machine cannot reach** — a LAN or public address was printed and `http://localhost:<port>` never was, which left a reader on a laptop with no address to try. Both are printed now.
+- **The "check again" hint always said port 3000** — it now carries the port the install actually uses.
+- **Capability experience reconciliation failed on a fresh database** — `relation "site_agent_v2_episodes" does not exist`. The reconcile path ensured the V3 schema but joins a V2 table, and the two schemas have separate storage versions and caches, so the table was missing until something else created it. Both are ensured now.
+
+### Changed
+
+- The README links the live demo: [demo-website.sitewake.ai](https://demo-website.sitewake.ai) and [demo-console.sitewake.ai](https://demo-console.sitewake.ai).
+- The README is a quarter shorter. Gone: the comparison against "traditional web agents", which rested on a claim about other products that nothing here substantiates; a "Speed" line claiming published capabilities run with no model call, which is not what happens; the self-evolution and architecture diagrams; the browser SDK method list; the header logo; and nine troubleshooting entries. The install path, the model setup and the five failures a first install actually hits are unchanged.
+
 ## 1.0.1 - 2026-10-15
 
 Object storage images follow MinIO's withdrawal from free distribution.

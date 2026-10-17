@@ -269,7 +269,8 @@ export async function printReport({ argv = [], env = process.env, io, paths = {}
   const envFile = paths.dockerEnvFile || DOCKER_ENV_FILE;
   const existing = parseEnvFile((await readOptional(envFile)) ?? "");
   const example = parseEnvFile((await readOptional(paths.containerExampleFile || CONTAINER_EXAMPLE_FILE)) || "");
-  const origin = defaultOrigin({ existing, example, env: {}, interfaces: {} }) || `http://localhost:${existing.get("SITEWAKE_PORT") || DEFAULT_PORT}`;
+  const port = String(existing.get("SITEWAKE_PORT") || DEFAULT_PORT);
+  const origin = defaultOrigin({ existing, example, env: {}, interfaces: {} }) || `http://localhost:${port}`;
   const lan = lanOriginBesides(origin, { existing, example, env, interfaces });
   const publicIp = String(env.SITEWAKE_SETUP_PUBLIC_IP || "").trim();
   let health = null;
@@ -286,8 +287,13 @@ export async function printReport({ argv = [], env = process.env, io, paths = {}
     if (kind === "stopped") log(`  ${copy.setup.reportStoppedOther(a)}`);
     else if (kind === "rotated") log(`  ${copy.setup.reportRotatedProject(a, b)}`);
     else if (kind === "port-busy") log(`  ${copy.setup.reportPortBusy(a, b)}`);
+    else if (kind === "port-foreign") log(`  ${copy.setup.reportPortForeign(a)}`);
   }
   log(`  ${copy.setup.reportConsole(origin)}`);
+  // The console address is a LAN or public address this machine cannot always
+  // reach itself, and localhost — which always works from here — was never
+  // printed, so a reader had no address left to try.
+  if (!origin.startsWith(`http://localhost:`)) log(`  ${copy.setup.reportLocal(`http://localhost:${port}`)}`);
   if (lan) log(`  ${copy.setup.reportLan(lan)}`);
   if (publicIp && origin.includes(`//${publicIp}:`)) log(`  ${copy.setup.reportSecurityGroup(new URL(origin).port || String(DEFAULT_PORT))}`);
   if (health?.services) {
@@ -296,7 +302,7 @@ export async function printReport({ argv = [], env = process.env, io, paths = {}
     if (services.databaseHint) log(`  ${services.databaseHint}`);
   }
   log("");
-  for (const line of ready ? copy.setup.reportNextReady(origin) : copy.setup.reportNextNotReady) log(`  ${line}`);
+  for (const line of ready ? copy.setup.reportNextReady(origin) : copy.setup.reportNextNotReady(port)) log(`  ${line}`);
   log("");
   return failed ? 1 : 0;
 }

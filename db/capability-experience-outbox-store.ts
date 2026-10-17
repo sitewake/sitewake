@@ -2,7 +2,7 @@ import { assertCapabilityStartUrl } from "../lib/capability-center-v2/site-entry
 import type { CapabilityExperienceIntake } from "../lib/capability-center-v2/experience-intake";
 import { redactSensitiveText } from "../lib/site-knowledge/sensitive-data";
 import { getD1Binding, type D1DatabaseLike, type D1PreparedStatementLike } from "./index";
-import { ensureSiteAgentV3Schema } from "./site-agent-schema";
+import { ensureSiteAgentV2Schema, ensureSiteAgentV3Schema } from "./site-agent-schema";
 import { getAgentRunInternal } from "./agent-run-store";
 import { getSiteAgentOverview, getTaskEpisodeById } from "./site-agent-store";
 import {
@@ -279,6 +279,10 @@ async function processItem(item: CapabilityExperienceOutboxItem) {
 export async function reconcileCapabilityExperienceOutbox(limit = 100) {
   const database = getD1Binding();
   if (!database) return { enqueued: 0, persistence: "memory" as const };
+  // The join below reads site_agent_v2_episodes, and only the V2 schema creates
+  // it: the two schemas have separate storage versions and separate caches, so
+  // ensuring V3 alone leaves that table missing on a fresh database.
+  await ensureSiteAgentV2Schema(database);
   await ensureSiteAgentV3Schema(database);
   const candidates = await database.prepare(`SELECT e.episode_json AS episodeJson,r.run_json AS runJson
     FROM site_agent_v2_episodes e

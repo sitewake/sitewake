@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="public/brand/sitewake-mark.svg" alt="SiteWake" width="96" height="96"/>
-
 # SiteWake
 
 ### 网站原生的 AI Agent —— 一行代码，无限能力
@@ -9,6 +7,8 @@
 **把任何网站变成一个智能 Agent：理解你的用户、操作你的界面、自己学会新技能。**
 
 🌐 **官网：[sitewake.ai](https://sitewake.ai)**
+
+🎮 **在线体验：[demo-website.sitewake.ai](https://demo-website.sitewake.ai) · [demo-console.sitewake.ai](https://demo-console.sitewake.ai)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
@@ -51,32 +51,12 @@
 
 ## 🎯 为什么是 SiteWake？
 
-大多数「网页 Agent」每次请求都要在服务端启动一个无头浏览器 —— 慢、无状态、看不到用户的真实上下文。**SiteWake 是 UI 原生的**：Agent 就活在你的页面*里*。
+Agent 跑在你的页面里，用访客自己的会话：
 
-| | 传统网页 Agent | **SiteWake** |
-|---|---|---|
-| 执行方式 | 每次请求一个无头浏览器 | 用户真实的页面、真实的会话 |
-| 登录态 | 重新认证 / 丢失 | 天然继承 |
-| 学习 | 没有 —— 同样的错误一犯再犯 | 成功 → 经过验证、可复用的能力 |
-| 接入 | 需要 API / MCP Runtime | 一个 `<script>` 标签 |
-| 速度 | 每次冷启动 | 已发布能力确定性执行，不调用大模型 |
-
-### 自我进化闭环
-
-```text
-用户说出目标
-  └─ Agent 理解上下文，选择工具
-       ├─ 查询网站知识：商品、页面类型、已知路径
-       ├─ 调用已发布能力：像函数一样，有真实返回值
-       ├─ 操作当前页面：只用于真正未知的缺口
-       └─ 缺参数：就地追问，绝不猜
-
-成功 → AI 设计能力契约 → AI 在独立浏览器里编写程序
-     → 独立真实重放 → 发布为全站共享的能力
-
-失败 → 区分业务拒绝与执行故障
-     → 只修真正的执行缺口
-```
+- **执行方式** —— 访客真实的页面、真实的会话
+- **登录态** —— 天然继承，不需要重新认证
+- **学习** —— 一次成功沉淀为经过验证、可复用的能力
+- **接入** —— 一个 `<script>` 标签
 
 每一次真实任务都让你网站的 Agent 更聪明。一页一页，控制台被学到的知识点亮。
 
@@ -95,6 +75,8 @@
 ---
 
 ## 🚀 快速开始
+
+在线体验：[demo-website.sitewake.ai](https://demo-website.sitewake.ai) · [demo-console.sitewake.ai](https://demo-console.sitewake.ai)
 
 二选一：
 
@@ -175,60 +157,21 @@ Windows 上没有 WSL 的话，`./setup` 就是 `node scripts/setup.mjs` —— 
 
 **控制台说模型未配置** —— 打开**设置 → 模型**（或引导第三步）接入一个；在此之前，需要模型的功能都不会运行。
 
-**模型验证报 401 或 403** —— 服务不接受这个密钥。检查密钥本身，以及它是否属于该 Base URL 对应的服务。
+**模型验证失败** —— 401 或 403 是服务不接受这个密钥；404 多半是 Base URL 少了或多了 `/v1`。按提供方文档原样填写，例如 `https://api.openai.com/v1`。
 
-**模型验证报 404** —— 多半是 Base URL 少了或多了 `/v1`。按提供方文档原样填写，例如 `https://api.openai.com/v1`。
+**控制台说「创建网站没有成功」，或提示这个控制台地址没有管理权限** —— 管理操作必须来自打开控制台的那个地址。通过代理或隧道打开时，把 `.env` 里的 `SITEWAKE_PUBLIC_ORIGIN` 设成你实际打开的地址，再重启。
 
-**模型验证连不上** —— 检查 Base URL 和服务器的网络；请求是从控制面发出的，只在你 shell 里设置的代理对它不可见。
+**网站是 https，控制台是 http** —— 浏览器会拦掉 https 页面里的 http 脚本。控制台的安装步骤会识别这种情况并给出可用的接入方式；要长期解决，在端口 3000 前面加一层 https，并写进 `SITEWAKE_PUBLIC_ORIGIN`。
 
-**`./setup` 在本机构建镜像而不是拉取** —— 两条路得到的是同一套服务，构建在全新机器上几分钟，只有第一次。已公开的镜像不需要任何账号，直接拉取。版本还以私有方式发布时，`./setup` 会用这台机器上已有的 GitHub 凭据去取 —— `GITHUB_TOKEN`/`GH_TOKEN`、登录过的 `gh` CLI，或者 `git clone` 当时用的那一份 —— 全程不会再问你一次；都没有就直接从源码构建。要从加速器或自己的仓库拉取，把 `.env` 里的 `SITEWAKE_IMAGE_REGISTRY`（以及 `SITEWAKE_IMAGE_TAG`）指过去。
+**`control-plane` 一直 unhealthy，日志是 `password authentication failed`** —— 上一次安装的数据卷保留着当时的密码。想重新开始：`docker compose down -v`；想保留旧数据：把当时的 `POSTGRES_PASSWORD` 和 `MINIO_ROOT_PASSWORD` 填回 `.env`。
 
-**从源码构建远不止几分钟** —— 构建要从 npm 源下载依赖，这台机器到 npm 官方源的线路很慢时，光这一步就可能要大半个小时。`./setup` 会先实测几个已知的 npm 源，哪个明显更快就用哪个构建（会打印选中的源；每个包仍按 lockfile 里的哈希校验）。要固定用某个源，把 `SITEWAKE_NPM_REGISTRY` 写进 `.env`，例如 `https://registry.npmmirror.com`，再运行一次 `./setup`。
-
-**`docker compose` 拉不到 `minio/minio`** —— MinIO 已撤掉免费分发：`minio/minio` 和 `minio/mc` 仓库在 Docker Hub 和 `quay.io` 上都拒绝匿名拉取，`dl.min.io` 返回 `410 Gone`。SiteWake 改用 Pigsty 项目基于同一份 AGPL 源码构建的社区镜像（`pgsty/minio`、`pgsty/mc`）。仓库既然已经不公开，镜像加速器也绕不过去；要用自己的副本，把 `.env` 里的 `SITEWAKE_MINIO_IMAGE` 和 `SITEWAKE_MC_IMAGE` 指过去，再运行一次 `./setup`。
-
-**控制台说「创建网站没有成功」，或提示这个控制台地址没有管理权限** —— 管理操作必须来自打开控制台的那个地址。用 `http://localhost:3000` 或局域网 IP 打开时无需配置；通过代理或隧道打开时，让代理转发 `X-Forwarded-Proto` 与 `X-Forwarded-Host`，或把 `.env` 里的 `SITEWAKE_PUBLIC_ORIGIN` 设成你实际打开的地址（`https://console.example.com`）再重启。设置过控制台密码的，先登录。
-
-**`npm run dev` 提示 "Blocked request. This host is not allowed"** —— 开发服务器默认只允许 localhost 和 IP 地址，域名需要显式声明。启动前设置 `SITEWAKE_PUBLIC_ORIGIN`（或 `SITEWAKE_DEV_ALLOWED_HOSTS=my-workspace.example.run`，`all` 表示任意域名）。
-
-**我的网站是 https，控制台是 http** —— 浏览器会拦掉 https 页面里的 http 脚本，直接引用控制台地址不可能生效。第二步会发现这一点并换成可行的装法：让你的网站转发一条路径（`/_sitewake/*` → `http://你的控制台:3000/*`），SDK 从你自己的域名加载，全程同源 —— 没有混合内容，内容安全策略也只需要 `'self'`。浏览器只访问你自己的 https 域名；转发那一跳在服务器之间、是明文 http，页面快照和运行令牌都走它 —— 内测够用，长期建议换成 https。控制台会给出 Vercel、Next.js、Netlify、nginx、Caddy 的写法；提示词让 IDE 按项目实际用的东西来改（Apache、Express、Nuxt、Astro 等同理），而托管本身不能转发时（GitHub Pages、对象存储、Shopify 这类平台，检测能认出来并直说），不允许用前端手段绕过。如果想一次解决所有站点，就给控制台配一个 https 地址（3000 端口前放 TLS 反代或隧道），写进 `.env` 的 `SITEWAKE_PUBLIC_ORIGIN`。
-
-**代码装上了，网站却始终连不上** —— 第二步在给出代码之前会从服务端访问一次你的网站，并直接说明查到的问题：https 页面配 http 控制台（浏览器会拦）、站点的内容安全策略没放行控制台（提示词里会写明要补的 `script-src` / `connect-src`）、或者这个地址会跳到与登记来源不同的地方。跨域本身从来不是原因：控制台对所有来源放行，SDK 也不带凭据。
-
-**SDK 在我的网站上加载不出来** —— `SITEWAKE_PUBLIC_ORIGIN` 必须是访客浏览器能访问到的地址，服务器上不能填 `localhost`。如果你的网站是 HTTPS，这个 Origin 也必须是 HTTPS：在 3000 端口前面放一个 TLS 反向代理（Caddy、nginx、Cloudflare Tunnel），把那个 HTTPS Origin 写进 `.env` 的 `SITEWAKE_PUBLIC_ORIGIN`，再 `docker compose up -d`。
-
-**`control-plane` 一直 unhealthy，日志里是 `password authentication failed for user "sitewake"`** —— 机器上还留着上一次安装的数据卷，Postgres 只认第一次启动时的密码，这次 `./setup` 新生成的密码打不开它。全新安装：`docker compose down -v`（会删掉旧数据），再 `docker compose up -d`。要保留旧数据：把之前的 `POSTGRES_PASSWORD` 和 `MINIO_ROOT_PASSWORD` 填回 `.env`。`./setup` 发现这种卷时会警告；`curl -s http://127.0.0.1:3000/api/health` 会报 `"database":"auth_failed"`。
-
-**`npm run dev` 与 Playwright 浏览器内核** —— 缺内核（Linux 上还有它依赖的系统库）时，`npm run dev` 会自己装好；系统库需要 root，进程已是 root 或 sudo 免密时直接装，否则会把那一条命令打给你。
-
----
-
-## 🏗️ 架构
-
-```text
-┌────────────────────────── 你的网站 ─────────────────────────────┐
-│  <script sitewake.js>                                            │
-│    └─ 用户 Agent ── DOM 驱动 ── BrowserPort（跨页）              │
-└─────────────────────────────┬────────────────────────────────────┘
-                              │ site-agent 协议
-┌─────────────────────────────▼────────────────────────────────────┐
-│                       控制面（Next.js）                           │
-│   AgentRun 存储 · 网站知识 · 发布门禁 · 控制台                    │
-├──────────────────┬──────────────────────┬────────────────────────┤
-│  AI 程序编写者    │  验证 worker         │  执行 worker           │
-│                  │  （独立重放）         │  （确定性执行）         │
-├──────────────────┴──────────────────────┴────────────────────────┤
-│               PostgreSQL  ·  MinIO  ·  Docker Compose            │
-└──────────────────────────────────────────────────────────────────┘
-```
+`docker compose logs --tail=60 control-plane` 会说明服务自己认为哪里不对。
 
 ---
 
 ## 📚 文档
 
 运行 SiteWake 需要的材料都在本仓库：本 README 讲安装与使用，[CONTRIBUTING.md](CONTRIBUTING.md) 讲怎么运行与修改代码，[SECURITY.md](SECURITY.md) 讲部署边界，[CHANGELOG.md](CHANGELOG.md) 记录每个版本的变化。
-
-浏览器 SDK 的接口——`SiteWake.open()`、`SiteWake.run()`、`SiteWake.call()`、`SiteWake.teach()`、`SiteWake.cancel()`、`SiteWake.getRelease()`——写在实现它的代码旁边：[client/user-agent-client.ts](client/user-agent-client.ts)。
 
 [sitewake.ai](https://sitewake.ai) 是项目主页。
 

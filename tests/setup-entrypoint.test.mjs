@@ -265,8 +265,15 @@ for arg do
     https://registry.npmjs.org/*) printf '48000.000'; exit 28;;
     https://registry.npmmirror.com/*) printf '9500000.000'; exit 0;;
     */api/health)
-      if [ -f "${bin.dir}/health-asked" ]; then printf '{"status":"ready","services":{"database":"ready"}}'; else : > "${bin.dir}/health-asked"; printf '{"status":"degraded","services":{"database":"ready"}}'; fi
-      exit 0;;
+      # Ask 1 is the port check that runs before the stack starts, where a real
+      # machine has nothing listening yet; then one degraded answer, then ready.
+      asks=$(cat "${bin.dir}/health-asks" 2>/dev/null || echo 0)
+      asks=$((asks + 1)); printf '%s' "$asks" > "${bin.dir}/health-asks"
+      case "$asks" in
+        1) exit 7;;
+        2) printf '{"status":"degraded","services":{"database":"ready"}}'; exit 0;;
+        *) printf '{"status":"ready","services":{"database":"ready"}}'; exit 0;;
+      esac;;
   esac
 done
 exit 22

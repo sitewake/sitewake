@@ -220,6 +220,9 @@ if [ -n "$runner" ]; then
       case "$h" in *'"status":"ready"'*) break;; esac
       # A password mismatch will not heal by waiting.
       case "$h" in *'"database":"auth_failed"'*) break;; esac
+      # Neither will a reply from a server that is not SiteWake: something else
+      # owns this port, and waiting does not change whose it is.
+      case "$h" in ""|*'"status":"'*) ;; *) break;; esac
       i=$((i + 1)); printf '.' >&2; sleep 5
     done
     printf '\n' >&2
@@ -249,6 +252,22 @@ if [ -n "$runner" ]; then
       report "" --failed
       exit 1
     fi
+  fi
+
+  # A process that is not a container can hold the port too — a dev server, or any
+  # other app. `docker ps` cannot see those, and Docker may still bind the port
+  # on one address family only, so the stack comes up while every probe lands on
+  # the other server. Ask the port what it is: a reply that is not SiteWake's
+  # health document settles who owns it.
+  if command -v curl >/dev/null 2>&1; then
+    case "$(curl -sS --max-time 3 "http://127.0.0.1:$port/api/health" 2>/dev/null)" in
+      ""|*'"status":"'*) ;;
+      *)
+        note "port-foreign:$port"
+        report "" --failed
+        exit 1
+        ;;
+    esac
   fi
 
   # 2. Start. The prebuilt images of this version are pulled when this machine
@@ -360,6 +379,13 @@ if [ -n "$runner" ]; then
       docker compose up -d || { report "" --failed; exit 1; }
       health=$(health_wait)
       ;;
+  esac
+
+  # Reached when the wait ended on a reply that is not SiteWake's: name the
+  # cause instead of leaving the report to blame a slow machine.
+  case "$health" in
+    ""|*'"status":"'*) ;;
+    *) note "port-foreign:$port" ;;
   esac
 
   report "$health"

@@ -101,9 +101,11 @@ export const en = {
     reportFailed: "docker compose could not start the stack.",
     reportStoppedOther: (project) => `Stopped the earlier SiteWake install "${project}" that was holding the port; its data volumes were kept.`,
     reportPortBusy: (port, holder) => `Port ${port} is in use by "${holder}", which is not SiteWake. Stop it, or set SITEWAKE_PORT in .env and run ./setup again.`,
+    reportPortForeign: (port) => `Port ${port} answers already, but not as SiteWake — another server is using it. Stop that server, or set SITEWAKE_PORT in .env and run ./setup again.`,
     reportRotatedProject: (from, to) => `The data volume of "${from}" was started with a different password, so this install now runs as "${to}" with fresh volumes; the old volumes were kept (docker volume ls).`,
     reportConsole: (origin) => `Open the console:  ${origin}`,
     reportLan: (lan) => `From the private network:  ${lan}`,
+    reportLocal: (local) => `On this machine:  ${local}`,
     reportSecurityGroup: (port) => `Visitors reach it only if TCP ${port} is open in the cloud security group / firewall.`,
     reportHealth: (status, services) => `Health: ${status} (${services.join(", ")})`,
     reportNextReady: (origin) => [
@@ -111,9 +113,9 @@ export const en = {
       `Set a console password at ${origin}/access before exposing it to the internet.`,
       "Later: edit .env and run  docker compose up -d  to change settings; ./setup keeps what it generated.",
     ],
-    reportNextNotReady: [
+    reportNextNotReady: (port) => [
       "See what is wrong:  docker compose ps   and   docker compose logs --tail=60 control-plane",
-      "Check again:  curl -s http://127.0.0.1:3000/api/health",
+      `Check again:  curl -s http://127.0.0.1:${port}/api/health`,
       "The stack keeps retrying in the background; a slow machine can take a few minutes.",
     ],
 
@@ -205,9 +207,11 @@ export const zh = {
     reportFailed: "docker compose 没能把服务启动起来。",
     reportStoppedOther: (project) => `已停掉占着端口的上一套 SiteWake 安装「${project}」；它的数据卷保留着。`,
     reportPortBusy: (port, holder) => `端口 ${port} 被「${holder}」占用，它不是 SiteWake。请停掉它，或在 .env 里设置 SITEWAKE_PORT 后重新运行 ./setup。`,
+    reportPortForeign: (port) => `端口 ${port} 已经有响应，但响应的不是 SiteWake —— 它被另一个服务占用了。请停掉那个服务，或在 .env 里设置 SITEWAKE_PORT 后重新运行 ./setup。`,
     reportRotatedProject: (from, to) => `「${from}」的数据卷是用另一个密码初始化的，本次安装改以「${to}」运行、使用新的数据卷；旧卷原样保留（docker volume ls）。`,
     reportConsole: (origin) => `打开控制台：  ${origin}`,
     reportLan: (lan) => `内网访问：  ${lan}`,
+    reportLocal: (local) => `本机访问：  ${local}`,
     reportSecurityGroup: (port) => `访客能访问到的前提是云安全组 / 防火墙放行了 TCP ${port}。`,
     reportHealth: (status, services) => `健康状态：${status}（${services.join("，")}）`,
     reportNextReady: (origin) => [
@@ -215,9 +219,9 @@ export const zh = {
       `暴露到公网之前，先到 ${origin}/access 设置控制台密码。`,
       "以后改配置：改 .env 再 docker compose up -d；重跑 ./setup 会保留已生成的值。",
     ],
-    reportNextNotReady: [
+    reportNextNotReady: (port) => [
       "查看原因：  docker compose ps   和   docker compose logs --tail=60 control-plane",
-      "再查一次：  curl -s http://127.0.0.1:3000/api/health",
+      `再查一次：  curl -s http://127.0.0.1:${port}/api/health`,
       "服务会在后台持续重试；机器慢的话可能要几分钟。",
     ],
 

@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="public/brand/sitewake-mark.svg" alt="SiteWake" width="96" height="96"/>
-
 # SiteWake
 
 ### The Website-Native AI Agent — One Line of Code, Infinite Capability
@@ -9,6 +7,8 @@
 **Turn any website into an intelligent agent that understands your users, operates your UI, and teaches itself new skills.**
 
 🌐 **Official Website: [sitewake.ai](https://sitewake.ai)**
+
+🎮 **Live demo: [demo-website.sitewake.ai](https://demo-website.sitewake.ai) · [demo-console.sitewake.ai](https://demo-console.sitewake.ai)**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
@@ -51,32 +51,12 @@ Drop this snippet into any page — plain HTML, React, Next.js, Vue, anything th
 
 ## 🎯 Why SiteWake?
 
-Most "web agents" launch a fresh server-side browser for every request — slow, stateless, and blind to your user's context. **SiteWake is UI-native**: the agent lives *inside* your page.
+The agent runs inside your page, in the visitor's own session:
 
-| | Traditional Web Agents | **SiteWake** |
-|---|---|---|
-| Execution | Headless browser per request | User's real page, real session |
-| Login state | Re-authenticated / lost | Inherited naturally |
-| Learning | None — same mistakes forever | Success → verified, reusable Capability |
-| Integration | API/MCP runtime required | One `<script>` tag |
-| Speed | Cold start every time | Published capabilities run deterministically, no LLM call |
-
-### The Self-Evolution Loop
-
-```text
-User states a goal
-  └─ The agent understands context and picks tools
-       ├─ Query site knowledge: products, page types, known paths
-       ├─ Call published Capabilities: real return values, like functions
-       ├─ Operate the current page: only for genuinely unknown gaps
-       └─ Missing parameters: asks in-place, never guesses
-
-Success → AI designs capability contract → AI authors program in isolated browser
-        → Independent real replay → Published shared Capability
-
-Failure → Distinguish business rejection from execution fault
-        → Fix only real execution gaps
-```
+- **Execution** — the visitor's real page, with their real session
+- **Login state** — inherited, with nothing to re-authenticate
+- **Learning** — a success becomes a verified, reusable Capability
+- **Integration** — one `<script>` tag
 
 Every real task makes your site's agent smarter. Page by page, your console lights up with learned knowledge.
 
@@ -95,6 +75,8 @@ Not a training dashboard — a **living agent** you can watch grow:
 ---
 
 ## 🚀 Quick Start
+
+Live demo: [demo-website.sitewake.ai](https://demo-website.sitewake.ai) · [demo-console.sitewake.ai](https://demo-console.sitewake.ai)
 
 You need **one** of:
 
@@ -175,60 +157,21 @@ For another provider, verification stops with `provider payload policy: …`. Ad
 
 **The console says no model is connected** — open **Settings → Models** (or onboarding step three) and connect one; nothing that needs the model runs until then.
 
-**Model verification says 401 or 403** — the service did not accept the key. Check the key, and that it belongs to the service at that base URL.
+**Model verification fails** — a 401 or 403 means the service rejected the key; a 404 usually means the base URL is missing or has an extra `/v1`. Enter it exactly as the provider documents it, for example `https://api.openai.com/v1`.
 
-**Model verification says 404** — the base URL is usually missing or has an extra `/v1`. Enter the URL exactly as the provider documents it, for example `https://api.openai.com/v1`.
+**The console says the site could not be created, or "this console address is not allowed"** — management actions must come from the address the console is served at. Behind a proxy or tunnel, set `SITEWAKE_PUBLIC_ORIGIN` in `.env` to the address you open, and restart.
 
-**Model verification cannot connect** — check the base URL and the server's network access; the request is sent from the control plane, so a proxy configured only in your shell is not visible to it.
+**Your site is https and the console is http** — a browser blocks a plain-http script inside an https page. The console's install step detects this and offers the install that works; for a lasting fix, put https in front of port 3000 and set that as `SITEWAKE_PUBLIC_ORIGIN`.
 
-**`./setup` builds the images instead of pulling them** — both paths produce the same stack; building takes a few minutes on a fresh machine, once. Published images are pulled with no account at all. While a release is published privately, `./setup` reaches it with a GitHub credential this machine already has — `GITHUB_TOKEN`/`GH_TOKEN`, a signed-in `gh` CLI, or the one `git clone` itself used — and never asks for one; with none of those it simply builds. To pull from a mirror or your own registry, set `SITEWAKE_IMAGE_REGISTRY` (and `SITEWAKE_IMAGE_TAG`) in `.env`.
+**`control-plane` stays unhealthy with `password authentication failed`** — a data volume from an earlier install kept its original password. `docker compose down -v` starts fresh; to keep the old data, put the earlier `POSTGRES_PASSWORD` and `MINIO_ROOT_PASSWORD` back into `.env`.
 
-**Building from source takes far longer than a few minutes** — the build downloads its packages from npm's registry, and on a machine whose route there crawls that alone can take most of an hour. `./setup` measures the known npm registries first and builds from a mirror when it is clearly faster (it prints the one it chose; every package is still verified against the lockfile's integrity hashes). To force one registry, set `SITEWAKE_NPM_REGISTRY` in `.env`, for example `https://registry.npmmirror.com`, and run `./setup` again.
-
-**`docker compose` cannot pull `minio/minio`** — MinIO withdrew its free distribution: the `minio/minio` and `minio/mc` repositories refuse anonymous pulls on both Docker Hub and `quay.io`, and `dl.min.io` answers `410 Gone`. SiteWake pulls the Pigsty project's community builds of the same AGPL sources instead (`pgsty/minio`, `pgsty/mc`). A registry mirror cannot reach a repository that is no longer public, so a mirror does not work around this; to pull your own copies, set `SITEWAKE_MINIO_IMAGE` and `SITEWAKE_MC_IMAGE` in `.env` and run `./setup` again.
-
-**The console says the site could not be created, or "this console address is not allowed"** — management actions must come from the address the console is served at. Opening it at `http://localhost:3000` or a LAN IP works as is; behind a proxy or tunnel, the proxy should pass `X-Forwarded-Proto` and `X-Forwarded-Host`, or set `SITEWAKE_PUBLIC_ORIGIN` in `.env` to the address you open (`https://console.example.com`) and restart. If a console password is set, sign in first.
-
-**`npm run dev` answers "Blocked request. This host is not allowed"** — the dev server allows localhost and IP addresses; a hostname must be named. Set `SITEWAKE_PUBLIC_ORIGIN` (or `SITEWAKE_DEV_ALLOWED_HOSTS=my-workspace.example.run`, `all` for any) before `npm run dev`.
-
-**My website is https and the console is plain http** — a browser blocks a plain-http script inside an https page, so the direct snippet cannot work. Step two notices this and switches to the install that does: your site forwards one path to the console (`/_sitewake/*` → `http://your-console:3000/*`) and the SDK loads from your own domain, so nothing is cross-origin — no mixed content, and a Content-Security-Policy needs no entry beyond `'self'`. The browser only ever talks to your own https domain; the forwarding hop happens between servers, in plain http, and page snapshots and run tokens travel it — fine for testing, worth replacing with https for the long run. The console shows the rewrite for Vercel, Next.js, Netlify, nginx and Caddy; the prompt tells your IDE to use whatever this project really has (Apache, Express, Nuxt, Astro and the rest), and to stop rather than improvise if the host only serves files — GitHub Pages, object storage or a platform like Shopify, which the check recognises and says so. If you would rather fix it once for every site, give the console an https address — a TLS reverse proxy or a tunnel in front of port 3000 — and put it in `SITEWAKE_PUBLIC_ORIGIN` in `.env`.
-
-**The console's snippet is installed but the site never connects** — step two checks the site from the server before handing the snippet over and names what it found: an https page with an http console (blocked by the browser), a Content-Security-Policy that does not admit the console (the prompt then tells your IDE which `script-src` / `connect-src` entries to add), or an address that redirects to another origin than the one registered. CORS is never the cause: the control plane answers every origin and the SDK sends no credentials.
-
-**The SDK does not load on my site** — `SITEWAKE_PUBLIC_ORIGIN` must be an address your visitors' browsers can reach, not `localhost` on a server. If your website is served over HTTPS, the origin must be HTTPS as well: put a TLS reverse proxy (Caddy, nginx, Cloudflare Tunnel) in front of port 3000, set that HTTPS origin as `SITEWAKE_PUBLIC_ORIGIN` in `.env` and run `docker compose up -d`.
-
-**`control-plane` stays unhealthy and its log says `password authentication failed for user "sitewake"`** — a data volume from an earlier install is still there, and Postgres keeps the password it was first started with, so the password `./setup` generated this time does not open it. Fresh install: `docker compose down -v` (deletes the old data), then `docker compose up -d`. To keep the old data instead, put the earlier `POSTGRES_PASSWORD` and `MINIO_ROOT_PASSWORD` back into `.env`. `./setup` warns about this when it finds such a volume; `curl -s http://127.0.0.1:3000/api/health` reports it as `"database":"auth_failed"`.
-
-**`npm run dev` and the Playwright browser** — `npm run dev` installs the browser, and on Linux its system libraries, when they are missing (system libraries need root: it uses it when the process has it or when sudo needs no password, and otherwise prints the one command to run).
-
----
-
-## 🏗️ Architecture
-
-```text
-┌────────────────────────── Your website ──────────────────────────┐
-│  <script sitewake.js>                                            │
-│    └─ User Agent ── DOM driver ── BrowserPort (cross-page)       │
-└─────────────────────────────┬────────────────────────────────────┘
-                              │ site-agent protocol
-┌─────────────────────────────▼────────────────────────────────────┐
-│                      Control plane (Next.js)                     │
-│   AgentRun store · Site knowledge · Release gate · Console       │
-├──────────────────┬──────────────────────┬────────────────────────┤
-│  AI program      │  Validation worker   │  Execution worker      │
-│  author          │  (independent replay)│  (deterministic runs)  │
-├──────────────────┴──────────────────────┴────────────────────────┤
-│               PostgreSQL  ·  MinIO  ·  Docker Compose            │
-└──────────────────────────────────────────────────────────────────┘
-```
+`docker compose logs --tail=60 control-plane` says what the stack itself thinks is wrong.
 
 ---
 
 ## 📚 Documentation
 
 Everything needed to run SiteWake is in this repository: this README installs and uses it, [CONTRIBUTING.md](CONTRIBUTING.md) covers running and changing the code, [SECURITY.md](SECURITY.md) the deployment boundary, [CHANGELOG.md](CHANGELOG.md) what each release changed.
-
-The browser SDK's surface — `SiteWake.open()`, `SiteWake.run()`, `SiteWake.call()`, `SiteWake.teach()`, `SiteWake.cancel()`, `SiteWake.getRelease()` — is documented beside the code that implements it, in [client/user-agent-client.ts](client/user-agent-client.ts).
 
 [sitewake.ai](https://sitewake.ai) is the project's home page.
 
