@@ -282,3 +282,32 @@ test("a Release carrying only part of a config still keeps what it has", async (
   assert.match(source, /const fallback = defaultAgentConfig\(\);\s*\n\s*const baseline = \{/,
     "the widget fills the gaps before using the served config as its baseline");
 });
+
+test("the overview's agent card reads this reader's language, not the generator's preference", async () => {
+  // The served shape: both languages generated, and the top-level brand/copy carrying
+  // whichever one the generator preferred. Reading those directly is what showed an
+  // English console the Chinese greeting.
+  const served = {
+    generated: {
+      zh: { displayName: "demo助手", launcherLabel: "打开 demo助手", welcomeTitle: "想在demo完成什么？", welcomeDescription: "", suggestions: [] },
+      en: { displayName: "demo assistant", launcherLabel: "Open the demo assistant", welcomeTitle: "What would you like to do on demo?", welcomeDescription: "", suggestions: [] },
+    },
+    generatedLocale: "zh",
+    overrides: { pinnedSuggestions: [] },
+    brand: { displayName: "demo助手", launcherLabel: "打开 demo助手" },
+    copy: { welcomeTitle: "想在demo完成什么？", welcomeDescription: "", composerPlaceholder: "", poweredByText: "" },
+  };
+  const english = resolveChromeCopy(served, "en");
+  assert.equal(english.displayName, "demo assistant");
+  assert.equal(english.welcomeTitle, "What would you like to do on demo?");
+  assert.doesNotMatch(english.displayName + english.welcomeTitle, /[\u4e00-\u9fff]/);
+  const chinese = resolveChromeCopy(served, "zh");
+  assert.equal(chinese.displayName, "demo助手", "a Chinese reader still gets the site's own words");
+
+  // And the card must go through that resolver rather than the raw fields, which is a
+  // source fact a rendered-output test would not pin.
+  const source = await readFile(new URL("../components/console/living-overview.tsx", import.meta.url), "utf8");
+  assert.ok(source.includes("resolveChromeCopy"), "the overview agent card must resolve copy for the reader");
+  assert.doesNotMatch(source, /agentConfig\.brand\.displayName|agentConfig\.copy\.welcomeTitle/,
+    "reading the top-level brand/copy shows one language to every reader");
+});

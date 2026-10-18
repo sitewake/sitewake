@@ -18,6 +18,9 @@ Text reaching a reader in the language they chose.
 - **Console diagnostics were a Chinese literal per error code** — two resolvers in `lib/site-knowledge/errors.ts` held nineteen messages between them, which had already drifted apart. Both read one dictionary section keyed by error code. Three API routes dropped redundant messages, since the code is what the console renders from.
 - **The home page was found by matching a Chinese page name** — so on an English-language site the fallback never fired and no area was preselected. It is found by path. Navigation verbs are likewise stripped in both languages.
 
+- **The overview's agent card showed one language to every reader** — it rendered the release's top-level `brand`/`copy`, which hold whichever language the generator preferred, while the agent settings page next to it already resolved per reader. The card now uses the same resolver and the console's locale setting.
+- **A visitor whose browser asks for neither language got Chinese** — the widget's fallback locale is English. The constant that chose it was also doing a second job, recording that an unlabelled stored record is Chinese in fact; those are now separate, so the fallback can be changed without relabelling old data.
+
 ### Changed
 
 - `i18n-coverage` locks in seven server-side files; its allowlist had stopped at components, which is why none of the above was caught.
