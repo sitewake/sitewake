@@ -5,6 +5,24 @@ All notable changes to SiteWake are recorded here. The format follows
 [Semantic Versioning](https://semver.org/). Each entry corresponds to a git tag
 `vX.Y.Z` and a GitHub Release with the same notes.
 
+## 1.0.3 - 2026-10-18
+
+Text reaching a reader in the language they chose.
+
+### Fixed
+
+- **A capability result was framed in the authoring language** — `Completed:`, `Yes`/`No`, `View details` and the brackets around a result title were literals in `capabilityCompletionText`, so an English visitor read an English answer inside a Chinese frame. The frame is interface copy and now comes from the widget catalog, which the visitor's locale selects.
+- **A contract's field labels stayed in the language they were authored in** — the labels come from the output schema's `title`, written once by the authoring model and stored. Contracts now carry `localizedTitles` beside `title`, resolved per reader, the same way `localizedNames` already works for a capability's display name; the authoring prompt asks for both languages. A contract authored before this still renders its stored label.
+- **The site knowledge view showed two invented area names in one language** — the areas this build creates when a site declares none of its own carried their copy inside `lib/site-knowledge/business-topology.ts`, a module with no locale. They now carry an id the renderer resolves, and the area's grouping key is hashed from that id rather than from the displayed name, so a reader's language no longer changes which pages group together.
+- **A new site's description was stored as a sentence in one language** — the console already renders a localised placeholder for an empty description; the stored default shadowed it. Nothing is stored now.
+- **Console diagnostics were a Chinese literal per error code** — two resolvers in `lib/site-knowledge/errors.ts` held nineteen messages between them, which had already drifted apart. Both read one dictionary section keyed by error code. Three API routes dropped redundant messages, since the code is what the console renders from.
+- **The home page was found by matching a Chinese page name** — so on an English-language site the fallback never fired and no area was preselected. It is found by path. Navigation verbs are likewise stripped in both languages.
+
+### Changed
+
+- `i18n-coverage` locks in seven server-side files; its allowlist had stopped at components, which is why none of the above was caught.
+- A new check keeps the console's copy catalogs out of the injected widget bundles, which `client/user-agent-copy.ts` had only documented as an intention.
+
 ## 1.0.2 - 2026-10-17
 
 What `./setup` reports about its own result.

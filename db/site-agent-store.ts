@@ -489,7 +489,10 @@ export async function createSiteAgent(input: {
   const id = safeId(input.id || host || input.name || `site-${Date.now().toString(36)}`) || `site-${Date.now().toString(36)}`;
   const profile: SiteProfile = {
     name: input.name?.trim() || host || id,
-    description: input.description?.trim() || "等待网站首次连接后由 AI 完成产品理解",
+    // Left empty rather than seeded with a sentence: the console already renders a
+    // localised placeholder for a blank description, and a stored default in one
+    // language shadowed it for every reader of the other.
+    description: input.description?.trim() || "",
     semanticSource: "program",
     visibility: input.visibility || "production",
     entryUrl,

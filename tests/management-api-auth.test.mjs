@@ -469,10 +469,9 @@ test("SiteAgent overview separates auth, permission, missing-resource, and datab
   fixture.state.siteAgentAccess = "forbidden";
   const forbidden = await fixture.route.GET(request(), context);
   assert.equal(forbidden.status, 403);
-  assert.deepEqual(await forbidden.json(), {
-    error: "site_agent_forbidden",
-    message: "当前账号没有访问这个网站 Agent 的权限。",
-  });
+  // The code is the whole response: the console renders the sentence from it, in the
+  // reader's language, so an API-side message would only ever be one language.
+  assert.deepEqual(await forbidden.json(), { error: "site_agent_forbidden" });
   assert.equal(fixture.state.storeCalls.at(-1), "siteAgentAccess");
 
   fixture.state.storeCalls = [];
@@ -492,9 +491,14 @@ test("SiteAgent overview separates auth, permission, missing-resource, and datab
   try {
     const databaseFailure = await fixture.route.GET(request(), context);
     assert.equal(databaseFailure.status, 503);
-    assert.deepEqual(await databaseFailure.json(), {
+    // The code and the retry flag are the contract. The message is a fallback for a
+    // console that does not know the code, and the server has no reader locale, so its
+    // wording is not pinned here.
+    const databaseBody = await databaseFailure.json();
+    assert.ok(typeof databaseBody.message === "string" && databaseBody.message.trim(), databaseBody.message);
+    assert.deepEqual({ ...databaseBody, message: undefined }, {
       error: "site_agent_database_failed",
-      message: "网站 Agent 数据暂时不可用，请稍后重试；如持续出现请联系管理员。",
+      message: undefined,
       retryable: true,
       phase: "site_agent_overview_database",
     });

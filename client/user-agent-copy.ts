@@ -21,7 +21,9 @@
  * customer's site must not leak to another's.
  */
 
+import type { CompletionCopy } from "../lib/capability-center-v2/result-presentation";
 export type WidgetLocale = "zh" | "en";
+
 /** Every language a reader can be in, so generated copy can be written for each. */
 export const WIDGET_LOCALES = ["zh", "en"] as const satisfies readonly WidgetLocale[];
 
@@ -402,6 +404,20 @@ const zh = {
     demonstrate: "我操作一次给你看",
   },
   /**
+   * The frame around a finished capability result. The facts inside it are authored per
+   * site and localised separately, through `localizedTitles` on the contract.
+   */
+  completion: {
+    completed: "已完成",
+    action: "操作",
+    separator: "：",
+    titleOpen: "「",
+    titleClose: "」",
+    yes: "是",
+    no: "否",
+    viewDetails: "查看详情",
+  },
+  /**
    * Failure explanations. Each answers two things: what happened, and what you can do
    * next. A bare error code dumps troubleshooting on the visitor, who can neither see
    * logs nor change the system.
@@ -471,7 +487,9 @@ const zh = {
   },
 };
 
-export type WidgetCopy = typeof zh;
+// The completion frame is consumed by `capabilityCompletionText`; typing it against
+// that contract means a field added there turns both catalogs red until translated.
+export type WidgetCopy = typeof zh & { completion: CompletionCopy };
 
 const en: WidgetCopy = {
   launcher: {
@@ -771,6 +789,16 @@ const en: WidgetCopy = {
     verify: "Check the page read-only",
     confirm: "Run it once more",
     demonstrate: "Let me show you",
+  },
+  completion: {
+    completed: "Completed",
+    action: "the action",
+    separator: ": ",
+    titleOpen: "\u201c",
+    titleClose: "\u201d",
+    yes: "Yes",
+    no: "No",
+    viewDetails: "View details",
   },
   error: {
     inputRequired: "To finish this I need one more piece of information from you.",

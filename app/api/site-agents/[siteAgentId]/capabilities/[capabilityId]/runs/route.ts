@@ -57,7 +57,6 @@ export async function POST(request: Request, context: RouteContext) {
     return siteAgentJson(
       {
         error: "connection_selection_unsupported",
-        message: "当前每个 SiteAgent 只有一个连接；请勿提交 connectionId。",
       },
       400,
     );
@@ -88,9 +87,9 @@ export async function POST(request: Request, context: RouteContext) {
     return siteAgentJson(
       {
         error: code,
-        message: code === "capability_run_create_failed"
-          ? "能力运行创建失败。"
-          : message,
+        // Only a message the caller supplied is forwarded; the code alone carries the
+        // rest, and the console renders copy from it in the reader's language.
+        message: code === "capability_run_create_failed" ? undefined : message,
       },
       capabilityRunErrorStatus(code),
     );

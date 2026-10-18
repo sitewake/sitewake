@@ -5,13 +5,25 @@ import {
   classifySiteAgentError,
   siteAgentClientErrorMessage,
 } from "../lib/site-knowledge/errors.ts";
+import { copy, t } from "../lib/i18n/index.ts";
+
+// Read from the dictionary: pinning the sentence here would pass while a reader saw
+// the wrong language, which is the bug these messages had.
+const diagnostic = t().diagnostic;
 
 test("Site Agent client preserves actionable auth, permission, and resource errors", () => {
-  assert.match(siteAgentClientErrorMessage(401, { error: "unauthorized" }), /登录状态已失效/);
-  assert.match(siteAgentClientErrorMessage(403, { error: "site_agent_forbidden" }), /没有访问/);
-  assert.match(siteAgentClientErrorMessage(404, { error: "site_agent_not_found" }), /找不到/);
-  assert.match(siteAgentClientErrorMessage(503, { error: "site_agent_database_failed" }), /数据暂时不可用/);
-  assert.match(siteAgentClientErrorMessage(0, undefined), /无法连接/);
+  assert.equal(siteAgentClientErrorMessage(401, { error: "unauthorized" }), diagnostic.unauthorized);
+  assert.equal(siteAgentClientErrorMessage(403, { error: "site_agent_forbidden" }), diagnostic.site_agent_forbidden);
+  assert.equal(siteAgentClientErrorMessage(404, { error: "site_agent_not_found" }), diagnostic.site_agent_not_found_pick_again);
+  assert.equal(siteAgentClientErrorMessage(503, { error: "site_agent_database_failed" }), diagnostic.site_agent_database_failed);
+  assert.equal(siteAgentClientErrorMessage(0, undefined), diagnostic.console_unreachable);
+  // Every code the resolver can answer with must exist in both catalogs, or one
+  // language silently falls through to a different message.
+  for (const key of ["unauthorized", "site_agent_forbidden", "site_agent_not_found_pick_again", "site_agent_database_failed", "console_unreachable"]) {
+    assert.ok(copy("zh").diagnostic[key]?.trim(), `zh is missing ${key}`);
+    assert.ok(copy("en").diagnostic[key]?.trim(), `en is missing ${key}`);
+    assert.notEqual(copy("zh").diagnostic[key], copy("en").diagnostic[key], `${key} is not translated`);
+  }
 });
 
 test("Site Agent error classification keeps database and runner failures distinct", () => {
@@ -24,7 +36,7 @@ test("Site Agent error classification keeps database and runner failures distinc
     code: "site_agent_database_failed",
     status: 503,
     phase: "site_agent_overview_database",
-    message: "网站 Agent 数据暂时不可用，请稍后重试；如持续出现请联系管理员。",
+    message: diagnostic.site_agent_database_failed,
     retryable: true,
   });
 

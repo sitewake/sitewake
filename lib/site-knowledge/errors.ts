@@ -7,6 +7,7 @@
  * response into `site_agent_overview_failed`.
  */
 
+import { t } from "../i18n";
 export type SiteAgentErrorPhase =
   | "site_agent_lookup"
   | "site_agent_overview"
@@ -86,30 +87,8 @@ function looksLikeRunnerFailure(code: string | undefined, message: string) {
 }
 
 function fallbackMessage(code: string) {
-  switch (code) {
-    case "site_agent_id_invalid":
-      return "网站 Agent 标识无效，请从网站列表重新选择。";
-    case "site_agent_lookup_failed":
-      return "网站 Agent 索引暂时不可用，请稍后重试。";
-    case "site_agent_database_failed":
-      return "网站 Agent 数据暂时不可用，请稍后重试；如持续出现请联系管理员。";
-    case "site_agent_runner_service_failed":
-      return "Runner 服务暂时不可用，网站 Agent 数据仍可读取；请稍后重试 Runner。";
-    case "site_agent_episode_data_invalid":
-      return "网站 Agent 的一条历史记录无法读取，已跳过该记录。";
-    case "site_agent_content_coverage_failed":
-      return "网站内容覆盖统计暂时不可用，其他 Agent 数据仍可读取。";
-    case "site_agent_overview_failed":
-      return "网站 Agent 概览暂时无法读取，请稍后重试。";
-    case "site_agent_not_found":
-      return "找不到请求的网站 Agent。";
-    case "site_agent_delete_objects_failed":
-      return "网站的证据文件暂时删不掉，这次没有删除任何数据；请稍后重试。";
-    case "site_agent_delete_failed":
-      return "网站数据删除没有完成，已回滚到删除前的状态；请稍后重试。";
-    default:
-      return "网站 Agent 请求失败，请稍后重试。";
-  }
+  const messages = t().diagnostic;
+  return messages[code as keyof typeof messages] || messages.site_agent_request_failed;
 }
 
 /**
@@ -137,10 +116,10 @@ export function classifySiteAgentError(
   }
 
   if (rawCode === "site_agent_not_found") {
-    return { code: rawCode, status: 404, phase: fallbackPhase, message: "找不到请求的网站 Agent。", retryable: false };
+    return { code: rawCode, status: 404, phase: fallbackPhase, message: t().diagnostic.site_agent_not_found, retryable: false };
   }
   if (rawCode === "site_agent_forbidden") {
-    return { code: rawCode, status: 403, phase: fallbackPhase, message: "当前账号没有访问这个网站 Agent 的权限。", retryable: false };
+    return { code: rawCode, status: 403, phase: fallbackPhase, message: t().diagnostic.site_agent_forbidden, retryable: false };
   }
 
   const runnerFailure = looksLikeRunnerFailure(rawCode, rawMessage)
@@ -169,16 +148,18 @@ export function siteAgentClientErrorMessage(
 ) {
   const body = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const code = typeof body.error === "string" ? body.error : "";
-  if (status === 401 || code === "unauthorized") return "登录状态已失效，请重新登录后再试。";
-  if (status === 403 || code === "site_agent_forbidden") return "当前账号没有访问这个网站 Agent 的权限。";
-  if (status === 404 || code === "site_agent_not_found") return "找不到这个网站 Agent，请从网站列表重新选择。";
-  if (code === "site_agent_runner_service_failed") return "Runner 服务暂时不可用，但网站 Agent 数据仍可读取；请稍后重试。";
-  if (code === "site_agent_database_failed" || code === "site_agent_lookup_failed") return "网站 Agent 数据暂时不可用，请稍后重试；如持续出现请联系管理员。";
-  if (code === "site_agent_episode_data_invalid") return "网站 Agent 的一条历史记录无法读取，已跳过该记录。";
-  if (code === "site_agent_list_failed" && resource === "list") return "网站列表暂时无法读取，请检查网络后重试。";
+  const messages = t().diagnostic;
+  if (status === 401 || code === "unauthorized") return messages.unauthorized;
+  if (status === 403 || code === "site_agent_forbidden") return messages.site_agent_forbidden;
+  if (status === 404 || code === "site_agent_not_found") return messages.site_agent_not_found_pick_again;
+  if (code === "site_agent_runner_service_failed") return messages.site_agent_runner_service_failed;
+  if (code === "site_agent_database_failed" || code === "site_agent_lookup_failed") return messages.site_agent_database_failed;
+  if (code === "site_agent_episode_data_invalid") return messages.site_agent_episode_data_invalid;
+  if (code === "site_agent_list_failed" && resource === "list") return messages.site_agent_list_failed;
+  // A message the API chose to send wins: it is more specific than anything keyed here.
   if (typeof body.message === "string" && body.message.trim()) return body.message.trim();
-  if (!status) return "无法连接控制台服务，请检查网络后重试。";
-  return resource === "list" ? "网站列表暂时无法读取，请稍后重试。" : "网站 Agent 概览暂时无法读取，请稍后重试。";
+  if (!status) return messages.console_unreachable;
+  return resource === "list" ? messages.list_unavailable : messages.site_agent_overview_failed;
 }
 
 export function siteAgentDiagnosticFromError(error: unknown, fallbackCode: string, phase: SiteAgentErrorPhase): SiteAgentDiagnostic {
