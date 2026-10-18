@@ -48,7 +48,7 @@ export async function GET(request: Request, context: RouteContext) {
     if (!(await siteAgentExists(siteAgentId))) return siteAgentJson({ error: "site_agent_not_found" }, 404);
     const access = await siteAgentAccess(siteAgentId);
     if (access === "not_found") return siteAgentJson({ error: "site_agent_not_found" }, 404);
-    if (access === "forbidden") return siteAgentJson({ error: "site_agent_forbidden", message: "当前账号没有访问这个网站 Agent 的权限。" }, 403);
+    if (access === "forbidden") return siteAgentJson({ error: "site_agent_forbidden" }, 403);
     const result = await getSiteAgentOverview(siteAgentId);
     return siteAgentJson({ ...result.overview, persistence: result.persistence, modelConfigured: publicModelStatus("execution").configured }, 200, persistenceHeaders(result.persistence));
   } catch (error) {
@@ -66,7 +66,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!(await siteAgentExists(siteAgentId))) return siteAgentJson({ error: "site_agent_not_found" }, 404);
     const access = await siteAgentAccess(siteAgentId);
     if (access === "not_found") return siteAgentJson({ error: "site_agent_not_found" }, 404);
-    if (access === "forbidden") return siteAgentJson({ error: "site_agent_forbidden", message: "当前账号没有访问这个网站 Agent 的权限。" }, 403);
+    if (access === "forbidden") return siteAgentJson({ error: "site_agent_forbidden" }, 403);
   } catch (error) {
     return failureResponse(error, "site_agent_lookup_failed", "site_agent_lookup", siteAgentId);
   }
@@ -96,7 +96,7 @@ export async function DELETE(request: Request, context: RouteContext) {
     if (!(await siteAgentExists(siteAgentId))) return siteAgentJson({ error: "site_agent_not_found" }, 404);
     const access = await siteAgentAccess(siteAgentId);
     if (access === "not_found") return siteAgentJson({ error: "site_agent_not_found" }, 404);
-    if (access === "forbidden") return siteAgentJson({ error: "site_agent_forbidden", message: "当前账号没有访问这个网站 Agent 的权限。" }, 403);
+    if (access === "forbidden") return siteAgentJson({ error: "site_agent_forbidden" }, 403);
   } catch (error) {
     return failureResponse(error, "site_agent_lookup_failed", "site_agent_lookup", siteAgentId);
   }

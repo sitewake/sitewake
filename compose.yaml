@@ -7,7 +7,7 @@ services:
   # default tag is this release's version; scripts/export-public.mjs refuses
   # to export when it and package.json disagree.
   control-plane:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-control-plane:${SITEWAKE_IMAGE_TAG:-1.0.2}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-control-plane:${SITEWAKE_IMAGE_TAG:-1.0.3}
     build:
       context: .
       dockerfile: Dockerfile
@@ -81,7 +81,7 @@ services:
       retries: 10
 
   capability-v2-runtime-launcher:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-launcher:${SITEWAKE_IMAGE_TAG:-1.0.2}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-launcher:${SITEWAKE_IMAGE_TAG:-1.0.3}
     build:
       context: .
       dockerfile: Dockerfile.capability-v2-runner
@@ -155,7 +155,7 @@ services:
       S3_BUCKET: ${S3_BUCKET:-sitewake-artifacts}
 
   authoring-worker:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.2}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.3}
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -194,7 +194,7 @@ services:
       control-plane: { condition: service_healthy }
 
   validation-worker:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.2}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.3}
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -217,7 +217,7 @@ services:
       control-plane: { condition: service_healthy }
 
   execution-worker:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.2}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.3}
     build:
       context: .
       dockerfile: Dockerfile.worker

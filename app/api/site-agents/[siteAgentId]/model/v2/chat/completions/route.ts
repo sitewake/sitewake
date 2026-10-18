@@ -55,7 +55,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ si
   try { authenticatedRunId = (await getSiteAgentRunByToken(siteAgentId, token, request.headers.get("origin"))).run.id; }
   catch (error) { return agentRunError(error); }
   const config = getModelConfig("execution");
-  if (!config.configured) return siteAgentJson({ error: { code: "model_not_configured", message: "SiteWake 服务端尚未配置模型凭证。" } }, 503);
+  if (!config.configured) return siteAgentJson({ error: { code: "model_not_configured", message: "No model credentials are configured on this SiteWake server." } }, 503);
   let body: Record<string, unknown>;
   try { body = await readBoundedJson(request, MAX_MODEL_REQUEST_BYTES); }
   catch (error) {

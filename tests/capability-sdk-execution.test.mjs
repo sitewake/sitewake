@@ -95,7 +95,7 @@ test('published capability executes and terminates through the real SDK across b
    assert.equal(results.length,1,'one terminal receipt');
    if(['failure','integrity'].includes(mode)){assert.equal(observed.result.status,'failed');assert.equal(observed.result.clicks,mode==='failure'?1:0)}
    else if(mode==='no-result'){assert.equal(observed.result.outcome.status,'no-result');assert.equal(observed.result.clicks,0)}
-   else{assert.equal(observed.result.status,'completed');assert.equal(observed.result.output.rank,3);assert.equal(observed.result.output.targetTitle,'本次真实话题');assert.match(observed.result.text,/本次真实话题/);assert.match(observed.result.text,/查看详情/);assert.equal(observed.result.clicks,1,'never repeat a completed click after navigation');assert.equal(observed.checkpoint,null);
+   else{assert.equal(observed.result.status,'completed');assert.equal(observed.result.output.rank,3);assert.equal(observed.result.output.targetTitle,'本次真实话题');assert.match(observed.result.text,/本次真实话题/);assert.match(observed.result.text,/\]\(https?:\/\//,'the result links to the page it acted on');assert.equal(observed.result.clicks,1,'never repeat a completed click after navigation');assert.equal(observed.checkpoint,null);
     assert.equal(observed.result.activities.filter(a=>a.kind==='page'&&a.state==='completed').length,2);
     assert.equal(observed.result.activities.filter(a=>a.state==='failed').length,0);}
    if(mode==='native'){

@@ -30,10 +30,20 @@ export type TopologyNode = {
 export type TopologyArea = {
   id: string;
   name: string;
+  /**
+   * Set only for the two areas this module invents when the site has no business area
+   * of its own. Copy does not belong here — this module is derived on demand and has no
+   * locale — so the renderer resolves the id against the dictionary, the same way
+   * `CONSOLE_TABS` carries ids and the renderer supplies tab names. `name` holds a plain
+   * English fallback so a consumer that ignores `labelId` still reads something.
+   */
+  labelId?: SyntheticAreaId;
   nodeIds: string[];
   source: "program" | "ai" | "human";
   confidence: number;
 };
+
+export type SyntheticAreaId = "siteEntry" | "otherPages";
 
 export type TopologyEdge = {
   id: string;
@@ -82,18 +92,55 @@ function tidyAreaName(name: string) {
   return base.length > 14 ? `${base.slice(0, 14)}…` : base;
 }
 
-function fallbackArea(scene: SceneDefinition, scenes: SceneDefinition[]) {
+/** A name taken from the site's own pages, or one of the two areas this module invents. */
+type AreaLabel = { kind: "site"; name: string } | { kind: SyntheticAreaId };
+
+const SYNTHETIC_AREA_FALLBACK: Record<SyntheticAreaId, string> = {
+  siteEntry: "Site entry",
+  otherPages: "Other pages",
+};
+
+function fallbackArea(scene: SceneDefinition, scenes: SceneDefinition[]): AreaLabel {
   const path = pathOf(scene);
-  if (path === "/") return "网站入口";
+  if (path === "/") return { kind: "siteEntry" };
   const segment = path.split("/").filter(Boolean)[0] || "other";
   const family = scenes.filter((item) => pathOf(item) === `/${segment}` || pathOf(item).startsWith(`/${segment}/`));
   const root = family.find((item) => pathOf(item) === `/${segment}`);
-  if (family.length > 1) return root?.name ? tidyAreaName(root.name) : segment;
-  return "其他页面";
+  if (family.length > 1) return { kind: "site", name: root?.name ? tidyAreaName(root.name) : segment };
+  return { kind: "otherPages" };
+}
+
+function areaLabelOf(scene: SceneDefinition, scenes: SceneDefinition[]): AreaLabel {
+  return scene.businessArea ? { kind: "site", name: scene.businessArea } : fallbackArea(scene, scenes);
+}
+
+/**
+ * The grouping key, which must not move when the label is translated: hashing the
+ * displayed name would give a Chinese and an English reader different area ids for the
+ * same pages.
+ */
+function areaKeyOf(label: AreaLabel) {
+  return label.kind === "site" ? label.name : `__${label.kind}__`;
+}
+
+function areaNameOf(label: AreaLabel) {
+  return label.kind === "site" ? label.name : SYNTHETIC_AREA_FALLBACK[label.kind];
 }
 
 function isObservedOperation(operation: OperationDefinition) {
   return operation.evidenceSource === "observed-transition" || operation.evidenceSource === "compiled-task" || operation.status !== "candidate" || operation.implementations.some((implementation) => implementation.successes > 0 || implementation.sourceEpisodeIds.length > 0);
+}
+
+/**
+ * An edge label reads better without the operation's leading verb ("Open checkout" ->
+ * "checkout"). The verbs are matched in the languages a capability is authored in, so an
+ * English site is trimmed the same way a Chinese one is; anything else is left intact.
+ */
+// i18n-exempt: matches the authored operation name, which is data, in both languages
+const NAVIGATION_VERB = /^(打开|前往|进入|Open|Go to|Enter)\s*/i;
+
+function stripNavigationVerb(name: string) {
+  return name.replace(NAVIGATION_VERB, "").trim() || name;
 }
 
 function legacyReferences(linkReferences: LinkReference[] | undefined, operations: OperationDefinition[]): LinkReference[] {
@@ -102,7 +149,7 @@ function legacyReferences(linkReferences: LinkReference[] | undefined, operation
     id: `legacy_link_${operation.id}`,
     fromSceneId: operation.fromSceneId,
     toSceneId: operation.toSceneId!,
-    label: operation.name.replace(/^(打开|前往|进入)/, ""),
+    label: stripNavigationVerb(operation.name),
     href: "",
     landmark: "unknown" as const,
     observations: 1,
@@ -170,14 +217,14 @@ export function buildBusinessTopologyFromParts(parts: {
   const scenes = parts.scenes;
   const operations = parts.operations ?? [];
   const nodes: TopologyNode[] = scenes.map((scene) => {
-    const areaName = scene.businessArea || fallbackArea(scene, scenes);
+    const areaLabel = areaLabelOf(scene, scenes);
     return {
       id: scene.id,
       sceneId: scene.id,
       name: scene.name,
       description: scene.description,
       path: pathOf(scene),
-      areaId: `area_${stableHash(areaName)}`,
+      areaId: `area_${stableHash(areaKeyOf(areaLabel))}`,
       parameters: scene.parameters.map((parameter) => parameter.name),
       evidenceStatus: evidenceStatusOf(scene),
       lifecycle: lifecycleOf(scene),
@@ -197,10 +244,12 @@ export function buildBusinessTopologyFromParts(parts: {
   const areaGroups = new Map<string, TopologyArea>();
   for (const node of nodes) {
     const scene = sceneById.get(node.id)!;
-    const name = scene.businessArea || fallbackArea(scene, scenes);
+    const label = areaLabelOf(scene, scenes);
+    const name = areaNameOf(label);
+    const labelId = label.kind === "site" ? undefined : label.kind;
     const source = scene.businessArea ? scene.semanticSource === "human" ? "human" : "ai" : "program";
     const previous = areaGroups.get(node.areaId);
-    areaGroups.set(node.areaId, previous ? { ...previous, nodeIds: [...previous.nodeIds, node.id], source: previous.source === "human" || source === "human" ? "human" : previous.source === "ai" || source === "ai" ? "ai" : "program", confidence: Math.max(previous.confidence, source === "program" ? 0.55 : 0.84) } : { id: node.areaId, name, nodeIds: [node.id], source, confidence: source === "program" ? 0.55 : 0.84 });
+    areaGroups.set(node.areaId, previous ? { ...previous, nodeIds: [...previous.nodeIds, node.id], source: previous.source === "human" || source === "human" ? "human" : previous.source === "ai" || source === "ai" ? "ai" : "program", confidence: Math.max(previous.confidence, source === "program" ? 0.55 : 0.84) } : { id: node.areaId, name, ...(labelId ? { labelId } : {}), nodeIds: [node.id], source, confidence: source === "program" ? 0.55 : 0.84 });
   }
 
   // A `fromSceneId:"*"` reference is an aggregated global-nav edge (aggregate-knowledge-links);

@@ -1,6 +1,7 @@
 import type { CrawlJob } from "../site-knowledge/protocol";
 import type { ContentCoverage } from "../site-knowledge/content-index";
 import type { SiteBusinessTopology, TopologyNode } from "../site-knowledge/business-topology";
+import { t } from "../i18n";
 
 /**
  * All derived logic of the site knowledge page, as pure functions: API data in,
@@ -47,7 +48,9 @@ export function areaSummaries(
     const states = nodes.map((node) => readState(node, coverage).state);
     return {
       id: area.id,
-      name: area.name,
+      // An invented area carries an id, not copy: resolved here, in the visitor's
+      // locale, so the graph and the list agree and neither renders the build language.
+      name: area.labelId ? t().knowledge.area[area.labelId] : area.name,
       read: states.filter((state) => state === "read").length,
       total: nodes.length,
       warn: states.some((state) => state === "blocked"),

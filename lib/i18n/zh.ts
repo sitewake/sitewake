@@ -702,7 +702,30 @@ export const zh = {
    * Crawl, business domain, page type, version, content id and search terms are
    * pipeline-internal names and stay out of the dictionary.
    */
+  diagnostic: {
+    site_agent_id_invalid: "网站 Agent 标识无效，请从网站列表重新选择。",
+    site_agent_lookup_failed: "网站 Agent 索引暂时不可用，请稍后重试。",
+    site_agent_database_failed: "网站 Agent 数据暂时不可用，请稍后重试；如持续出现请联系管理员。",
+    site_agent_runner_service_failed: "Runner 服务暂时不可用，网站 Agent 数据仍可读取；请稍后重试 Runner。",
+    site_agent_episode_data_invalid: "网站 Agent 的一条历史记录无法读取，已跳过该记录。",
+    site_agent_content_coverage_failed: "网站内容覆盖统计暂时不可用，其他 Agent 数据仍可读取。",
+    site_agent_overview_failed: "网站 Agent 概览暂时无法读取，请稍后重试。",
+    site_agent_not_found: "找不到请求的网站 Agent。",
+    site_agent_not_found_pick_again: "找不到这个网站 Agent，请从网站列表重新选择。",
+    site_agent_delete_objects_failed: "网站的证据文件暂时删不掉，这次没有删除任何数据；请稍后重试。",
+    site_agent_delete_failed: "网站数据删除没有完成，已回滚到删除前的状态；请稍后重试。",
+    site_agent_list_failed: "网站列表暂时无法读取，请检查网络后重试。",
+    site_agent_request_failed: "网站 Agent 请求失败，请稍后重试。",
+    unauthorized: "登录状态已失效，请重新登录后再试。",
+    site_agent_forbidden: "当前账号没有访问这个网站 Agent 的权限。",
+    console_unreachable: "无法连接控制台服务，请检查网络后重试。",
+    list_unavailable: "网站列表暂时无法读取，请稍后重试。",
+  },
   knowledge: {
+    area: {
+      siteEntry: "网站入口",
+      otherPages: "其他页面",
+    },
     intro: "网站的页面结构与已收录内容，智能体回答用户时以此为依据。",
 
     /** The one-line read status at the top, eight mutually exclusive states. */

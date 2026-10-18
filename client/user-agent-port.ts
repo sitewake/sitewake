@@ -320,6 +320,11 @@ class CapabilityV2HandledOutcomeError extends Error {
 }
 
 const runCopy = () => widgetCopy(resolveWidgetLocale()).run;
+/** The visitor's frame for a finished capability result, resolved per render. */
+const completionPresentation = () => {
+  const locale = resolveWidgetLocale();
+  return { copy: widgetCopy(locale).completion, locale };
+};
 
 function capabilityV2Object(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -4261,7 +4266,7 @@ export class AgentPort {
         if (type === "outputExists" && capabilityV2PathValue(output, String(condition.path || "")) === undefined) throw new Error("success_output_missing");
       }
       const needsModelJudge = !conditions.length || conditions.some((raw) => typeof raw === "object" && String(capabilityV2Object(raw).type || "") === "modelGoal");
-      let outcome: TaskEpisode["outcome"] = { status: "success", code: "capability_v2_program_verified", summary: capabilityCompletionText(runtime.name, executionInput, output, runtime.contract.outputSchema), evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk", capabilityId: runtime.capabilityId, versionId: runtime.versionId, output, stageEvidence, stageReceipts, ...(unmetText.length ? { unmetTextConditions: unmetText } : {}) } };
+      let outcome: TaskEpisode["outcome"] = { status: "success", code: "capability_v2_program_verified", summary: capabilityCompletionText(runtime.name, executionInput, output, runtime.contract.outputSchema, completionPresentation()), evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk", capabilityId: runtime.capabilityId, versionId: runtime.versionId, output, stageEvidence, stageReceipts, ...(unmetText.length ? { unmetTextConditions: unmetText } : {}) } };
       if (needsModelJudge) {
         const end = capturePageSnapshot(this.sequence++);
         await this.assertCompiledModelRequestAvailable(session.id, runtimeWindow);

@@ -32,6 +32,9 @@ export const NEEDS_TSX = [
   "tests/capability-center-v2-notebook-mock.test.mjs",
   "tests/agent-style-presets.test.mjs",
   "tests/capability-business-result.test.mjs",
+  // Reads the copy dictionary through lib/site-knowledge/errors.ts, whose chain uses
+  // extensionless specifiers.
+  "tests/site-agent-overview-errors.test.mjs",
   "tests/capability-center-v2-c1-mock.test.mjs",
   "tests/capability-center-v2-c2-mock.test.mjs",
   "tests/capability-center-v2-c2.test.mjs",

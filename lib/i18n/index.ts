@@ -2,7 +2,9 @@ import { en } from "./en";
 import { zh } from "./zh";
 import type { ConsoleCopy } from "./zh";
 
-export type Locale = "zh" | "en";
+import { localizedValue, type Locale, type LocalizedStrings } from "./locale";
+export type { Locale, LocalizedStrings };
+export { localizedValue };
 export type { ConsoleCopy };
 
 const CATALOGS: Record<Locale, ConsoleCopy> = { zh, en };

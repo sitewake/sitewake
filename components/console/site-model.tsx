@@ -269,8 +269,10 @@ export function SiteModel({ overview, onReload, onTab }: { overview: OverviewRes
   const nodeById = useMemo(() => new Map(topology.nodes.map((node) => [node.id, node])), [topology]);
 
   // The section containing the home page is the default: something to see on arrival, no click needed.
-  // i18n-exempt: matches the customer site's own page names, which are data
-  const home = topology.nodes.find((node) => node.path === "/") || topology.nodes.find((node) => node.name.includes("首页"));
+  // Path, not name: the previous name match looked for a Chinese word, so on an
+  // English-language site the fallback never fired and no area was preselected.
+  const home = topology.nodes.find((node) => node.path === "/")
+    || topology.nodes.find((node) => node.path === "" || node.path === "/index.html");
   const homeAreaId = home?.areaId || areas[0]?.id || "";
   const [areaId, setAreaId] = useState("");
   const [pageId, setPageId] = useState("");

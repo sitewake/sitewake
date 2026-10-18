@@ -637,7 +637,36 @@ export const en: ConsoleCopy = {
     },
   },
 
+  /**
+   * Console diagnostics, keyed by the error code the API returns. The code is the key so
+   * that adding a code means adding one entry here, and so the two resolvers in
+   * `lib/site-knowledge/errors.ts` cannot drift apart as they had.
+   */
+  diagnostic: {
+    site_agent_id_invalid: "That site identifier is not valid. Pick the site again from the list.",
+    site_agent_lookup_failed: "The site index is temporarily unavailable. Try again shortly.",
+    site_agent_database_failed: "Site data is temporarily unavailable. Try again shortly; tell an administrator if it persists.",
+    site_agent_runner_service_failed: "The runner service is temporarily unavailable. Site data still reads normally; retry the runner shortly.",
+    site_agent_episode_data_invalid: "One history record could not be read and was skipped.",
+    site_agent_content_coverage_failed: "Content coverage is temporarily unavailable. The rest of the site data still reads normally.",
+    site_agent_overview_failed: "The site overview could not be read. Try again shortly.",
+    site_agent_not_found: "That site could not be found.",
+    site_agent_not_found_pick_again: "That site could not be found. Pick it again from the list.",
+    site_agent_delete_objects_failed: "The site's evidence files could not be deleted, so nothing was deleted. Try again shortly.",
+    site_agent_delete_failed: "Deleting the site data did not finish and was rolled back. Try again shortly.",
+    site_agent_list_failed: "The site list could not be read. Check your connection and try again.",
+    site_agent_request_failed: "The request failed. Try again shortly.",
+    unauthorized: "Your session has expired. Sign in again.",
+    site_agent_forbidden: "This account cannot access that site.",
+    console_unreachable: "Cannot reach the console service. Check your connection and try again.",
+    list_unavailable: "The site list could not be read. Try again shortly.",
+  },
   knowledge: {
+    /** The two areas business-topology invents when a site declares none of its own. */
+    area: {
+      siteEntry: "Site entry",
+      otherPages: "Other pages",
+    },
     intro: "The site's page structure and collected content — what the assistant answers users from.",
 
     status: {

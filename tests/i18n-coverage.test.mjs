@@ -67,6 +67,16 @@ const EXTRACTED = [
   "client/user-agent-shared.ts",
   "client/user-agent-page-controller.ts",
   "client/user-agent-judge.ts",
+  // Server-derived copy. The guard stopped at components, so text produced here —
+  // a contract's field labels, an invented topology area, an API diagnostic — reached
+  // the reader in the build language whatever they had selected.
+  "lib/capability-center-v2/result-presentation.ts",
+  "lib/site-knowledge/business-topology.ts",
+  "lib/site-knowledge/errors.ts",
+  "lib/console/knowledge-view.ts",
+  "app/api/site-agents/[siteAgentId]/route.ts",
+  "app/api/site-agents/[siteAgentId]/capabilities/[capabilityId]/runs/route.ts",
+  "app/api/site-agents/[siteAgentId]/model/v2/chat/completions/route.ts",
 ];
 
 const HAN = /[一-鿿]/;
