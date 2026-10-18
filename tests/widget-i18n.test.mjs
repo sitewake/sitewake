@@ -43,9 +43,9 @@ function withEnvironment({ saved, languages }, run) {
   }
 }
 
-test("没有任何线索时用中文", () => {
+test("没有任何线索时用英文", () => {
   withEnvironment({ languages: [] }, () => {
-    assert.equal(widget.resolveWidgetLocale(), "zh");
+    assert.equal(widget.resolveWidgetLocale(), "en");
   });
 });
 
@@ -57,7 +57,7 @@ test("跟随访客的浏览器，认得的第一个语言胜出", () => {
   withEnvironment({ languages: ["ja", "ko", "en"] }, () =>
     assert.equal(widget.resolveWidgetLocale(), "en", "日韩都不支持，但列表里还有英语"));
   withEnvironment({ languages: ["ja", "ko"] }, () =>
-    assert.equal(widget.resolveWidgetLocale(), "zh", "一个都不认识才退回中文"));
+    assert.equal(widget.resolveWidgetLocale(), "en", "一个都不认识才退回英文"));
 });
 
 test("访客存下来的选择压过浏览器", () => {

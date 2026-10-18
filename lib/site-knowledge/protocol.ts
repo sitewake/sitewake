@@ -2744,14 +2744,29 @@ const GENERATED_COPY_FRAME: Record<GeneratedCopyLocale, {
  * the one whose copy fills the single resolved `brand`/`copy` pair that older
  * readers still use.
  */
-const DEFAULT_KNOWLEDGE_COPY_LOCALE: GeneratedCopyLocale = "zh";
+/**
+ * Two different questions, which one constant used to answer at once.
+ *
+ * `LEGACY_` is a fact about stored data: a profile written before there were two
+ * languages carries one unlabelled set, and every such record is Chinese. Changing it
+ * would relabel old Chinese text as English.
+ *
+ * `PREFERRED_` fills the top-level brand/copy fields. It stays Chinese: those fields
+ * are a compatibility surface for readers that do not resolve per locale, and a site
+ * named in Chinese would otherwise be described as "<Chinese name> assistant" — a
+ * hybrid belonging to no reader. Every surface a person actually reads resolves for
+ * their own language instead: the console by its locale setting, the widget by the
+ * visitor's browser.
+ */
+const LEGACY_KNOWLEDGE_COPY_LOCALE: GeneratedCopyLocale = "zh";
+const PREFERRED_GENERATED_COPY_LOCALE: GeneratedCopyLocale = "zh";
 
 function knowledgeCopyFor(release: SiteAgentReleaseV2, locale: GeneratedCopyLocale) {
   const written = release.profile.localized?.[locale];
   // A profile written before there were two languages carries one set of fields
   // and no record of which language they are in. Treat those as the default
   // locale's, which is what every such record in fact holds.
-  const fallback = locale === DEFAULT_KNOWLEDGE_COPY_LOCALE
+  const fallback = locale === LEGACY_KNOWLEDGE_COPY_LOCALE
     ? {
         description: release.profile.description,
         jobsToBeDone: release.profile.jobsToBeDone || [],
@@ -2798,11 +2813,11 @@ export function deriveAgentConfigFromKnowledge(release: SiteAgentReleaseV2): Age
   const base = defaultAgentConfig();
   const generated: NonNullable<AgentConfig["generated"]> = {};
   for (const locale of GENERATED_COPY_LOCALES) generated[locale] = generatedCopyFor(release, locale);
-  const preferred = generated[DEFAULT_KNOWLEDGE_COPY_LOCALE] || Object.values(generated)[0];
+  const preferred = generated[PREFERRED_GENERATED_COPY_LOCALE] || Object.values(generated)[0];
   if (!preferred) return base;
   return {
     ...base,
-    generatedLocale: generated[DEFAULT_KNOWLEDGE_COPY_LOCALE] ? DEFAULT_KNOWLEDGE_COPY_LOCALE : GENERATED_COPY_LOCALES.find((locale) => generated[locale]),
+    generatedLocale: generated[PREFERRED_GENERATED_COPY_LOCALE] ? PREFERRED_GENERATED_COPY_LOCALE : GENERATED_COPY_LOCALES.find((locale) => generated[locale]),
     generated,
     brand: {
       displayName: preferred.displayName,

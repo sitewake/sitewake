@@ -7,6 +7,7 @@ import { overviewCopy } from "../../lib/console/overview-copy";
 import type { EffectRunFact } from "../../lib/site-knowledge/effect-types";
 import type { Locale } from "../../lib/i18n";
 import { deriveAgentConfigFromKnowledge, normalizeAgentConfig, type SitePreviewJobSummary, type SitePreviewResult } from "../../lib/site-knowledge/protocol";
+import { resolveChromeCopy } from "../../client/user-agent-copy";
 import { EmptyState } from "../ui";
 
 export function LivingOverview({ overview, onTab, onReload, locale }: { overview: OverviewResponse; onTab(tab: Tab): void; onReload(): void; locale: Locale }) {
@@ -17,6 +18,10 @@ export function LivingOverview({ overview, onTab, onReload, locale }: { overview
   const [refreshing, setRefreshing] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const agentConfig = normalizeAgentConfig(overview.activeRelease.agentConfig, deriveAgentConfigFromKnowledge(overview.activeRelease));
+  // The top-level brand/copy hold one language — whichever the generator preferred —
+  // so reading them directly showed this reader the other language's sentences. The
+  // same resolver the widget and the agent settings use picks this reader's set.
+  const chrome = resolveChromeCopy(agentConfig, locale);
   // The Capability Center is the only source here, because it is what the button
   // beside this card opens. Merging it with the release's own `capabilities` gave the
   // card a second, older list that the tab does not read, so the two could name
@@ -109,7 +114,7 @@ export function LivingOverview({ overview, onTab, onReload, locale }: { overview
         <footer>{preview && <span className={preview.agentDetected ? "detected" : "not-detected"}><i />{preview.agentDetected ? copy.detected : copy.notDetected}</span>}{job?.status === "failed" && <span className="failed">{preview ? copy.refreshFailed : copy.previewFailed}</span>}{previewError && <span className="failed" role="status">{previewError}</span>}<button type="button" onClick={() => onTab("connection")}>{ui.viewSettings} →</button></footer>
       </section>
       <aside className="sw-overview-side">
-        <section className="sw-overview-card sw-agent-summary"><header><h3>{copy.agent}</h3><button onClick={() => onTab("agent")}>{copy.edit}</button></header><div className="sw-summary-identity"><img src="/brand/sitewake-mark.svg?v=wstar-1" alt="" /><div><h4>{agentConfig.brand.displayName}</h4><p>{agentConfig.copy.welcomeTitle}</p></div></div><dl><div><dt>{copy.position}</dt><dd>{agentConfig.appearance?.launcherPosition === "bottom-left" ? copy.left : copy.right}</dd></div><div><dt>{copy.suggestions}</dt><dd>{agentConfig.features.showSuggestions ? copy.show : copy.hide}</dd></div></dl></section>
+        <section className="sw-overview-card sw-agent-summary"><header><h3>{copy.agent}</h3><button onClick={() => onTab("agent")}>{copy.edit}</button></header><div className="sw-summary-identity"><img src="/brand/sitewake-mark.svg?v=wstar-1" alt="" /><div><h4>{chrome.displayName}</h4><p>{chrome.welcomeTitle}</p></div></div><dl><div><dt>{copy.position}</dt><dd>{agentConfig.appearance?.launcherPosition === "bottom-left" ? copy.left : copy.right}</dd></div><div><dt>{copy.suggestions}</dt><dd>{agentConfig.features.showSuggestions ? copy.show : copy.hide}</dd></div></dl></section>
         <section className="sw-overview-card"><header><h3>{copy.knowledge}</h3><button onClick={() => onTab("model")}>{copy.view}</button></header><p>{overview.profile.description || ui.knowledgeEmpty}</p><div className="sw-overview-facts"><span>{overview.sceneCount} {copy.pages}</span></div></section>
       </aside>
     </div>

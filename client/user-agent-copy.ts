@@ -29,7 +29,9 @@ export const WIDGET_LOCALES = ["zh", "en"] as const satisfies readonly WidgetLoc
 
 export const WIDGET_LOCALE_KEY = "sitewake:locale";
 
-const DEFAULT_LOCALE: WidgetLocale = "zh";
+// A visitor whose browser asks for neither of the two languages gets this one.
+const DEFAULT_LOCALE: WidgetLocale = "en";
+const LEGACY_GENERATED_LOCALE: WidgetLocale = "zh";
 
 export function isWidgetLocale(value: unknown): value is WidgetLocale {
   return value === "zh" || value === "en";
@@ -903,7 +905,9 @@ export function resolveChromeCopy(
   // This site's own words in this reader's language, when the generator wrote
   // them. Older records carry a single set and say which language it is in.
   const written = config.generated?.[locale];
-  const legacy = !config.generated && (config.generatedLocale || "zh") === locale;
+  // An unlabelled record predates the second language and is Chinese in fact, which
+  // is a statement about old data rather than a default for new readers.
+  const legacy = !config.generated && (config.generatedLocale || LEGACY_GENERATED_LOCALE) === locale;
   const pick = (override: string | undefined, generated: string | undefined, fallback: string) =>
     override?.trim() || generated?.trim() || fallback;
   const site = written || (legacy
