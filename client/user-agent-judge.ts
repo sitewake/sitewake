@@ -1,5 +1,5 @@
 import { parseTaskOutcomeDecision, type TaskJudgeEvidence, type TaskOutcomeDecision } from "../lib/site-knowledge/task-outcome";
-import { replyLanguageInstruction, resolveWidgetLocale } from "./user-agent-copy";
+import { replyLanguageInstruction, resolveWidgetLocale, type WidgetLocale } from "./user-agent-copy";
 
 function endpointUrl(endpoint: string, path: string) {
   return endpoint ? `${endpoint.replace(/\/$/, "")}${path}` : path;
@@ -40,6 +40,8 @@ export async function judgeTaskOutcome(options: {
   siteAgentId: string;
   agentRunToken: string;
   evidence: TaskJudgeEvidence;
+  /** The language the summary is written in; the caller knows the site's. */
+  replyLocale?: WidgetLocale;
   signal?: AbortSignal;
   telemetry?: { learningJobId?: string; stage?: "outcome-judge" | "runtime-agent" };
 }): Promise<TaskOutcomeDecision | undefined> {
@@ -53,7 +55,7 @@ export async function judgeTaskOutcome(options: {
       headers: { "content-type": "application/json", authorization: `Bearer ${options.agentRunToken}`, ...(options.telemetry?.learningJobId ? { "x-sitewake-learning-job-id": options.telemetry.learningJobId } : {}), "x-sitewake-ai-stage": options.telemetry?.stage || "outcome-judge" },
       body: JSON.stringify({
         messages: [
-          { role: "system", content: `${judgeSystemPrompt}\n${replyLanguageInstruction(resolveWidgetLocale())}` },
+          { role: "system", content: `${judgeSystemPrompt}\n${replyLanguageInstruction(options.replyLocale || resolveWidgetLocale())}` },
           { role: "user", content: JSON.stringify(options.evidence) },
         ],
         tools: [{

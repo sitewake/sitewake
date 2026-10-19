@@ -55,6 +55,29 @@ function firstSupported(tags: readonly string[]): WidgetLocale | undefined {
  * the full ordered preference list, so a visitor whose first language we do not
  * support can still be served their second.
  */
+/** A language the visitor chose themselves, if they did. */
+export function savedWidgetLocale(): WidgetLocale | undefined {
+  try {
+    const saved = localStorage.getItem(WIDGET_LOCALE_KEY);
+    return isWidgetLocale(saved) ? saved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The language the assistant writes its answers in.
+ *
+ * Deliberately not the same question as `resolveWidgetLocale`, which dresses the
+ * chrome. A button reads best in the visitor's own language; an answer reads best in
+ * the language of the page it is about, so a Chinese browser on an English store was
+ * being answered in Chinese about English products. The site's own language wins over
+ * the browser, and a visitor who picks a language in the widget still wins over both.
+ */
+export function resolveReplyLocale(siteLanguage?: WidgetLocale): WidgetLocale {
+  return savedWidgetLocale() || (siteLanguage && isWidgetLocale(siteLanguage) ? siteLanguage : undefined) || resolveWidgetLocale();
+}
+
 export function resolveWidgetLocale(): WidgetLocale {
   try {
     const saved = localStorage.getItem(WIDGET_LOCALE_KEY);
