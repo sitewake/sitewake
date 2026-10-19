@@ -27,7 +27,15 @@
 
 export type KnowledgeLocale = "zh" | "en";
 
-export const DEFAULT_KNOWLEDGE_LOCALE: KnowledgeLocale = "zh";
+/**
+ * The language the analysis writes in when a caller names none.
+ *
+ * The crawl names none, so this is in practice the language of every page type, business
+ * area and site description a reader sees. It was Chinese, which put Chinese names on an
+ * English-only site and, because nothing records the site's own language, left no way to
+ * tell a deliberate choice from a default.
+ */
+export const DEFAULT_KNOWLEDGE_LOCALE: KnowledgeLocale = "en";
 
 /**
  * The word that names the output language inside the prompt.
