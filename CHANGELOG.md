@@ -19,7 +19,6 @@ Text reaching a reader in the language they chose.
 - **The home page was found by matching a Chinese page name** — so on an English-language site the fallback never fired and no area was preselected. It is found by path. Navigation verbs are likewise stripped in both languages.
 
 - **The overview's agent card showed one language to every reader** — it rendered the release's top-level `brand`/`copy`, which hold whichever language the generator preferred, while the agent settings page next to it already resolved per reader. The card now uses the same resolver and the console's locale setting.
-- **Site knowledge was written in Chinese whatever the site's language** — the crawl passes no output language to the analysis, so every page type, business area and site description fell back to the default, which was Chinese. An English-only site was described as `家居照明电商` with areas like `核心浏览`. The default is English. Nothing records a site's own language yet, so a Chinese site now needs the locale passed explicitly rather than getting it by accident.
 - **A visitor whose browser asks for neither language got Chinese** — the widget's fallback locale is English. The constant that chose it was also doing a second job, recording that an unlabelled stored record is Chinese in fact; those are now separate, so the fallback can be changed without relabelling old data.
 
 ### Changed
