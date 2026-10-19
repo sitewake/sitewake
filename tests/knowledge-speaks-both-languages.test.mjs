@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { emptyRelease, normalizeAgentConfigForRelease } from "../lib/site-knowledge/protocol.ts";
+import { emptyRelease, normalizeAgentConfigForRelease, profileLanguage } from "../lib/site-knowledge/protocol.ts";
 import { resolveChromeCopy } from "../client/user-agent-copy.ts";
 
 function release(profile) {
@@ -103,4 +103,44 @@ test("questions somebody wrote are theirs in both languages", () => {
   assert.equal(resolveChromeCopy(pinned, "en").suggestions[0], "我们自己想问的");
   assert.equal(resolveChromeCopy(pinned, "en").suggestions[1], "How do I install the script on my site",
     "and the rest are in the language being read");
+});
+
+test("the profile's own language is read from the record when it was not written down", () => {
+  // The shape the demo site stores after an English analysis: English on top, Chinese
+  // beside it. Read as Chinese, the English fields were treated as a foreign language
+  // and an English reader got no greeting and no suggested questions at all.
+  assert.equal(profileLanguage({ localized: { zh: { description: "x" } } }), "en");
+  assert.equal(profileLanguage({ localized: { en: { description: "x" } } }), "zh");
+  assert.equal(profileLanguage({}), "zh", "a record with nothing beside it is the legacy Chinese one");
+  assert.equal(profileLanguage({ language: "en", localized: { zh: {} } }), "en", "once written down it wins");
+});
+
+test("an English analysis gives an English reader the site's own greeting and questions", () => {
+  // Reproduces the served shape exactly: top-level English, Chinese under localized.
+  const rel = release({
+    description: "A design-led lighting brand",
+    jobsToBeDone: ["Browse and filter lighting products by room"],
+    suggestedQuestions: ["What is the warranty on the Lune table lamp?"],
+    localized: { zh: { description: "设计导向的照明品牌", jobsToBeDone: ["按房间浏览照明产品"], suggestedQuestions: ["Lune 台灯的保修是多久？"] } },
+  });
+  const config = served(rel);
+  const english = resolveChromeCopy(config, "en");
+  assert.match(english.welcomeDescription, /Browse and filter lighting products/, "the site's own words, not the built-in ones");
+  assert.deepEqual(english.suggestions, ["What is the warranty on the Lune table lamp?"]);
+  assert.doesNotMatch(english.welcomeDescription, /[\u4e00-\u9fff]/);
+  // And the other language still gets its own.
+  const chinese = resolveChromeCopy(config, "zh");
+  assert.match(chinese.welcomeDescription, /按房间浏览照明产品/);
+});
+
+test("an empty translation does not shadow the fields the profile does have", () => {
+  const config = served(release({
+    description: "A design-led lighting brand",
+    jobsToBeDone: ["Browse lighting"],
+    suggestedQuestions: ["Which lamps are dimmable?"],
+    language: "en",
+    localized: { zh: { description: "", jobsToBeDone: [], suggestedQuestions: [] } },
+  }));
+  const english = resolveChromeCopy(config, "en");
+  assert.deepEqual(english.suggestions, ["Which lamps are dimmable?"]);
 });

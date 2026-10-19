@@ -495,6 +495,9 @@ export async function analyzeSiteProfile(
     ...previous,
     name,
     description: result.description.trim().slice(0, 300),
+    // Which language the fields above are in, so a reader asking for this one gets them
+    // rather than the built-in sentences, and anything choosing a language can tell.
+    language: locale,
     semanticSource: "ai",
     entryUrl: sameOriginEntry(previous?.entryUrl) || sameOriginEntry(snapshot.metadata?.canonicalUrl) || crawlOrigin,
     category: typeof result.category === "string" ? result.category.trim().slice(0, 80) : previous?.category,

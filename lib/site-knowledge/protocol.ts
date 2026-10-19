@@ -742,6 +742,12 @@ export type SiteProfile = {
    */
   suggestedQuestions?: string[];
   /**
+   * The language the fields above are written in. Set by the analysis from the locale it
+   * was asked for; absent on records written before it existed, where `profileLanguage`
+   * reads it from the shape instead.
+   */
+  language?: "zh" | "en";
+  /**
    * The same site-specific sentences, written once per language the console and
    * the widget can render.
    *
@@ -2776,19 +2782,40 @@ export function localizedProfileDescription(
   return profile.localized?.[locale]?.description?.trim() || profile.description?.trim() || "";
 }
 
+/**
+ * Which language a profile's own top-level fields are written in.
+ *
+ * The analysis writes the language it was asked for into those fields and puts the other
+ * under `localized`, so this is no longer always Chinese. `language` records it; a record
+ * written before that field existed is read from the shape instead — the top-level is
+ * whichever language `localized` does not hold — and failing that, the legacy default.
+ */
+export function profileLanguage(profile: {
+  language?: GeneratedCopyLocale;
+  localized?: Partial<Record<GeneratedCopyLocale, unknown>>;
+}): GeneratedCopyLocale {
+  if (profile.language) return profile.language;
+  const beside = GENERATED_COPY_LOCALES.filter((locale) => profile.localized?.[locale]);
+  const absent = GENERATED_COPY_LOCALES.filter((locale) => !beside.includes(locale));
+  return beside.length === 1 && absent.length === 1 ? absent[0] : LEGACY_KNOWLEDGE_COPY_LOCALE;
+}
+
 function knowledgeCopyFor(release: SiteAgentReleaseV2, locale: GeneratedCopyLocale) {
   const written = release.profile.localized?.[locale];
-  // A profile written before there were two languages carries one set of fields
-  // and no record of which language they are in. Treat those as the default
-  // locale's, which is what every such record in fact holds.
-  const fallback = locale === LEGACY_KNOWLEDGE_COPY_LOCALE
+  // An entry with nothing in it is not a translation: it used to shadow the fields the
+  // profile does have, leaving a reader with no greeting and no suggested questions.
+  const usable = written
+    && (written.description?.trim() || written.jobsToBeDone?.length || written.suggestedQuestions?.length)
+    ? written
+    : undefined;
+  const fallback = locale === profileLanguage(release.profile)
     ? {
         description: release.profile.description,
         jobsToBeDone: release.profile.jobsToBeDone || [],
         suggestedQuestions: release.profile.suggestedQuestions || [],
       }
     : undefined;
-  return written || fallback;
+  return usable || fallback;
 }
 
 function generatedCopyFor(release: SiteAgentReleaseV2, locale: GeneratedCopyLocale) {
