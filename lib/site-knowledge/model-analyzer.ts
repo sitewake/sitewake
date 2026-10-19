@@ -418,14 +418,19 @@ export async function analyzeSiteProfile(
   previous?: SiteProfile,
   scenes: SceneDefinition[] = [],
   signal?: AbortSignal,
+  locale: KnowledgeLocale = DEFAULT_KNOWLEDGE_LOCALE,
 ): Promise<SiteProfile | undefined> {
+  // Which language the profile's own fields are written in, and which goes under
+  // `localized`. The prompt used to fix these as Chinese and English respectively, so
+  // an English-only site was described in Chinese however this was configured.
+  const secondary: KnowledgeLocale = locale === "en" ? "zh" : "en";
   signal?.throwIfAborted();
   const config = getModelConfig("semantic");
   if (!config.configured) return undefined;
   const evidenceHash = siteProfileEvidenceHash(snapshot, scenes);
   const candidates = productNameCandidates(snapshot);
   const result = await modelJson<Record<string, unknown>>(
-    "你是网站产品知识 Reviewer。经典程序已经采集可信的首方页面证据和 URL 场景；请识别真实产品名称（不是 SEO 标题）、一句话价值、服务对象、用户来这里完成的核心工作、业务实体、业务域，以及有证据支持的高价值任务模板。任务如果缺少关键词、日期、商品等参数，必须列入 requiredInputs，不能把不完整目标当作可直接执行。不要虚构未观察到的能力。上述 description、jobsToBeDone、suggestedQuestions 用中文写；同时在 localized.en 里用**英文**再写一遍这三项，两边说的是同一件事，不是一方的字面翻译，而是用该语言的读者会用的说法。两边的条数与含义保持一致；人名、地区、日期、商品名等页面上的真实取值保持原样，不要翻译。 suggestedQuestions 是必填项，不得省略、不得为空数组：给出 1 到 3 条访客可以原句发送的具体问题。每条是一个完整目标，尽量带上一个在页面证据中真实出现过的取值（人名、地区、日期、商品名等），不得编造取值；不要留出待填的占位，不要写成“查询某个关键词”这类需要访客自行填空的句式。若页面证据里确实找不到可用的具体取值，就把 jobsToBeDone 里的工作改写成访客口吻的一句话作为问题，仍然不得返回空数组。",
+    `你是网站产品知识 Reviewer。经典程序已经采集可信的首方页面证据和 URL 场景；请识别真实产品名称（不是 SEO 标题）、一句话价值、服务对象、用户来这里完成的核心工作、业务实体、业务域，以及有证据支持的高价值任务模板。任务如果缺少关键词、日期、商品等参数，必须列入 requiredInputs，不能把不完整目标当作可直接执行。不要虚构未观察到的能力。上述 description、jobsToBeDone、suggestedQuestions 用${languageName(locale)}写；同时在 localized.${secondary} 里用**${languageName(secondary)}**再写一遍这三项，两边说的是同一件事，不是一方的字面翻译，而是用该语言的读者会用的说法。两边的条数与含义保持一致；人名、地区、日期、商品名等页面上的真实取值保持原样，不要翻译。 suggestedQuestions 是必填项，不得省略、不得为空数组：给出 1 到 3 条访客可以原句发送的具体问题。每条是一个完整目标，尽量带上一个在页面证据中真实出现过的取值（人名、地区、日期、商品名等），不得编造取值；不要留出待填的占位，不要写成“查询某个关键词”这类需要访客自行填空的句式。若页面证据里确实找不到可用的具体取值，就把 jobsToBeDone 里的工作改写成访客口吻的一句话作为问题，仍然不得返回空数组。`,
     {
       currentKnowledge: previous,
       productNameCandidates: candidates,
@@ -436,7 +441,7 @@ export async function analyzeSiteProfile(
         name: "真实产品名称", description: "一句话说明产品帮谁解决什么问题", category: "业务分类",
         audiences: ["目标用户"], jobsToBeDone: ["用户要完成的工作"],
         suggestedQuestions: ["访客可以原句发送的具体问题，带页面证据中真实出现过的取值"],
-        localized: { en: { description: "the same one-line value, in English", jobsToBeDone: ["the same jobs, in English"], suggestedQuestions: ["the same questions, in English"] } },
+        localized: { [secondary]: { description: `the same one-line value, in ${secondary === "en" ? "English" : "Chinese"}`, jobsToBeDone: ["the same jobs"], suggestedQuestions: ["the same questions"] } },
         entityTypes: [{ name: "业务实体", description: "含义", examples: ["页面证据中的例子"] }],
         businessDomains: [{ name: "稳定业务域", description: "范围" }], vocabulary: { term: ["aliases"] },
       },
@@ -458,16 +463,16 @@ export async function analyzeSiteProfile(
   // get the built-in sentences rather than ones they cannot read.
   const localized = (() => {
     const raw = result.localized && typeof result.localized === "object" ? result.localized as Record<string, unknown> : {};
-    const english = raw.en && typeof raw.en === "object" ? raw.en as Record<string, unknown> : undefined;
-    if (!english) return previous?.localized;
-    const description = typeof english.description === "string" ? english.description.trim().slice(0, 300) : "";
+    const written = raw[secondary] && typeof raw[secondary] === "object" ? raw[secondary] as Record<string, unknown> : undefined;
+    if (!written) return previous?.localized;
+    const description = typeof written.description === "string" ? written.description.trim().slice(0, 300) : "";
     const entry = {
       description,
-      jobsToBeDone: textList(english.jobsToBeDone, 10, 180),
-      suggestedQuestions: questionList(english.suggestedQuestions),
+      jobsToBeDone: textList(written.jobsToBeDone, 10, 180),
+      suggestedQuestions: questionList(written.suggestedQuestions),
     };
     if (!entry.description && !entry.jobsToBeDone.length && !entry.suggestedQuestions.length) return previous?.localized;
-    return { ...(previous?.localized || {}), en: entry };
+    return { ...(previous?.localized || {}), [secondary]: entry };
   })();
   const entityTypes = Array.isArray(result.entityTypes) ? result.entityTypes.flatMap((item) => item && typeof item === "object" ? [{ name: String((item as Record<string, unknown>).name || "").slice(0, 80), description: String((item as Record<string, unknown>).description || "").slice(0, 200), examples: textList((item as Record<string, unknown>).examples, 8, 80) }] : []).filter((item) => item.name).slice(0, 16) : [];
   const businessDomains = Array.isArray(result.businessDomains) ? result.businessDomains.flatMap((item) => item && typeof item === "object" ? [{ name: String((item as Record<string, unknown>).name || "").slice(0, 80), description: String((item as Record<string, unknown>).description || "").slice(0, 200) }] : []).filter((item) => item.name).slice(0, 10) : [];
