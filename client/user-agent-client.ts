@@ -1682,7 +1682,10 @@ if ((window.parent === window || !frameDenied) && !window.SiteWake) {
     resettingConversation = true;
     newChat.disabled = true;
     cancelActiveTaskLaunch();
-    messages = []; lastGoal = ""; resetToolActivity({ clearHistory: true }); renderMessages(); setMode("idle"); persistExperience();
+    // The questions belong to the empty conversation, so they come back with it.
+    // They used to return only if a `ready` status happened to arrive after the
+    // reset, which is why they were sometimes there and sometimes not.
+    messages = []; lastGoal = ""; resetToolActivity({ clearHistory: true }); renderMessages(); renderSuggestions(); setMode("idle"); persistExperience();
     try { await activePort.resetConversation(); }
     finally { resettingConversation = false; newChat.disabled = false; input.focus(); }
   };

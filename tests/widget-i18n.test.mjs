@@ -255,3 +255,16 @@ test("只改显示位，匹配和发给后端的值都不许动", async () => {
       `匹配不能用本地化后的名字：${text.trim().slice(0, 80)}`);
   }
 });
+
+test("答复语言跟随网站自己的语言，访客自己选过的优先", () => {
+  // A Chinese browser on an English store was answered in Chinese about English
+  // products: the reply followed the browser, and nothing consulted the site.
+  withEnvironment({ languages: ["zh-CN", "zh"] }, () => {
+    assert.equal(widget.resolveReplyLocale("en"), "en", "英文站点的答复用英文，即使浏览器是中文");
+    assert.equal(widget.resolveReplyLocale("zh"), "zh", "中文站点不变");
+    assert.equal(widget.resolveReplyLocale(undefined), "zh", "站点语言未知时才退回浏览器");
+  });
+  withEnvironment({ languages: ["ja"] }, () => {
+    assert.equal(widget.resolveReplyLocale(undefined), "en", "都不认识时退回英文");
+  });
+});

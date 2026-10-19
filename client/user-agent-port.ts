@@ -86,7 +86,8 @@ import { profileTaskTemplates, userInvocableCapabilities } from "../lib/site-kno
 import { assertRuntimeActionAllowed, assertRuntimeNavigationAllowed, assertRuntimeTeachingAllowed, enforceRuntimeReleaseReadiness } from "../lib/site-knowledge/runtime-policy";
 import { buildSceneUrl, matchUrlTemplate, recognizeScene } from "../lib/site-knowledge/url-scene";
 import { judgeTaskOutcome } from "./user-agent-judge";
-import { replyLanguageInstruction, resolveWidgetLocale, widgetCopy } from "./user-agent-copy";
+import { replyLanguageInstruction, resolveReplyLocale, resolveWidgetLocale, widgetCopy } from "./user-agent-copy";
+import { profileLanguage } from "../lib/site-knowledge/protocol";
 import { reportUnregisteredOrigin } from "./user-agent-diagnostics";
 import {
   actionableFromEvent,
@@ -1317,6 +1318,13 @@ export class AgentPort {
    * thing the agent says should follow them.
    */
   private get say() { return widgetCopy(resolveWidgetLocale()).run; }
+
+  /**
+   * The language answers are written in: this site's own, so a reply reads in the
+   * language of the page it is about. The chrome around it still follows the browser,
+   * and a visitor who picks a language in the widget overrides both.
+   */
+  private replyLocale() { return resolveReplyLocale(profileLanguage(this.release.profile || {})); }
 
   private status(phase: PortStatus["phase"], message: string, detail?: Record<string, unknown>) {
     const activity = detail?.activity as Record<string, unknown> | undefined;
@@ -3533,7 +3541,7 @@ export class AgentPort {
         headers: { "content-type": "application/json", authorization: `Bearer ${this.requireAgentRunToken(session.id)}`, "x-sitewake-ai-stage": "runtime-router" },
         body: JSON.stringify({
           messages: [
-            { role: "system", content: `你是嵌入网站的任务 Agent。根据已经发生的真实执行结果直接回答用户。先明确完成情况，再用自然语言给出关键结果；可以基于结果建议一个合理下一步，但不得编造页面没有返回的事实。不要提 Selector、训练、候选知识或内部协议。回答简洁，像成熟的通用 Agent，而不是固定模板。${replyLanguageInstruction(resolveWidgetLocale())}` },  // i18n-exempt:给模型看的提示词正文，访客语言由 replyLanguageInstruction 单独告知
+            { role: "system", content: `你是嵌入网站的任务 Agent。根据已经发生的真实执行结果直接回答用户。先明确完成情况，再用自然语言给出关键结果；可以基于结果建议一个合理下一步，但不得编造页面没有返回的事实。不要提 Selector、训练、候选知识或内部协议。回答简洁，像成熟的通用 Agent，而不是固定模板。${replyLanguageInstruction(this.replyLocale())}` },  // i18n-exempt:给模型看的提示词正文，访客语言由 replyLanguageInstruction 单独告知
             { role: "user", content: JSON.stringify({ goal: session.goal, input: session.input, outcome, output, executionMode: mode, recentConversation: session.conversation.slice(-6) }).slice(0, 10_000) },
           ],
           temperature: 0.2,
@@ -4270,7 +4278,7 @@ export class AgentPort {
       if (needsModelJudge) {
         const end = capturePageSnapshot(this.sequence++);
         await this.assertCompiledModelRequestAvailable(session.id, runtimeWindow);
-        const decision = await this.compiledAwait(runtimeWindow, (signal) => judgeTaskOutcome({ endpoint: this.options.endpoint, siteAgentId: this.options.siteAgentId, agentRunToken: this.requireAgentRunToken(session.id), evidence: buildTaskJudgeEvidence({ goal: session.goal, values: input, actorSuccess: true, actorText: outcome.summary, start, end, steps: [] }), signal }));
+        const decision = await this.compiledAwait(runtimeWindow, (signal) => judgeTaskOutcome({ endpoint: this.options.endpoint, siteAgentId: this.options.siteAgentId, agentRunToken: this.requireAgentRunToken(session.id), evidence: buildTaskJudgeEvidence({ goal: session.goal, values: input, actorSuccess: true, actorText: outcome.summary, start, end, steps: [] }), replyLocale: this.replyLocale(), signal }));
         if (!decision || decision.status === "needs-more-work" || decision.status === "unknown" || decision.confidence < .65) throw new Error("capability_result_unverified");
         outcome = { status: decision.status, code: decision.code, summary: decision.summary, evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk-judge", capabilityId: runtime.capabilityId, versionId: runtime.versionId, output, confidence: decision.confidence, stageEvidence, stageReceipts } };
       }
@@ -4646,7 +4654,6 @@ export class AgentPort {
     ];
     const messages: Array<Record<string, unknown>> = [
       { role: "system", content: [
-        replyLanguageInstruction(resolveWidgetLocale()),
         "你是当前网站唯一的用户级主 Agent。像成熟的通用 Agent 一样直接回答或调用工具，不要把工作转交给虚构角色。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
         "直接回答或按需选择工具，没有固定检索顺序。普通问候无需工具；网站事实应来自知识正文或实时观察。知识检索只返回线索，不能据此声称已操作网页。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
         "已发布能力是操作当前真实网页的可执行程序，已注册为类型化工具，不是知识条目或缓存结果。它们可以读取实时榜单、绑定参数并完成点击和跨页操作，无需先用 operate_page 重做观察。若其契约完整覆盖当前目标，优先绑定用户参数调用，避免重复探索；参数值不同不代表需要新能力。候选数量和检索分数不证明适用性，缺少参数时用 ask_user 澄清。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
@@ -4659,6 +4666,10 @@ export class AgentPort {
         ...(pageAgentRuntimeV2 ? [`执行权限上限：${JSON.stringify(executionRequirement)}。工具不能扩大用户授权。`] : []), // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
         `当前页面：${typeof location !== "undefined" ? location.href : "unknown"}。这只是位置，不是任务完成证据。`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
         `网站摘要：${this.release.profile?.name || this.options.siteAgentId}；${this.release.profile?.description || ""}`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+        // Last, deliberately: as a standalone closing sentence this lands, where the
+        // same requirement mid-list was read as an aside and the model answered in the
+        // language of the page content instead.
+        replyLanguageInstruction(this.replyLocale()),
       ].join("\n") },
       ...session.conversation.slice(-8).map((turn) => ({ role: turn.role, content: turn.content })),
     ];
