@@ -141,10 +141,11 @@ test("the analysis writes the same three fields for a reader of either language"
       },
       vocabulary: {},
     });
-    const profile = await analyzeSiteProfile(snapshot());
+    // Asked for Chinese: the profile's own fields are Chinese and English goes beside them.
+    const profile = await analyzeSiteProfile(snapshot(), undefined, [], undefined, "zh");
     assert.equal(profile.localized.en.description, "A shop selling mugs and t-shirts");
     assert.deepEqual(profile.localized.en.suggestedQuestions, ["Find me a white mug"]);
-    assert.equal(profile.description, "一个卖杯子和 T 恤的店", "the first language keeps its own fields");
+    assert.equal(profile.description, "一个卖杯子和 T 恤的店", "the language asked for keeps its own fields");
     assert.ok(profile.fieldEvidence?.localized, "the second language carries its own evidence record");
   } finally { globalThis.fetch = original; }
 });
@@ -179,7 +180,7 @@ test("an English question is kept whole, not cut to a Chinese-sized budget", asy
       localized: { en: { description: "the value", jobsToBeDone: ["integrate the agent"], suggestedQuestions: [english] } },
       vocabulary: {},
     });
-    const profile = await analyzeSiteProfile(snapshot());
+    const profile = await analyzeSiteProfile(snapshot(), undefined, [], undefined, "zh");
     assert.deepEqual(profile.localized.en.suggestedQuestions, [english], "the question survives whole");
   } finally { globalThis.fetch = original; }
 });
@@ -196,5 +197,27 @@ test("a question too long to be a question is dropped, never truncated", async (
     const profile = await analyzeSiteProfile(snapshot());
     assert.deepEqual(profile.suggestedQuestions, ["一条正常长度的问题？"],
       "a runaway string is not offered at all, rather than offered half-finished");
+  } finally { globalThis.fetch = original; }
+});
+
+test("the language the analysis is asked for is the one the profile itself is written in", async () => {
+  // The prompt used to fix Chinese as the profile's language and English as the copy
+  // beside it, so an English-only site was described in Chinese whatever was configured.
+  const { analyzeSiteProfile } = await analyzer();
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => modelReply({
+      name: "Orvelle",
+      description: "Design-led lighting for homes",
+      jobsToBeDone: ["Compare table lamps"],
+      suggestedQuestions: ["What is the warranty on the Lune table lamp?"],
+      localized: { zh: { description: "面向家居的设计照明", jobsToBeDone: ["比较台灯"], suggestedQuestions: ["Lune 台灯的保修是多久？"] } },
+      vocabulary: {},
+    });
+    const profile = await analyzeSiteProfile(snapshot(), undefined, [], undefined, "en");
+    assert.equal(profile.description, "Design-led lighting for homes", "the profile is written in the language asked for");
+    assert.doesNotMatch(profile.description, /[\u4e00-\u9fff]/);
+    assert.equal(profile.localized.zh.description, "面向家居的设计照明", "the other language goes beside it");
+    assert.ok(!profile.localized.en, "the language asked for is not duplicated into localized");
   } finally { globalThis.fetch = original; }
 });

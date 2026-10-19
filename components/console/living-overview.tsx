@@ -6,7 +6,7 @@ import { productCopy } from "../../lib/console/product-copy";
 import { overviewCopy } from "../../lib/console/overview-copy";
 import type { EffectRunFact } from "../../lib/site-knowledge/effect-types";
 import type { Locale } from "../../lib/i18n";
-import { deriveAgentConfigFromKnowledge, normalizeAgentConfig, type SitePreviewJobSummary, type SitePreviewResult } from "../../lib/site-knowledge/protocol";
+import { deriveAgentConfigFromKnowledge, localizedProfileDescription, normalizeAgentConfig, type SitePreviewJobSummary, type SitePreviewResult } from "../../lib/site-knowledge/protocol";
 import { resolveChromeCopy } from "../../client/user-agent-copy";
 import { EmptyState } from "../ui";
 
@@ -115,7 +115,7 @@ export function LivingOverview({ overview, onTab, onReload, locale }: { overview
       </section>
       <aside className="sw-overview-side">
         <section className="sw-overview-card sw-agent-summary"><header><h3>{copy.agent}</h3><button onClick={() => onTab("agent")}>{copy.edit}</button></header><div className="sw-summary-identity"><img src="/brand/sitewake-mark.svg?v=wstar-1" alt="" /><div><h4>{chrome.displayName}</h4><p>{chrome.welcomeTitle}</p></div></div><dl><div><dt>{copy.position}</dt><dd>{agentConfig.appearance?.launcherPosition === "bottom-left" ? copy.left : copy.right}</dd></div><div><dt>{copy.suggestions}</dt><dd>{agentConfig.features.showSuggestions ? copy.show : copy.hide}</dd></div></dl></section>
-        <section className="sw-overview-card"><header><h3>{copy.knowledge}</h3><button onClick={() => onTab("model")}>{copy.view}</button></header><p>{overview.profile.description || ui.knowledgeEmpty}</p><div className="sw-overview-facts"><span>{overview.sceneCount} {copy.pages}</span></div></section>
+        <section className="sw-overview-card"><header><h3>{copy.knowledge}</h3><button onClick={() => onTab("model")}>{copy.view}</button></header><p>{localizedProfileDescription(overview.profile, locale) || ui.knowledgeEmpty}</p><div className="sw-overview-facts"><span>{overview.sceneCount} {copy.pages}</span></div></section>
       </aside>
     </div>
     <div className="sw-overview-bottom">

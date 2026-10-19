@@ -2761,6 +2761,21 @@ const GENERATED_COPY_FRAME: Record<GeneratedCopyLocale, {
 const LEGACY_KNOWLEDGE_COPY_LOCALE: GeneratedCopyLocale = "zh";
 const PREFERRED_GENERATED_COPY_LOCALE: GeneratedCopyLocale = "zh";
 
+/**
+ * A site's own description in the reader's language.
+ *
+ * The analysis writes one language and stores the others under `localized`, so the
+ * top-level field is whichever language ran first — not the reader's. Anything showing
+ * this description to a person goes through here; reading `profile.description`
+ * directly is what showed a Chinese summary to an English console.
+ */
+export function localizedProfileDescription(
+  profile: { description?: string; localized?: Partial<Record<GeneratedCopyLocale, { description?: string }>> },
+  locale: GeneratedCopyLocale,
+) {
+  return profile.localized?.[locale]?.description?.trim() || profile.description?.trim() || "";
+}
+
 function knowledgeCopyFor(release: SiteAgentReleaseV2, locale: GeneratedCopyLocale) {
   const written = release.profile.localized?.[locale];
   // A profile written before there were two languages carries one set of fields
