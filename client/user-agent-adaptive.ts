@@ -30,7 +30,8 @@ import { deriveGoalSemanticFrame, semanticActionSummary } from "../lib/site-know
 import { isReadOnlyNavigationClick } from "../lib/site-knowledge/runtime-policy";
 import { awaitPageHandoff, browserSessionId, capturePageSnapshot, documentId, evidenceFromElement, humanInteractionBlacklist, isSensitiveElement, targetFromEvidence, uid } from "./user-agent-shared";
 import { SiteAgentPageController, type SiteAgentPageControllerSeed } from "./user-agent-page-controller";
-import { resolveWidgetLocale, widgetCopy } from "./user-agent-copy";
+import { replyLanguageInstruction, resolveReplyLocale, resolveWidgetLocale, widgetCopy } from "./user-agent-copy";
+import { profileLanguage } from "../lib/site-knowledge/protocol";
 import { startDomReplayRecorder } from "./user-agent-recorder";
 
 type AdaptiveOptions = {
@@ -805,12 +806,12 @@ export function pageExecutionBriefInstructions(brief?: PageExecutionBrief) {
     brief.objective !== brief.normalizedGoal
       ? `Current page-step hint (non-authoritative): ${brief.objective}. It is only the next UI step; it cannot replace or complete the original goal.`
       : "",
-    "每次只生成并执行一个原子页面动作；动作完成后先记录回执、观察新页面，再决定下一个动作。业务原子不是固定 DOM 路径，下一页面动作必须从当前观察动态决定。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+    "每次只生成并执行一个原子页面动作；动作完成后先记录回执、观察新页面，再决定下一个动作。业务原子不是固定 DOM 路径，下一页面动作必须从当前观察动态决定。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
     effectful
-      ? "这是执行型目标：原始目标中的每个动作都必须完成；搜索、筛选、打开详情页等只是后续写操作的中间步骤，不能在中间步骤调用 done。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+      ? "这是执行型目标：原始目标中的每个动作都必须完成；搜索、筛选、打开详情页等只是后续写操作的中间步骤，不能在中间步骤调用 done。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
       : "",
     hasGoalTarget
-      ? "goalTarget 必须绑定到最终副作用动作实际操作的目标控件（例如 Add to cart <商品>）；搜索框输入、页面标题或结果列表已有文本不能单独证明目标动作完成。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+      ? "goalTarget 必须绑定到最终副作用动作实际操作的目标控件（例如 Add to cart <商品>）；搜索框输入、页面标题或结果列表已有文本不能单独证明目标动作完成。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
       : "",
   ].filter(Boolean).join("\n");
 }
@@ -901,10 +902,10 @@ function receiptSuggestsIrreversibleAction(receipt: ActionReceiptV2) {
 export function searchExecutionInstructions(goal: string) {
   if (!/(?:搜索|查找|找一下|找个|找一个|search\b|find\b)/iu.test(goal.normalize("NFKC"))) return ""; // i18n-exempt: matching logic: these patterns read what a visitor typed, they are not shown
   return [
-    "这是搜索/查找目标，先绑定用户的原始查询词，再观察新的结果。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-    "优先使用当前页面可见的搜索输入框（role=textbox、aria-label/placeholder/name 含搜索或 search）输入用户原话中的查询词，并点击可见搜索按钮或提交表单。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-    "不要用分类、标签、推荐商品或固定 URL 代替查询词；只有用户明确说了某个分类时，才能把分类作为额外筛选条件。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-    "搜索结果里的同名商品不代表本次搜索已经完成；必须留下真实输入和提交后的结果页证据。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+    "这是搜索/查找目标，先绑定用户的原始查询词，再观察新的结果。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+    "优先使用当前页面可见的搜索输入框（role=textbox、aria-label/placeholder/name 含搜索或 search）输入用户原话中的查询词，并点击可见搜索按钮或提交表单。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+    "不要用分类、标签、推荐商品或固定 URL 代替查询词；只有用户明确说了某个分类时，才能把分类作为额外筛选条件。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+    "搜索结果里的同名商品不代表本次搜索已经完成；必须留下真实输入和提交后的结果页证据。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
   ].join("\n");
 }
 
@@ -1064,8 +1065,8 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
   const agentHosts = [...document.querySelectorAll<HTMLElement>("[data-sitewake-agent]")];
   const previousPointerEvents = agentHosts.map((host) => host.style.pointerEvents);
   const projectState = (state: BrowserState) => {
-    if (receiptCompletionOnly) return { ...state, content: `能力调用已经完成。请只根据结构化能力回执形成最终回答，不要再次观察或操作页面。\n${JSON.stringify(completionReceipt)}` }; // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-    if (receiptNeedsPageEvidence) return { ...state, content: `${compact(state.content, options.goal).slice(0, 7_000)}\n\n能力回执：${JSON.stringify(completionReceipt)}` }; // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+    if (receiptCompletionOnly) return { ...state, content: `能力调用已经完成。请只根据结构化能力回执形成最终回答，不要再次观察或操作页面。\n${JSON.stringify(completionReceipt)}` }; // i18n-exempt: model prompt body; the reply language is the closing instruction below
+    if (receiptNeedsPageEvidence) return { ...state, content: `${compact(state.content, options.goal).slice(0, 7_000)}\n\n能力回执：${JSON.stringify(completionReceipt)}` }; // i18n-exempt: model prompt body; the reply language is the closing instruction below
     return { ...state, content: compact(state.content, options.goal) };
   };
   const controller = new SiteAgentPageController({
@@ -1858,61 +1859,64 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
     },
     instructions: completionReceipt ? {
       system: [
-        "你是网站 Agent。一个已发布能力已经完成，下面是可信的结构化工具回执。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+        "你是网站 Agent。一个已发布能力已经完成，下面是可信的结构化工具回执。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
         receiptCompletionOnly
-          ? "现在只调用 done：根据回执自然、准确地回答用户；保留有用的 Markdown 结构。不得再次观察或操作页面，不得调用其他工具，不得臆造回执外的信息。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-          : "该存量能力只返回了页面身份。请结合当前结果页中已经提供的紧凑证据回答用户，然后只调用 done。不得再次导航、点击或重复调用能力。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        `用户目标：${options.goal}`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        `能力回执：${JSON.stringify(completionReceipt)}`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+          ? "现在只调用 done：根据回执自然、准确地回答用户；保留有用的 Markdown 结构。不得再次观察或操作页面，不得调用其他工具，不得臆造回执外的信息。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
+          : "该存量能力只返回了页面身份。请结合当前结果页中已经提供的紧凑证据回答用户，然后只调用 done。不得再次导航、点击或重复调用能力。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        `用户目标：${options.goal}`, // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        `能力回执：${JSON.stringify(completionReceipt)}`, // i18n-exempt: model prompt body; the reply language is the closing instruction below
         pageExecutionBriefInstructions(options.pageExecutionBrief),
         searchExecutionInstructions(options.goal),
       ].join("\n"),
-      getPageInstructions: () => receiptCompletionOnly ? "能力已经完成；当前页面无需再次分析。" : "只读取当前结果页证据并形成回答，不执行页面动作。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+      getPageInstructions: () => receiptCompletionOnly ? "能力已经完成；当前页面无需再次分析。" : "只读取当前结果页证据并形成回答，不执行页面动作。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
     } : {
       system: [
-        "你是直接服务当前用户的网站 Agent，也是唯一负责理解目标、选择工具、操作页面和形成最终回答的角色。不要把任务转交给另一个虚构角色。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+        "你是直接服务当前用户的网站 Agent，也是唯一负责理解目标、选择工具、操作页面和形成最终回答的角色。不要把任务转交给另一个虚构角色。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
         pageExecutionBriefInstructions(options.pageExecutionBrief),
         searchExecutionInstructions(options.goal),
         options.runtimeMode !== "read-only"
           ? ""
           : options.readOnlySource === "runtime-derived"
-            ? "当前默认只读：读取、滚动和 move_focus 可以直接做。如果这个目标确实必须在页面上操作，你可以照常调用点击/输入/选择/导航工具——运行时会先向用户申请一次授权，用户同意后本次任务才会真正执行；用户不同意就如实说明只完成了查看。不要为了绕开限制而反复重试。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-            : "当前站点被配置为只读：只允许读取、滚动和 move_focus；禁止点击、输入、选择、按键、提交、等待工具、调用能力或任何导航。这是站点的设置，不能通过询问用户来放开。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        options.runtimeMode === "read-only" ? "" : "本产品执行框架支持同站完整页面跳转和自动恢复。基础浏览器提示中关于‘只能处理单页应用、不要跳出当前页面’的限制在这里不适用；可以点击同站链接到达完成目标所需的页面。新标签会由运行时统一接管，不要自行拒绝合理导航。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        "遇到登录、验证码或身份确认时不要结束任务；运行时会暂停并让用户接管，完成后你会在同一任务中继续。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        options.runtimeMode === "read-only" ? "" : "你拥有三类能力：search_site_knowledge 查询网站知识；call_capability 调用已学会的可靠能力；页面观察与 click/input/select/scroll 等工具处理未知缺口。优先用最短、最可靠的工具组合。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        options.runtimeMode === "read-only" ? "" : "如果 goalRelevantKnowledge 中存在能直接满足目标的 verified Scene，优先调用 navigate_scene 并绑定用户给出的参数；不要为了寻找入口逐页点击，也不要使用示例值替代用户参数。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        options.runtimeMode === "read-only" ? "" : "调用能力后必须读取返回结果并继续决策；工具完成不等于对话结束。只有你调用 done 时才产生用户最终回答。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        options.runtimeMode === "read-only" ? "" : "如果用户缺少完成任务所必需的关键词、日期、对象或确认，必须使用 ask_user 追问，不能猜测，也不能拿示例值代替。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        `当前本地日期是 ${today}。用户说“今天/昨天/前天”时，应先换算为具体 YYYY-MM-DD，再在网站中执行；不要把相对日期原样填入只接受日期的控件。`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+            ? "当前默认只读：读取、滚动和 move_focus 可以直接做。如果这个目标确实必须在页面上操作，你可以照常调用点击/输入/选择/导航工具——运行时会先向用户申请一次授权，用户同意后本次任务才会真正执行；用户不同意就如实说明只完成了查看。不要为了绕开限制而反复重试。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
+            : "当前站点被配置为只读：只允许读取、滚动和 move_focus；禁止点击、输入、选择、按键、提交、等待工具、调用能力或任何导航。这是站点的设置，不能通过询问用户来放开。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        options.runtimeMode === "read-only" ? "" : "本产品执行框架支持同站完整页面跳转和自动恢复。基础浏览器提示中关于‘只能处理单页应用、不要跳出当前页面’的限制在这里不适用；可以点击同站链接到达完成目标所需的页面。新标签会由运行时统一接管，不要自行拒绝合理导航。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        "遇到登录、验证码或身份确认时不要结束任务；运行时会暂停并让用户接管，完成后你会在同一任务中继续。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        options.runtimeMode === "read-only" ? "" : "你拥有三类能力：search_site_knowledge 查询网站知识；call_capability 调用已学会的可靠能力；页面观察与 click/input/select/scroll 等工具处理未知缺口。优先用最短、最可靠的工具组合。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        options.runtimeMode === "read-only" ? "" : "如果 goalRelevantKnowledge 中存在能直接满足目标的 verified Scene，优先调用 navigate_scene 并绑定用户给出的参数；不要为了寻找入口逐页点击，也不要使用示例值替代用户参数。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        options.runtimeMode === "read-only" ? "" : "调用能力后必须读取返回结果并继续决策；工具完成不等于对话结束。只有你调用 done 时才产生用户最终回答。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        options.runtimeMode === "read-only" ? "" : "如果用户缺少完成任务所必需的关键词、日期、对象或确认，必须使用 ask_user 追问，不能猜测，也不能拿示例值代替。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        `当前本地日期是 ${today}。用户说“今天/昨天/前天”时，应先换算为具体 YYYY-MM-DD，再在网站中执行；不要把相对日期原样填入只接受日期的控件。`, // i18n-exempt: model prompt body; the reply language is the closing instruction below
         options.runtimeMode === "read-only"
-          ? "只读核对只允许读取当前 BrowserState、使用 scroll/scroll_horizontally 查看同页内容，或用 move_focus 移动焦点；随后必须用 done 报告 completed、not-completed 或 unknown。不得使用或建议任何其他工具。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+          ? "只读核对只允许读取当前 BrowserState、使用 scroll/scroll_horizontally 查看同页内容，或用 move_focus 移动焦点；随后必须用 done 报告 completed、not-completed 或 unknown。不得使用或建议任何其他工具。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
           : options.runtimeV2 === false
-          ? "每一步必须严格使用旧版动作协议。点击用 click_element_by_index；输入用 input_text；选择用 select_dropdown_option；滚动用 scroll；等待用 wait；结束用 done。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-          : "每一步必须严格使用 Runtime V2 动作协议。点击用 click_element_by_index；替换为字面文本用 set_text_by_index；在光标处插入字面文本用 insert_text_by_index；焦点前后移动用 move_focus；允许的键盘语义用 press_key_by_index；隐式提交表单用 submit_form_by_index；选择用 select_dropdown_option；滚动用 scroll；等待用 wait；结束用 done。set_text_by_index 的 text=\"Enter\" 只会输入五个字母，按回车必须用 press_key_by_index。搜索框填写后不能再次点击输入框来提交，必须使用 press_key_by_index(key=\"Enter\")，或在没有可见提交按钮时使用 submit_form_by_index。Tab 不允许作为按键，焦点移动必须用 move_focus。可见提交按钮应优先点击。处理自定义排序/筛选菜单时，点击触发按钮展开后，下一步必须点击当前观察中可见的目标 menuitem/option；禁止再次点击同一个展开按钮，也不要用循环点击等待菜单变化。action 必须形如 {\"click_element_by_index\":{\"index\":12}}，不能把 index、type、fill 当成动作名。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        "不要因为页面正文出现‘无法’‘失败’‘没有’等字样就判断任务失败。聚焦用户目标和当前交互结果。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        "当用户要求排序、筛选或在当前列表上执行操作，但没有指定分类，而当前页面已经展示对应列表和可见控件时，默认目标范围就是当前页面；直接操作当前列表，不要仅因为知识里存在多个分类而追问。只有当前页面没有可用控件，或用户明确要求切换到另一个分类/页面时，才请求澄清或使用导航知识。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        "对‘按销量/评分/价格/名称等排序’以及‘筛选/排序当前列表’的执行目标，知识中的 Best sellers、New products、Prices drop 等入口只是静态导航，不等价于排序结果；不要为了这些词调用 navigate_scene 或点击静态栏目。若当前页面已有商品列表和排序控件，直接操作当前列表；只有用户明确要求打开该栏目页面时才导航。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+          ? "每一步必须严格使用旧版动作协议。点击用 click_element_by_index；输入用 input_text；选择用 select_dropdown_option；滚动用 scroll；等待用 wait；结束用 done。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
+          : "每一步必须严格使用 Runtime V2 动作协议。点击用 click_element_by_index；替换为字面文本用 set_text_by_index；在光标处插入字面文本用 insert_text_by_index；焦点前后移动用 move_focus；允许的键盘语义用 press_key_by_index；隐式提交表单用 submit_form_by_index；选择用 select_dropdown_option；滚动用 scroll；等待用 wait；结束用 done。set_text_by_index 的 text=\"Enter\" 只会输入五个字母，按回车必须用 press_key_by_index。搜索框填写后不能再次点击输入框来提交，必须使用 press_key_by_index(key=\"Enter\")，或在没有可见提交按钮时使用 submit_form_by_index。Tab 不允许作为按键，焦点移动必须用 move_focus。可见提交按钮应优先点击。处理自定义排序/筛选菜单时，点击触发按钮展开后，下一步必须点击当前观察中可见的目标 menuitem/option；禁止再次点击同一个展开按钮，也不要用循环点击等待菜单变化。action 必须形如 {\"click_element_by_index\":{\"index\":12}}，不能把 index、type、fill 当成动作名。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        "不要因为页面正文出现‘无法’‘失败’‘没有’等字样就判断任务失败。聚焦用户目标和当前交互结果。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        "当用户要求排序、筛选或在当前列表上执行操作，但没有指定分类，而当前页面已经展示对应列表和可见控件时，默认目标范围就是当前页面；直接操作当前列表，不要仅因为知识里存在多个分类而追问。只有当前页面没有可用控件，或用户明确要求切换到另一个分类/页面时，才请求澄清或使用导航知识。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        "对‘按销量/评分/价格/名称等排序’以及‘筛选/排序当前列表’的执行目标，知识中的 Best sellers、New products、Prices drop 等入口只是静态导航，不等价于排序结果；不要为了这些词调用 navigate_scene 或点击静态栏目。若当前页面已有商品列表和排序控件，直接操作当前列表；只有用户明确要求打开该栏目页面时才导航。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
         options.runtimeMode === "read-only"
-          ? "只根据当前页可见证据核对原目标是否已经完成；证据不足时返回 unknown，绝不通过执行原动作来试探。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-          : "每次操作前先判断当前页面是否已经出现足以满足目标的结果。纯查看目标看到对应页面或状态即可 done；但搜索、筛选、提交、添加、删除等执行型目标，页面原本就存在同名内容或相同状态不代表动作已经完成，必须执行原始动词要求的动作并观察其结果，不能把最终动作退化成查找或浏览。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+          ? "只根据当前页可见证据核对原目标是否已经完成；证据不足时返回 unknown，绝不通过执行原动作来试探。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
+          : "每次操作前先判断当前页面是否已经出现足以满足目标的结果。纯查看目标看到对应页面或状态即可 done；但搜索、筛选、提交、添加、删除等执行型目标，页面原本就存在同名内容或相同状态不代表动作已经完成，必须执行原始动词要求的动作并观察其结果，不能把最终动作退化成查找或浏览。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
         options.requiredActionEvidence === "input"
-          ? "当前目标要求把用户指定的业务值实际应用到页面：成功前必须留下 set_text_by_index、insert_text_by_index 或 select_dropdown_option 证据；仅滚动、等待、看到同名内容或打开通用列表都不算完成。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+          ? "当前目标要求把用户指定的业务值实际应用到页面：成功前必须留下 set_text_by_index、insert_text_by_index 或 select_dropdown_option 证据；仅滚动、等待、看到同名内容或打开通用列表都不算完成。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
           : options.requiredActionEvidence === "material"
-            ? "当前目标是执行型操作：成功前必须留下点击、输入或选择证据；仅滚动、等待或阅读已有状态都不算完成。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+            ? "当前目标是执行型操作：成功前必须留下点击、输入或选择证据；仅滚动、等待或阅读已有状态都不算完成。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
             : "",
-        "完成后调用 done，并用面向用户的自然语言说明实际完成了什么；如果仍可继续，不要过早结束。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        `当前页面的紧凑知识上下文：${JSON.stringify(knowledge)}`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+        "完成后调用 done，并用面向用户的自然语言说明实际完成了什么；如果仍可继续，不要过早结束。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        `当前页面的紧凑知识上下文：${JSON.stringify(knowledge)}`, // i18n-exempt: model prompt body; the reply language is the closing instruction below
         options.runtimeMode === "read-only"
-          ? `与当前用户目标语义相关的只读背景知识（不得据此导航或调用能力）：${JSON.stringify(goalKnowledge)}` // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-          : `与当前用户目标语义召回的知识（优先使用其中 verified 入口）：${JSON.stringify(goalKnowledge)}`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        options.runtimeMode === "read-only" ? "" : `可调用能力目录（id 必须原样使用）：${JSON.stringify(capabilities)}`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        toolReceipts.length ? `跨页面恢复的工具回执（这些动作已经发生，不要重复调用）：${JSON.stringify(toolReceipts)}` : "", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        actions.length ? `跨页面恢复的已执行页面动作（已经发生，不得重做）：${JSON.stringify(actions.slice(-8).map((action) => ({ action: action.action, input: action.input, page: action.page, element: action.element ? { role: action.element.role, name: action.element.accessibleName } : undefined })))}` : "", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        options.session.conversation.length > 1 ? `最近对话（只用于理解指代和连续目标）：\n${options.session.conversation.slice(-8).map((item) => `${item.role}: ${item.content}`).join("\n")}` : "", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        "页面知识只用于缩短路径，不代表目标已完成。结合当前页面选择最短、最直接的可见 UI 路径。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+          ? `与当前用户目标语义相关的只读背景知识（不得据此导航或调用能力）：${JSON.stringify(goalKnowledge)}` // i18n-exempt: model prompt body; the reply language is the closing instruction below
+          : `与当前用户目标语义召回的知识（优先使用其中 verified 入口）：${JSON.stringify(goalKnowledge)}`, // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        options.runtimeMode === "read-only" ? "" : `可调用能力目录（id 必须原样使用）：${JSON.stringify(capabilities)}`, // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        toolReceipts.length ? `跨页面恢复的工具回执（这些动作已经发生，不要重复调用）：${JSON.stringify(toolReceipts)}` : "", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        actions.length ? `跨页面恢复的已执行页面动作（已经发生，不得重做）：${JSON.stringify(actions.slice(-8).map((action) => ({ action: action.action, input: action.input, page: action.page, element: action.element ? { role: action.element.role, name: action.element.accessibleName } : undefined })))}` : "", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        options.session.conversation.length > 1 ? `最近对话（只用于理解指代和连续目标）：\n${options.session.conversation.slice(-8).map((item) => `${item.role}: ${item.content}`).join("\n")}` : "", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        "页面知识只用于缩短路径，不代表目标已完成。结合当前页面选择最短、最直接的可见 UI 路径。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        // Last, and actually present: the summary this runtime writes on `done` is read
+        // by the visitor, and every instruction above it is Chinese.
+        replyLanguageInstruction(resolveReplyLocale(profileLanguage(options.release?.profile || {}))),
       ].filter(Boolean).join("\n"),
-      getPageInstructions: () => `当前 URL：${location.href}。任务会话：${options.session.id}。`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+      getPageInstructions: () => `当前 URL：${location.href}。任务会话：${options.session.id}。`, // i18n-exempt: model prompt body; the reply language is the closing instruction below
     },
     customTools,
     onBeforeStep: async (_, stepIndex) => {
@@ -2197,7 +2201,7 @@ async function runAdaptive(options: AdaptiveOptions) {
   });
   emitTrace();
   const continuation = options.resumeTrace && (actions.length || toolReceipts.length)
-    ? "这是同一个任务跨页面恢复后的继续执行。已完成的动作和工具回执已在上下文中，请从当前页面继续，禁止返回旧页面重新开始。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+    ? "这是同一个任务跨页面恢复后的继续执行。已完成的动作和工具回执已在上下文中，请从当前页面继续，禁止返回旧页面重新开始。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
     : "";
   const remainingBudget = Math.max(3, options.maxSteps - Math.min(options.maxSteps - 3, steps.length));
   const executionTask = pageExecutionTask(options.pageExecutionBrief, options.goal);
@@ -2230,11 +2234,11 @@ async function runAdaptive(options: AdaptiveOptions) {
     const missing = executionEvidence();
     const correction = [
       options.requiredActionEvidence === "input"
-        ? "上一次判断把页面已有的同名内容或详情页误当成了原始操作结果。请把用户指定的值真正应用到控件并观察新结果。" // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-        : "上一次判断缺少原始动作产生的可验证结果。请继续完成原始动词要求的页面动作并观察新结果。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-      missing.missingEntities.length ? `尚未绑定到发生变化动作的实体字段：${missing.missingEntities.join("、")}。` : "", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-      missing.missingCriteria.length ? `尚未提供逐字可核验引用的完成条件：${missing.missingCriteria.join("；")}。` : "", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-      "再次调用 done 时，每条 completionEvidence.evidence 必须是当前 BrowserState 或动作回执中真实出现的短文本；不得用推断或页面原有同名内容代替动作结果。", // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+        ? "上一次判断把页面已有的同名内容或详情页误当成了原始操作结果。请把用户指定的值真正应用到控件并观察新结果。" // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        : "上一次判断缺少原始动作产生的可验证结果。请继续完成原始动词要求的页面动作并观察新结果。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+      missing.missingEntities.length ? `尚未绑定到发生变化动作的实体字段：${missing.missingEntities.join("、")}。` : "", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+      missing.missingCriteria.length ? `尚未提供逐字可核验引用的完成条件：${missing.missingCriteria.join("；")}。` : "", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+      "再次调用 done 时，每条 completionEvidence.evidence 必须是当前 BrowserState 或动作回执中真实出现的短文本；不得用推断或页面原有同名内容代替动作结果。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
     ].filter(Boolean).join("\n");
     options.onStatus?.({
       phase: "adaptive",
@@ -2243,7 +2247,7 @@ async function runAdaptive(options: AdaptiveOptions) {
     });
     actor = await executeActorRound(
       options,
-      `${executionTask}\n\n纠偏要求：${correction}`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+      `${executionTask}\n\n纠偏要求：${correction}`, // i18n-exempt: model prompt body; the reply language is the closing instruction below
       Math.max(3, options.maxSteps - Math.min(options.maxSteps - 3, steps.length)),
       steps,
       targets,
