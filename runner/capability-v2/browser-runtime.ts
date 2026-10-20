@@ -510,6 +510,7 @@ async function modelJson(
       attempts: 2,
       timeoutMs: 180_000,
       maxTokens: 4096,
+      disableThinking: true,
       jsonSchema: prompt.outputSchema,
       validate,
       onAttempt: (attempt) => {
