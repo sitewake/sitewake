@@ -958,7 +958,7 @@ export async function authorJavaScriptCapability(options: {
             });
             if (exampleReplay.outcome !== "Success") throw new Error(`${exampleReplay.outcome}:${exampleReplay.reason || ""}`);
             await evaluateResult(isolatedExample.page, options.goal, options.contract, exampleReplay.output, groundingInput, undefined, exampleReplay.observedText);
-            await options.onEvent?.({ phase: "DraftReplay", message: `draft grounding example ${exampleIndex + 1} succeeded` });
+            await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example succeeded", payload: { example: exampleIndex + 1 } });
           } catch (error) {
             lastCase = {caseId:`example_${exampleIndex + 1}`,input:groundingInput.parameters,moduleHash:moduleRef.contentHash};
             lastDraftObservation = await inspectPage(isolatedExample.page).then(trimSnapshot).catch(() => ({unavailable:true}));
@@ -1019,7 +1019,7 @@ export async function authorJavaScriptCapability(options: {
   });
   try {
   while (toolCallsUsed < maxToolCalls && draftRuns < maxDraftRuns) {
-    await options.onEvent?.({ phase: "Authoring", message: `model turn ${toolCallsUsed + 1}` });
+    await options.onEvent?.({ phase: "Authoring", message: "model turn", payload: { turn: toolCallsUsed + 1 } });
     const authorTimeoutMs = Math.max(120_000, Number(process.env.CAPABILITY_V2_AUTHOR_TIMEOUT_MS || 180_000));
     await workspace.event('model.request', {baseMessageCount:recordedMessageCount,appendMessages:messages.slice(recordedMessageCount),model:config.model,prompt:provenance});
     recordedMessageCount = messages.length;
@@ -1090,7 +1090,7 @@ export async function authorJavaScriptCapability(options: {
         const code = failureCode(failure);
         await options.onEvent?.({
           phase: call.function.name === "run_draft" ? "DraftReplay" : "Authoring",
-          message: `${call.function.name} failed`,
+          message: call.function.name === "run_draft" ? "run_draft failed" : "tool call failed",
           payload: {
             tool: call.function.name,
             code,

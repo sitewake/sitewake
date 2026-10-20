@@ -201,7 +201,7 @@ export async function bootstrapAuthentication(
         timeout: 30_000,
       });
   }
-  await onEvent?.("AuthBootstrap", "检查页面登录状态");
+  await onEvent?.("AuthBootstrap", "checking sign-in state");
 
   const password = await firstVisible(page, [
     config.passwordSelector,
@@ -229,7 +229,7 @@ export async function bootstrapAuthentication(
     // resume from the exact same clean login form.
     const usernameValue = username ? secret(spec, usernameKey) : undefined;
     const passwordValue = secret(spec, passwordKey);
-    await onEvent?.("AuthBootstrap", "使用受保护输入建立登录态", {
+    await onEvent?.("AuthBootstrap", "signing in with protected input", {
       fields: username ? [usernameKey, passwordKey] : [passwordKey],
     });
     if (username && usernameValue !== undefined)
@@ -254,7 +254,7 @@ export async function bootstrapAuthentication(
       : page;
     const otpKey = config.otpKey || "otp";
     const otpValue = secret(spec, otpKey);
-    await onEvent?.("AuthBootstrap", "提交一次性验证信息", {
+    await onEvent?.("AuthBootstrap", "submitting one-time verification", {
       fields: [otpKey],
     });
     await otp.fill(otpValue);
@@ -276,7 +276,7 @@ export async function bootstrapAuthentication(
   }
   await onEvent?.(
     "AuthBootstrap",
-    authenticated ? "登录态已建立" : "当前页面无需登录",
+    authenticated ? "signed in" : "no sign-in needed",
   );
   return { authenticated };
 }

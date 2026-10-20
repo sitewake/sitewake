@@ -505,8 +505,8 @@ async function performCandidateValidation(
         });
         await helpers.onEvent(
           "Validating",
-          `C3 纯代码验证样例 ${testCase.caseId} 没有结果：${replayed.reason || "该输入在站点上没有数据"}`,
-          { caseId: testCase.caseId, ai: false, noResult: true },
+          "validation case returned no result",
+          { caseId: testCase.caseId, ai: false, noResult: true, reason: replayed.reason || "no_result" },
         );
         continue;
       }
@@ -527,8 +527,8 @@ async function performCandidateValidation(
         });
         await helpers.onEvent(
           "Validating",
-          `C3 纯代码验证样例 ${testCase.caseId} 未通过：${reason}`,
-          { caseId: testCase.caseId, ai: false, failed: true },
+          "validation case failed",
+          { caseId: testCase.caseId, ai: false, failed: true, reason },
         );
       };
       if (replayed.outcome !== "Success") {
@@ -569,10 +569,8 @@ async function performCandidateValidation(
       });
       await helpers.onEvent(
         "Validating",
-        outputDrift.length
-          ? `C3 纯代码验证样例 ${testCase.caseId} 已通过；与预期不同的字段（不影响通过）：${describeExpectedOutputDrift(outputDrift)}`
-          : `C3 纯代码验证样例 ${testCase.caseId} 已通过`,
-        { caseId: testCase.caseId, ai: false, ...(outputDrift.length ? { outputDrift } : {}) },
+        "validation case passed",
+        { caseId: testCase.caseId, ai: false, ...(outputDrift.length ? { outputDrift, outputDriftSummary: describeExpectedOutputDrift(outputDrift) } : {}) },
       );
     } catch (error) {
       // The module itself being unloadable is not one case's problem: every
@@ -595,8 +593,8 @@ async function performCandidateValidation(
       });
       await helpers.onEvent(
         "Validating",
-        `C3 纯代码验证样例 ${testCase.caseId} 未通过：${reason}`,
-        { caseId: testCase.caseId, ai: false, failed: true },
+        "validation case failed",
+        { caseId: testCase.caseId, ai: false, failed: true, reason },
       );
     } finally {
       await isolated.context.close().catch(() => undefined);
@@ -630,8 +628,8 @@ async function performCandidateValidation(
   if (constant.length) {
     await helpers.onEvent(
       "Validating",
-      `每个样例的 ${constant[0]} 都返回了同一个值 ${JSON.stringify(answered[0]?.output?.[constant[0]])}；请在审核时判断这是否说明程序没有读取对应条目`,
-      { constantOutputs: constant, ai: false },
+      "every case returned the same value",
+      { constantOutputs: constant, field: constant[0], value: answered[0]?.output?.[constant[0]] ?? null, ai: false },
     );
   }
   return {
@@ -716,7 +714,7 @@ export async function performC1Authoring(
   if (!spec.browser.startUrl) throw new Error("exploration_start_url_required");
   await helpers.onEvent(
     "Specification",
-    "设计参数、Contract 与 C1 私有编写样例",
+    "designing parameters and contract",
   );
   const configuredExplorationSteps = Number(
     process.env.CAPABILITY_V2_EXPLORATION_MAX_STEPS || 24,
@@ -735,7 +733,7 @@ export async function performC1Authoring(
   );
   await helpers.onEvent(
     "Exploring",
-    "Playwright 探索已成功，开始编写 JavaScript Stage",
+    "exploration succeeded; writing the module",
   );
   const authored = await authorJavaScriptCapability({
     explorationPage: page,
@@ -768,7 +766,7 @@ export async function performC1Authoring(
   );
   await helpers.onEvent(
     "Quality",
-    draftQuality.valid ? "确定性质量门禁通过" : "确定性质量门禁拒绝候选能力",
+    draftQuality.valid ? "quality gate passed" : "quality gate rejected the candidate",
     {
       valid: draftQuality.valid,
       issues: draftQuality.issues.map((issue) => ({
@@ -895,12 +893,12 @@ async function perform(
     }
     const reusable = restoredRejections.length ? undefined : restored;
     const authored = reusable || await performC1Authoring(page,spec,observer,helpers,baselineStorageState);
-    if (reusable) await helpers.onEvent('AuthoringRestored','已恢复通过自测的源码，继续独立取证');
+    if (reusable) await helpers.onEvent("AuthoringRestored", "self-tested source restored");
     await helpers.workspace?.write('reports/c1-checkpoint.json',{authored});
     await helpers.checkpoint?.();
     await helpers.onEvent(
       "CaseGeneration",
-      "C1 已完成，开始独立 C2 测试用例生成",
+      "authoring complete; generating test cases",
       { generationTaskId: spec.taskId },
     );
     let c2CaseGenerationOutput: C2CaseGenerationOutput;
@@ -947,7 +945,7 @@ async function perform(
         onEnrichmentUnavailable: async (reason) => {
           await helpers.onEvent(
             "CaseGeneration",
-            `用例补充未能进行，改用代码推导出的输入：${reason}`,
+            "case enrichment skipped; using derived inputs",
             { ai: true, enrichment: "unavailable", reason },
           );
         },
@@ -970,7 +968,7 @@ async function perform(
     }
     await helpers.onEvent(
       "CaseGeneration",
-      "C2 测试用例生成与纯代码门禁已通过",
+      "test cases generated and checked",
       {
         generationTaskId: spec.taskId,
         caseCount: c2CaseGenerationOutput.validationSuite.cases.length,
@@ -1020,7 +1018,7 @@ async function perform(
     : [spec.input.parameters];
   await helpers?.onEvent(
     "Validating",
-    `开始独立回放 ${cases.length} 个验证样例`,
+    "replaying validation cases",
     { caseCount: cases.length },
   );
   let output: JsonObject = {};
@@ -1029,7 +1027,7 @@ async function perform(
   const artifactRefs: UploadedArtifact[] = [];
   for (let caseIndex = 0; caseIndex < cases.length; caseIndex += 1) {
     const validationCase = cases[caseIndex];
-    await helpers?.onEvent("Validating", `正在回放验证样例 ${caseIndex + 1}`, {
+    await helpers?.onEvent("Validating", "replaying a validation case", {
       caseIndex: caseIndex + 1,
       caseCount: cases.length,
     });
@@ -1129,7 +1127,7 @@ async function perform(
         ),
       );
       if (receiptArtifact) artifactRefs.push(receiptArtifact);
-      await helpers?.onEvent("Validating", `验证样例 ${caseIndex + 1} 已通过`, {
+      await helpers?.onEvent("Validating", "validation case passed", {
         caseIndex: caseIndex + 1,
         caseCount: cases.length,
         artifactIds: [
@@ -1424,7 +1422,7 @@ async function run() {
       }
     }
     recordTrace({ at: new Date().toISOString(), stage: "runner-success" });
-    await helpers.onEvent("Completed", "Runner 已完成并准备提交任务结果");
+    await helpers.onEvent("Completed", "runner finished; submitting the result");
     const mainVideo = page!.video();
     const artifactRefs = [
       await captureWorkspace("completed"),
@@ -1517,7 +1515,7 @@ async function run() {
         runnerId,
         eventType: "RunnerFailed",
         phase: "Failed",
-        message: diagnostic.message,
+        message: "runner failed",
         payload: { errorCode: diagnostic.code, rawError: rawMessage },
       }),
     }).catch(() => undefined);

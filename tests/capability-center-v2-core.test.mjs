@@ -6018,7 +6018,7 @@ test("a task waiting for a free runtime slot is queued, not failed", async () =>
   assert.equal(task.error, undefined, "排队不是失败，不应留下错误");
   const events = await listTaskEvents(siteId, created.task.id);
   assert.equal(events.at(-1).eventType, "RunnerLost", "工程记录仍然保留这次调度");
-  assert.match(events.at(-1).payload.message, /排队/, "工程记录说的是排队");
+  assert.equal(events.at(-1).payload.message, "waiting for runner capacity", "工程记录说的是排队");
 });
 
 test("a capability is never named after the value the run demonstrated with", () => {

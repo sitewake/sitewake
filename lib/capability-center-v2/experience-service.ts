@@ -200,7 +200,7 @@ function alignAbstractionParameterNames(
     return [{
       name,
       type: typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "string",
-      description: `用户提供的公开业务参数：${name}`,
+      description: name,
       required: true,
       exampleValue: value,
     }];
