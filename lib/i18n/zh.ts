@@ -1387,6 +1387,7 @@ export const zh = {
           "run spec and module address checked": "运行配置与公共模块地址检查通过",
           "seed draft checked": "首版草稿已按探索路径跑过一遍",
           "draft grounding example succeeded": (data) => `编写样例 ${data.example ?? ""} 通过`,
+          "draft grounding example returned no result": (data) => `编写样例 ${data.example ?? ""} 在站点上没有对应数据，已记录`,
           "draft replay succeeded": "全部编写样例通过，源码已冻结",
           "run_draft failed": "发现问题，正在结合失败现场修正",
           "tool call failed": "发现问题，正在结合失败现场修正",

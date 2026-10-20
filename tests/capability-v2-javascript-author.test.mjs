@@ -115,7 +115,7 @@ function toolTurn(index, name, args = {}) {
   };
 }
 
-async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start" }) {
+async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [] }) {
   const requests = [];
   const events = [];
   const persisted = [];
@@ -156,6 +156,7 @@ async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraf
         promptProvenance: [],
       },
       validationCases: [],
+      groundingExamples,
       createDraftContext: async () => ({
         context: { close: async () => undefined },
         page: { goto: async () => undefined, waitForTimeout: async () => undefined },
@@ -254,6 +255,40 @@ test("ordinary code or Contract failure remains model-repairable and a corrected
     observation: {unavailable:true},
     budget: { toolCalls: 2, draftRuns: 5 },
   });
+});
+
+test("an authoring example the site has no data for is recorded, not a reason to stop authoring", async () => {
+  // The demo's order-status capability was abandoned after the program, asked
+  // about a sample order number found on the page, correctly answered
+  // "Order not found" twice.
+  const turns = [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")];
+  const completed = await runAuthor({
+    turns,
+    groundingExamples: [{ query: "ORV-00000" }],
+    stageRun: async (options) => (options.input.query === "ORV-00000"
+      ? { page: successfulDraft().page, outcome: "NoResult", reason: "Order not found", output: {}, state: {}, evidence: [], receipts: [] }
+      : successfulDraft()),
+  });
+  assert.equal(completed.result.draft.outcome, "Success");
+  assert.ok(completed.events.some((event) => event.message === "draft grounding example returned no result" && event.payload?.reason === "Order not found"));
+});
+
+test("an authoring example that fails outright still goes back for repair", async () => {
+  const turns = [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")];
+  await assert.rejects(
+    () => runAuthor({
+      turns,
+      groundingExamples: [{ query: "pillow" }],
+      stageRun: async (options) => (options.input.query === "pillow"
+        ? { page: successfulDraft().page, outcome: "Ambiguous", reason: "two matches", output: {}, state: {}, evidence: [], receipts: [] }
+        : successfulDraft()),
+    }),
+    (error) => {
+      const failed = error.authorTestState.events.find((event) => event.message === "run_draft failed");
+      assert.match(failed?.payload?.error || "", /^draft_grounding_example_failed:example_1:Ambiguous:two matches/);
+      return true;
+    },
+  );
 });
 
 test("repair budget exhaustion retains the last root cause", async () => {

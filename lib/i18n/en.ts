@@ -1305,6 +1305,7 @@ export const en: ConsoleCopy = {
           "run spec and module address checked": "Run spec and public module address checked",
           "seed draft checked": "The first draft was checked against the explored path",
           "draft grounding example succeeded": (data) => `Authoring example ${data.example ?? ""} passed`,
+          "draft grounding example returned no result": (data) => `Authoring example ${data.example ?? ""} has no data on the site; recorded`,
           "draft replay succeeded": "All authoring examples passed; source frozen",
           "run_draft failed": "Problem found — repairing with the failure evidence",
           "tool call failed": "Problem found — repairing with the failure evidence",
