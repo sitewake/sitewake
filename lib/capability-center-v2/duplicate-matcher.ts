@@ -26,6 +26,7 @@ export async function findDuplicateCapability(siteId: string, goal: string, summ
       payload: { proposed: { goal, summary }, candidates: candidates.map(({ item }) => ({ capabilityId: item.id, name: item.name, description: item.description, aliases: item.aliases, contract: item.contract, status: item.status })) },
       timeoutMs: 30_000,
       attempts: 2,
+      disableThinking: true,
       jsonSchema: DUPLICATE_CHECK_PROMPT.outputSchema,
       validate: (value) => {
         if (value.capabilityId !== null && (typeof value.capabilityId !== "string" || !candidateIds.has(value.capabilityId))) throw new Error("duplicate_capability_id_invalid");

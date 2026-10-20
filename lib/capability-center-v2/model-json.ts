@@ -1,4 +1,5 @@
 import { modelChatCompletionsUrl, modelCompatibility, type ModelConfig } from "../model-config";
+import { applyProviderThinkingPolicy } from "../site-knowledge/provider-payload-policy";
 import { modelRetryAfterMs, withModelProviderGate } from "../site-knowledge/model-provider-gate";
 
 export type StructuredModelAttempt = {
@@ -45,6 +46,8 @@ export async function requestStructuredModelJson(
     jsonSchema?: StructuredModelJsonSchema;
     validate?: (value: Record<string, unknown>) => void;
     onAttempt?: (attempt: StructuredModelAttempt) => void;
+    /** Disable provider reasoning for background turns whose output no one watches live. */
+    disableThinking?: boolean;
   },
 ) {
   if (!config.configured) throw new Error("structured_model_not_configured");
@@ -70,43 +73,50 @@ export async function requestStructuredModelJson(
     let httpStatus: number | undefined;
     let retryAfterMs = 0;
     const responseFormat = useJsonSchema ? "json_schema" as const : "json_object" as const;
+    const request: Record<string, unknown> = {
+      model: config.model,
+      temperature: 0,
+      ...compatibility.requestBody,
+      ...(!compatibility.omitStructuredMaxTokens ? { max_tokens: input.maxTokens ?? 4096 } : {}),
+      response_format: input.jsonSchema && useJsonSchema
+        ? {
+          type: "json_schema",
+          json_schema: {
+            name: input.jsonSchema.name,
+            ...(input.jsonSchema.description ? { description: input.jsonSchema.description } : {}),
+            strict: input.jsonSchema.strict !== false,
+            schema: input.jsonSchema.schema,
+          },
+        }
+        : { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: `${input.system}${schemaInstruction}\n\n输出协议：只输出一个可被 JSON.parse 直接解析的 JSON 对象；所有键和字符串必须使用双引号，不要输出 Markdown、注释或对象之外的文字。`,
+        },
+        { role: "user", content: JSON.stringify(input.payload) },
+        ...(invalidContent
+          ? [
+            { role: "assistant", content: invalidContent.slice(0, 4_000) },
+            {
+              role: "user",
+              content: `上一条回复不符合结构化输出协议（${invalidReason || "validation_failed"}）。请修正语法或字段结构并重新输出完整 JSON 对象；不要解释，也不要省略任何必需字段。`,
+            },
+          ]
+          : []),
+      ],
+    };
+    // Background turns have no live reader: reasoning adds latency without
+    // adding perceived quality. The policy maps the ask to the provider's own
+    // verified switch, or strips every thinking field for an unverified one.
+    const requestBody = input.disableThinking
+      ? applyProviderThinkingPolicy({ baseUrl: config.baseUrl, model: config.model, payload: request })
+      : request;
     try {
       const response = await withModelProviderGate(config, () => fetch(modelChatCompletionsUrl(config.baseUrl), {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${config.apiKey}` },
-          body: JSON.stringify({
-            model: config.model,
-            temperature: 0,
-            ...compatibility.requestBody,
-            ...(!compatibility.omitStructuredMaxTokens ? { max_tokens: input.maxTokens ?? 4096 } : {}),
-            response_format: input.jsonSchema && useJsonSchema
-              ? {
-                type: "json_schema",
-                json_schema: {
-                  name: input.jsonSchema.name,
-                  ...(input.jsonSchema.description ? { description: input.jsonSchema.description } : {}),
-                  strict: input.jsonSchema.strict !== false,
-                  schema: input.jsonSchema.schema,
-                },
-              }
-              : { type: "json_object" },
-            messages: [
-              {
-                role: "system",
-                content: `${input.system}${schemaInstruction}\n\n输出协议：只输出一个可被 JSON.parse 直接解析的 JSON 对象；所有键和字符串必须使用双引号，不要输出 Markdown、注释或对象之外的文字。`,
-              },
-              { role: "user", content: JSON.stringify(input.payload) },
-              ...(invalidContent
-                ? [
-                  { role: "assistant", content: invalidContent.slice(0, 4_000) },
-                  {
-                    role: "user",
-                    content: `上一条回复不符合结构化输出协议（${invalidReason || "validation_failed"}）。请修正语法或字段结构并重新输出完整 JSON 对象；不要解释，也不要省略任何必需字段。`,
-                  },
-                ]
-                : []),
-            ],
-          }),
+          body: JSON.stringify(requestBody),
           signal: abortController.signal,
         }));
       httpStatus = response.status;

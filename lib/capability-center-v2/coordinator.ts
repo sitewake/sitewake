@@ -157,6 +157,7 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
       timeoutMs: Number(process.env.CAPABILITY_V2_MODEL_TIMEOUT_MS || 180_000),
       maxTokens: 4096,
       attempts: 3,
+      disableThinking: true,
       jsonSchema: prompt.outputSchema,
       validate: (value) => { parseReviewDecision(value); },
       onAttempt: (attempt) => {
@@ -261,6 +262,7 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
       timeoutMs: Number(process.env.CAPABILITY_V2_MODEL_TIMEOUT_MS || 180_000),
       maxTokens: 4096,
       attempts: 3,
+      disableThinking: true,
       jsonSchema: prompt.outputSchema,
       validate: (value) => { parseReviewDecision(value); },
     });

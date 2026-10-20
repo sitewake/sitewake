@@ -105,6 +105,7 @@ export async function requestCapabilityCaseEnrichmentModel(
     maxTokens: 4_096,
     attempts: CASE_ENRICHMENT_ATTEMPTS,
     timeoutMs: CASE_ENRICHMENT_TIMEOUT_MS,
+    disableThinking: true,
     validate: (value) => {
       decodeCapabilityCaseEnrichment(value, request.count);
     },

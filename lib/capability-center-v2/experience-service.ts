@@ -303,6 +303,7 @@ export async function abstractCapabilityExperience(experience: CapabilityExperie
     timeoutMs: Number(process.env.CAPABILITY_V2_MODEL_TIMEOUT_MS || 180_000),
     maxTokens: 2_500,
     attempts: 3,
+    disableThinking: true,
     jsonSchema: EXPERIENCE_ABSTRACTION_PROMPT.outputSchema,
     validate: (value) => { parseCapabilityExperienceAbstraction(value, experience); },
     onAttempt: (attempt) => {
