@@ -305,7 +305,7 @@ export function authoringManifest(trace: CapabilityDslProgram, contract: Capabil
     ? [{
         id: "stage_open",
         title: "Open the page for the input",
-        purpose: "打开输入对应的页面：演示地址中的输入值换成实际输入",
+        purpose: "Open the page for the input: the demonstration value in the address is replaced by the actual input",
         effect: "read",
         resumePolicy: "skip-completed",
         io: stageIO(opening, [], [], []),
@@ -323,7 +323,7 @@ export function authoringManifest(trace: CapabilityDslProgram, contract: Capabil
     return {
       id: `stage_${index + 1}`,
       title: `${step.action} · ${step.id}`,
-      purpose: `执行已探索成功路径中的 ${step.action} 操作`,
+      purpose: `Perform the ${step.action} step of the explored path`,
       effect,
       resumePolicy: effect === "write" ? "reconcile-before-retry" as const : "skip-completed" as const,
       io: stageIO(readsInput, [], [...readsInput, ...(ACTED_ON_ACTIONS.includes(step.action) ? [ACTED_ON_STATE_PATH] : [])]),
@@ -360,7 +360,7 @@ export function authoringManifest(trace: CapabilityDslProgram, contract: Capabil
         {
           id: "stage_resolve_target",
           title: "Resolve input-driven target",
-          purpose: "按公开输入搜索或回到匹配的动态业务对象，不固化演示商品或静态分类路径",
+          purpose: "Search by the public input or return to the matching business object, without fixing the demonstration item or a static category path",
           effect: "write",
           resumePolicy: "reconcile-before-retry",
           io: stageIO([], [], [], []),
@@ -369,7 +369,7 @@ export function authoringManifest(trace: CapabilityDslProgram, contract: Capabil
         {
           id: "stage_select_target",
           title: "Select matching dynamic target",
-          purpose: "在结果列表中按输入条件选择匹配的动态商品/业务对象并进入详情页",
+          purpose: "Pick the result that matches the input and open its detail page",
           effect: "write",
           resumePolicy: "reconcile-before-retry",
           io: stageIO([], [], [], []),
@@ -956,9 +956,20 @@ export async function authorJavaScriptCapability(options: {
               input: groundingInput.parameters,
               deadlineCapMs: DRAFT_DEADLINE_CAP_MS,
             });
+            // The site answering "there is nothing for this input" is an
+            // answer, not a broken program: an example drawn from the page
+            // (a sample order number in the help text, a sibling value) need
+            // not exist. A program that ignored its input would return the
+            // demonstration's result here, never "not found", so this cannot
+            // hide hardcoding. Independent validation applies the same rule.
+            if (exampleReplay.outcome === "NoResult") {
+              await workspace.event('replay.no_result', {caseId:`example_${exampleIndex + 1}`,input:groundingInput.parameters,reason:exampleReplay.reason || ""});
+              await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example returned no result", payload: { example: exampleIndex + 1, reason: exampleReplay.reason || "" } });
+              continue;
+            }
             if (exampleReplay.outcome !== "Success") throw new Error(`${exampleReplay.outcome}:${exampleReplay.reason || ""}`);
             await evaluateResult(isolatedExample.page, options.goal, options.contract, exampleReplay.output, groundingInput, undefined, exampleReplay.observedText);
-            await options.onEvent?.({ phase: "DraftReplay", message: `draft grounding example ${exampleIndex + 1} succeeded` });
+            await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example succeeded", payload: { example: exampleIndex + 1 } });
           } catch (error) {
             lastCase = {caseId:`example_${exampleIndex + 1}`,input:groundingInput.parameters,moduleHash:moduleRef.contentHash};
             lastDraftObservation = await inspectPage(isolatedExample.page).then(trimSnapshot).catch(() => ({unavailable:true}));
@@ -1019,7 +1030,7 @@ export async function authorJavaScriptCapability(options: {
   });
   try {
   while (toolCallsUsed < maxToolCalls && draftRuns < maxDraftRuns) {
-    await options.onEvent?.({ phase: "Authoring", message: `model turn ${toolCallsUsed + 1}` });
+    await options.onEvent?.({ phase: "Authoring", message: "model turn", payload: { turn: toolCallsUsed + 1 } });
     const authorTimeoutMs = Math.max(120_000, Number(process.env.CAPABILITY_V2_AUTHOR_TIMEOUT_MS || 180_000));
     await workspace.event('model.request', {baseMessageCount:recordedMessageCount,appendMessages:messages.slice(recordedMessageCount),model:config.model,prompt:provenance});
     recordedMessageCount = messages.length;
@@ -1090,7 +1101,7 @@ export async function authorJavaScriptCapability(options: {
         const code = failureCode(failure);
         await options.onEvent?.({
           phase: call.function.name === "run_draft" ? "DraftReplay" : "Authoring",
-          message: `${call.function.name} failed`,
+          message: call.function.name === "run_draft" ? "run_draft failed" : "tool call failed",
           payload: {
             tool: call.function.name,
             code,

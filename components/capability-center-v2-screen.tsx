@@ -6,6 +6,7 @@ import type { Capability, CapabilityArtifact, CapabilityStageManifest, Capabilit
 import { CapabilityExperienceInbox } from "./capability-experience-inbox";
 import type { CapabilityExperienceIntake } from "../lib/capability-center-v2/experience-intake";
 import { projectProductionStatus, type CapabilityProductionStatus, type ProductionMessageKey } from "../lib/capability-center-v2/production-status";
+import { activityData, FEED_HIDDEN_ACTIVITY } from "../lib/capability-center-v2/activity-markers";
 import "./capability-center-product.css";
 import { activeLocale, t, type Locale } from "../lib/i18n";
 
@@ -58,12 +59,16 @@ function humanStage(stage: CapabilityStageManifest) {
 }
 function eventText(event: CapabilityTaskEvent) {
   const phase = typeof event.payload.phase === "string" ? event.payload.phase : event.eventType;
+  const data = activityData(event.payload);
+  // A review's reason is the reviewer's own prose; the feed names the outcome.
+  if (event.eventType === "ReviewCompleted") return { phase, message: event.payload.decision === "Approved" ? "review approved" : "review rejected", data };
+  if (event.eventType === "ReviewFailed") return { phase, message: "review failed", data };
   const message = typeof event.payload.message === "string"
     ? event.payload.message
     : typeof event.payload.reason === "string"
       ? event.payload.reason
       : "";
-  return { phase, message };
+  return { phase, message, data };
 }
 /**
  * The "最近进展" feed: the business-facing phases, newest first, at most six.
@@ -77,9 +82,7 @@ export function progressActivity(taskEvents: CapabilityTaskEvent[]) {
   return taskEvents
     .filter((event) => {
       const item = eventText(event);
-      // These are the authoring loop's own notes to itself, not progress a
-      // reader acts on; the markers are matched verbatim, not translated.
-      if (/model turn|capability.ts written|building the module/.test(item.message)) return false;
+      if (FEED_HIDDEN_ACTIVITY.has(item.message)) return false;
       if (!["Exploring", "DraftReplay", "CaseGeneration", "AuthoringRestored", "Validating", "Reviewing", "Published"].includes(item.phase)) return false;
       return !(supersededAt !== undefined && item.phase === "Reviewing" && event.sequence < supersededAt);
     })
@@ -134,13 +137,18 @@ function progressMessage(state: CapabilityProductionStatus) {
  * marker has copy. A record written before the markers existed falls through
  * to its own text, which keeps old tasks readable instead of blank.
  */
-function activityMessage(message: string) {
+function activityMessage(message: string, data: Record<string, unknown> = {}) {
   const copy = t().capability.v2.screen;
-  if (message === "run_draft failed") return copy.repairing;
-  if (message === "draft replay succeeded") return copy.frozen;
-  const example = message.match(/^draft grounding example (\d+)/);
-  if (example) return copy.activityExample(example[1]);
-  return copy.activityMessage[message] || taskFailureCause(message);
+  const worded = copy.activityMessage[message];
+  if (typeof worded === "function") return worded(data);
+  if (worded) return worded;
+  // Only a record written before its marker existed reaches this line: every
+  // marker a runner emits today is worded (tests/progress-events-are-worded).
+  // Such a record may be prose in another language; say that something
+  // happened rather than show it in a script the reader did not choose.
+  const text = taskFailureCause(message);
+  if (!text || (activeLocale() !== "zh" && /[\p{Script=Han}]/u.test(text))) return copy.activityUpdate;
+  return text;
 }
 /** The administrator is asked for one named input; the key names what it wants. */
 function interactionTitle(message: string) {
@@ -461,7 +469,7 @@ export function CapabilityCenterV2Screen({ overview }: { overview: SiteAgentOver
         : tab === "tasks" && selectedTask ? <><div className="ccv2-detail-heading"><p className="ccv2-kicker">{ui.progressKicker}</p><h3>{selectedTask.input.candidateSummary?.name || selectedTask.input.experience?.originalGoal || selectedTask.goal}</h3><p className="ccv2-muted">{selectedTask.input.experience?.originalGoal || selectedTask.goal}</p><div className="ccv2-detail-links">{selectedTask.sourceAgentRunId && <a href={`/?site=${encodeURIComponent(siteId)}&view=sessions&run=${encodeURIComponent(selectedTask.sourceAgentRunId)}`}>{ui.viewSourceSession}</a>}{latestWorkspace && <a href={`/api/admin/capability-v2/artifacts/${encodeURIComponent(latestWorkspace.id)}?siteId=${encodeURIComponent(siteId)}`}>{ui.downloadWorkspace}</a>}</div></div>
           {(() => { const state = progress?.taskId === selectedTask.id ? progress : taskProgress[selectedTask.id] || projectProductionStatus(selectedTask); const phases = ["Production", "Validation", "Review", "Publication"]; const index = phases.indexOf(state.phase); return <section className="ccv2-production" data-testid="capability-production-progress"><ol>{ui.phases.map((label, i) => <li key={label} className={i < index || state.state === "Published" ? "done" : i === index ? "current" : ""}><i>{i < index || state.state === "Published" ? "✓" : i + 1}</i>{label}</li>)}</ol><div className="ccv2-production-status">{badge(state.state)}<p>{progressMessage(state)}</p>{state.detail && <small className="ccv2-muted">{taskFailureCause(state.detail)}</small>}{state.code && <small>{ui.errorCode(state.code)}</small>}</div><div className="ccv2-actions">{state.nextTaskId && <button onClick={() => selectTask(state.nextTaskId)}>{ui.viewValidation}</button>}{state.recovery === "RetryReview" && <button disabled={busy} onClick={() => void act(`/tasks/${selectedTask.id}/retry-review`)}>{busy ? ui.reviewing : ui.retryReview}</button>}{state.recovery === "InspectConflict" && <p>{ui.conflict}</p>}{state.state === "Published" && state.capabilityId && <button onClick={() => { setSelectedCapabilityId(state.capabilityId); setTab("capabilities"); }}>{ui.viewPublished}</button>}</div>{state.state !== "Published" && <small className="ccv2-muted">{ui.availableAfter}</small>}</section>; })()}
           {selectedTaskFailure && <section className="ccv2-failure" role="alert"><strong>{ui.failureTitle}</strong><p>{selectedTaskFailure.message}</p><p className="ccv2-muted">{ui.failureHint}</p></section>}
-          {activity.length > 0 && <section className="ccv2-activity"><h4>{ui.recentProgress}</h4>{activity.map(event=>{const item=eventText(event);return <div key={event.id}><span>{ui.activity[item.phase]}</span><p>{activityMessage(item.message)}</p><time>{time(event.createdAt)}</time></div>;})}</section>}
+          {activity.length > 0 && <section className="ccv2-activity"><h4>{ui.recentProgress}</h4>{activity.map(event=>{const item=eventText(event);return <div key={event.id}><span>{ui.activity[item.phase]}</span><p>{activityMessage(item.message, item.data)}</p><time>{time(event.createdAt)}</time></div>;})}</section>}
           <details className="ccv2-engineering"><summary>{ui.engineering}</summary><dl><dt>{ui.taskNumber}</dt><dd><code>{selectedTask.id}</code></dd><dt>{ui.createdOn}</dt><dd>{time(selectedTask.createdAt)}</dd><dt>{ui.lastUpdated}</dt><dd>{time(selectedTask.updatedAt)}</dd></dl>{selectedTaskFailure && <p className="ccv2-engineering-failure"><code>{selectedTaskFailure.code}</code> {selectedTaskFailure.cause}</p>}{taskArtifacts.some(a=>a.id!==latestWorkspace?.id) && <div className="ccv2-artifacts">{taskArtifacts.filter(a=>a.id!==latestWorkspace?.id).map(a=><a key={a.id} href={`/api/admin/capability-v2/artifacts/${encodeURIComponent(a.id)}?siteId=${encodeURIComponent(siteId)}`} download><b>↓ {artifactLabel(a)}</b><time dateTime={a.createdAt}>{time(a.createdAt)}</time></a>)}</div>}</details>
           {selectedTask.status === "WaitingInput" && selectedTask.input.interactions.filter((item) => item.status === "Requested").map((interaction) => <div className="ccv2-form" key={interaction.id}><strong>{interactionTitle(interaction.message)}</strong>{interaction.fields.map((field) => <label key={field.key}>{field.label}<input type={field.type === "password" || field.type === "otp" ? "password" : field.type === "number" ? "number" : "text"} value={interactionValues[field.key] || ""} onChange={(event) => setInteractionValues((current) => ({ ...current, [field.key]: event.target.value }))} /></label>)}<div className="ccv2-actions"><button onClick={() => void submitInteraction()}>{copy.submitAndContinue}</button></div></div>)}
           <div className="ccv2-actions">{!["Succeeded", "Failed", "Cancelled", "Deleted"].includes(selectedTask.status) && <button className="danger" onClick={() => void act(`/tasks/${selectedTask.id}/cancel`)}>{copy.cancelTask}</button>}{["Succeeded", "Failed", "Cancelled"].includes(selectedTask.status) && <button disabled={busy} onClick={() => void act(`/tasks/${progress?.state === "Rejected" && selectedTask.result?.buildResult?.outcome === "Validated" ? selectedTask.result.buildResult.package.artifact.generationTaskId : selectedTask.id}/rerun`, { goal: selectedTask.goal, guidance: selectedTask.guidance, input: selectedTask.input })}>{progress?.state === "Rejected" ? ui.regenerateCandidate : selectedTask.type === "Validation" ? ui.revalidateCandidate : ui.regenerate}</button>}{["Succeeded", "Failed", "Cancelled"].includes(selectedTask.status) && !selectedTask.archivedAt && <button data-testid="capability-v2-task-archive" className="secondary" onClick={() => void act(`/tasks/${selectedTask.id}/archive`, { archived: true })}>{copy.archiveTask}</button>}{selectedTask.archivedAt && <button data-testid="capability-v2-task-unarchive" className="secondary" onClick={() => void act(`/tasks/${selectedTask.id}/archive`, { archived: false })}>{copy.unarchive}</button>}</div>

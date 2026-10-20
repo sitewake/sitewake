@@ -26,14 +26,14 @@ const promptText = (locale: KnowledgeLocale) => [
     "name、description、aliases、intent 必须是可复用表述，禁止写入参数的 exampleValue。没有可变业务值的当前页面、当前购物车或当前会话操作可以不声明参数。",
     "selector、xpath、locator、elementIndex、testId、按钮下标等页面实现细节永远不是业务参数。",
     "只能使用 originalGoal、actions、routes、页面标题/标题栏和 output 中出现过的值作为 exampleValue，不得臆造。",
-    "routes 是本次运行进入过的地址以及绑定到地址里的值。进入地址不是页面动作。routes[].bindings 和下拉选项里的值，凡是出自 originalGoal（用户自己说的话），都是随请求变化的业务值，必须成为 required 参数并以本次真实值作为 exampleValue；用户没有提到、由执行过程自行选择的值（例如浏览途中进入的某个具体商品详情页、默认插头规格、为缩小范围点的筛选项）只是本次证据，可以保持固定，不要为它们声明参数。一次只靠进入地址就完成的经验是完整经验，不要因为 actions 为空就当作没有操作。",
+    "routes 是本次运行进入过的地址以及绑定到地址里的值。进入地址不是页面动作。routes[].bindings 和下拉选项里的值，凡是出自 originalGoal（用户自己说的话），二选一：要么成为 required 参数并以本次真实值作为 exampleValue（此时 name/description/intent 不得出现该值），要么作为能力本身的固定范围写进 name/description/intent（例如‘下单可调光台灯’）；不得既不参数化又不写明。用户没有提到、由执行过程自行选择的值（例如浏览途中进入的某个具体商品详情页、默认插头规格、为缩小范围点的筛选项）只是本次证据，可以保持固定，不要为它们声明参数。一次只靠进入地址就完成的经验是完整经验，不要因为 actions 为空就当作没有操作。",
     "NoResult 表示页面操作已真实完成但结果为空，仍应抽象操作本身，不要把‘没有结果’误写成技术失败。",
     `用简洁${languageName(locale)}输出；name 建议 4 到 24 个字符，description 说明动作、必要输入和最终业务结果。`,
   ].join("\n");
 
 export const EXPERIENCE_ABSTRACTION_PROMPT: VersionedPrompt = {
   key: "capability-v2.experience-abstraction",
-  version: "1.2.0",
+  version: "1.3.0",
   text: promptText(DEFAULT_KNOWLEDGE_LOCALE),
   outputSchema: {
     name: "capability_v2_experience_abstraction",

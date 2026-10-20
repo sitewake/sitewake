@@ -89,7 +89,7 @@ test("the progress feed shows a superseded publication and drops the review it m
   const { progressActivity } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
   const at = (sequence, eventType, payload) => ({ id: String(sequence), sequence, eventType, payload, createdAt: "2026-09-21T13:00:00.000Z" });
   const events = [
-    at(1, "PhaseChanged", { phase: "Validating", message: "C3 纯代码验证样例 case_1 已通过" }),
+    at(1, "PhaseChanged", { phase: "Validating", message: "validation case passed", payload: { caseId: "case_1" } }),
     at(2, "ReviewStarted", { phase: "Reviewing" }),
     at(3, "PhaseChanged", { phase: "Reviewing", message: "ai review started" }),
     at(4, "ReviewCompleted", { phase: "Reviewing", decision: "Rejected", reason: "违反程序不能完整满足成功条件的规则……" }),
@@ -143,58 +143,4 @@ test("the console says what each validation case came to, and names the one refu
  * translated. The producers now emit keys and markers, and these two tests are
  * what stops prose coming back.
  */
-test("the progress and activity producers emit keys, never sentences a reader would have to be fluent in", async () => {
-  const files = [
-    "../lib/capability-center-v2/production-status.ts",
-    "../lib/capability-center-v2/coordinator.ts",
-    "../runner/capability-v2/javascript-author.ts",
-    "../runner/capability-v2/process-runner.ts",
-  ];
-  const chinese = /[一-鿿]/;
-  for (const file of files) {
-    const source = await readFile(new URL(file, import.meta.url), "utf8");
-    const lines = source.split("\n");
-    lines.forEach((line, index) => {
-      // A prompt body, a model instruction and a detection pattern are all
-      // allowed to be Chinese; what a task record carries is not. A record's
-      // value can be a ternary, so a branch counts when the field it belongs
-      // to is just above it.
-      const field = /\b(?:message|reason):/;
-      const branch = /^\s*[?:]\s*["'`]/.test(line)
-        && lines.slice(Math.max(0, index - 3), index).some((above) => field.test(above));
-      if ((field.test(line) || branch) && chinese.test(line)) {
-        assert.fail(`${file.replace("../", "")}:${index + 1} puts prose in a record a console has to word: ${line.trim().slice(0, 90)}`);
-      }
-    });
-  }
-});
-
-test("every marker the activity feed words is worded in both languages", async () => {
-  const [zh, en] = await Promise.all([
-    readFile(new URL("../lib/i18n/zh.ts", import.meta.url), "utf8"),
-    readFile(new URL("../lib/i18n/en.ts", import.meta.url), "utf8"),
-  ]);
-  const markers = (source) => {
-    const block = source.match(/activityMessage: \{([\s\S]*?)\} as Record<string, string>,/);
-    assert.ok(block, "the activity markers are a catalog block");
-    return [...block[1].matchAll(/^\s*"([^"]+)": "([^"]+)",$/gm)].map(([, key, value]) => [key, value]);
-  };
-  const zhMarkers = markers(zh);
-  const enMarkers = markers(en);
-  assert.deepEqual(zhMarkers.map(([key]) => key).sort(), enMarkers.map(([key]) => key).sort(), "the two catalogs word the same markers");
-  assert.ok(zhMarkers.length >= 8, `expected the known markers to be worded, found ${zhMarkers.length}`);
-  for (const [key, value] of [...zhMarkers, ...enMarkers]) {
-    assert.ok(value.trim().length > 4, `${key} has no usable copy`);
-  }
-  // The markers are what the producers actually emit, so a rename on one side
-  // shows up here rather than as an untranslated line in the feed.
-  const producers = await Promise.all([
-    readFile(new URL("../lib/capability-center-v2/coordinator.ts", import.meta.url), "utf8"),
-    readFile(new URL("../runner/capability-v2/javascript-author.ts", import.meta.url), "utf8"),
-    readFile(new URL("../runner/capability-v2/process-runner.ts", import.meta.url), "utf8"),
-  ]);
-  for (const marker of ["review started", "ai review started", "publication superseded", "ai review approved on gate evidence", "building the module", "run spec and module address checked"]) {
-    assert.ok(producers.some((source) => source.includes(`"${marker}"`)), `no producer emits the marker "${marker}"`);
-    assert.ok(zhMarkers.some(([key]) => key === marker), `"${marker}" is emitted but not worded`);
-  }
-});
+// Emitters and their wording are guarded in tests/progress-events-are-worded.test.mjs.

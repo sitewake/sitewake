@@ -430,8 +430,29 @@ test("only the values the visitor asked for must become parameters; the run's ow
 
   // The plug, the "Table lamp" filter and the product slug are the run's choices.
   assert.deepEqual(abstraction([feature, finish]).parameters.map((item) => item.name), ["feature", "finish"]);
-  // "Dimmable" is the visitor's own word; leaving it out still fails, and says which value.
+  // "Dimmable" is the visitor's own word; leaving it out silently still fails, and says which value.
   assert.throws(() => abstraction([finish]), /experience_action_value_not_parameterized:Dimmable/);
+  // Kept fixed and said out loud is honest, and is what the model wrote when
+  // the two rules used to leave it no passing answer.
+  const named = parseCapabilityExperienceAbstraction({
+    name: "Order a dimmable desk lamp",
+    description: "Order a dimmable desk lamp in the requested finish",
+    aliases: [],
+    intent: "Order a dimmable desk lamp in a given finish",
+    parameters: [finish],
+  }, experience);
+  assert.deepEqual(named.parameters.map((item) => item.name), ["finish"]);
+});
+
+test("typed text is the visitor's data even when the summary names it", () => {
+  const experience = pageAgentExperience();
+  assert.throws(() => parseCapabilityExperienceAbstraction({
+    name: "搜索 Echo 商品",
+    description: "搜索 Echo 商品并展示结果",
+    aliases: [],
+    intent: "搜索 Echo 商品",
+    parameters: [],
+  }, experience), /experience_action_value_not_parameterized:Echo/);
 });
 
 test("a dropdown pick is one choice: its visible option or its form value covers it", () => {
@@ -469,7 +490,7 @@ test("goal and summary checks match whole words, not fragments of other words", 
   }, experience);
   // "red" inside "ordered" is not the example leaking into the summary.
   assert.equal(parse({ description: "Places an ordered lamp in the cart" }).parameters.length, 1);
-  assert.throws(() => parse({ description: "Order a red lamp" }), /experience_example_leaked_into_summary/);
+  assert.throws(() => parse({ description: "Order a red lamp" }), /experience_example_leaked_into_summary:description:red/);
   // A Latin example pressed against Chinese text still counts as written there.
   assert.throws(() => parse({ description: "下单red台灯" }), /experience_example_leaked_into_summary/);
 });
@@ -923,6 +944,15 @@ test("structured model JSON parser reports empty responses and accepts fenced ob
   assert.deepEqual(
     parseStructuredModelJson('```json\n{"decision":"Approved"}\n```'),
     { decision: "Approved" },
+  );
+});
+
+test("an English review rejection is judged by the evidence it cites, not by its language", () => {
+  const reason = "The source code of stage_verify reads a fixed heading instead of the order input, and the deterministic quality gate does not check which element it reads.";
+  assert.deepEqual(parseReviewDecision({ decision: "Rejected", reason }), { decision: "Rejected", reason });
+  assert.throws(
+    () => parseReviewDecision({ decision: "Rejected", reason: "The name does not feel abstract enough, so this version should not be published." }),
+    /ai_review_rejection_evidence_required/,
   );
 });
 
@@ -6018,7 +6048,7 @@ test("a task waiting for a free runtime slot is queued, not failed", async () =>
   assert.equal(task.error, undefined, "排队不是失败，不应留下错误");
   const events = await listTaskEvents(siteId, created.task.id);
   assert.equal(events.at(-1).eventType, "RunnerLost", "工程记录仍然保留这次调度");
-  assert.match(events.at(-1).payload.message, /排队/, "工程记录说的是排队");
+  assert.equal(events.at(-1).payload.message, "waiting for runner capacity", "工程记录说的是排队");
 });
 
 test("a capability is never named after the value the run demonstrated with", () => {

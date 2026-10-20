@@ -109,26 +109,42 @@ function mentions(text: unknown, value: unknown) {
  * Demanding those too contradicted the rule against turning a browsed product
  * into a parameter, and no abstraction could satisfy both.
  */
-function requiredActionChoices(experience: CapabilityExperience): ObservedValue[][] {
+type RequiredChoice = {
+  values: ObservedValue[];
+  /** Typed text must be a parameter; a pick may instead be named in the summary. */
+  typed: boolean;
+};
+
+function requiredActionChoices(experience: CapabilityExperience): RequiredChoice[] {
   const fromGoal = (values: ObservedValue[]) => values.some((value) => mentions(experience.originalGoal, value));
-  const choices: ObservedValue[][] = [];
+  const choices: RequiredChoice[] = [];
   for (const action of experience.actions) {
     if (action.action === "fill") {
       const values = [action.input.text, action.input.value].filter(observedValue);
-      if (values.length) choices.push(values);
+      if (values.length) choices.push({ values, typed: true });
     } else if (action.action === "select") {
       const values = [action.input.option, action.input.value].filter(observedValue);
-      if (values.length && fromGoal(values)) choices.push(values);
+      if (values.length && fromGoal(values)) choices.push({ values, typed: false });
     }
   }
   for (const value of capabilityExperienceRouteBindings(experience).filter(observedValue)) {
-    if (fromGoal([value])) choices.push([value]);
+    if (fromGoal([value])) choices.push({ values: [value], typed: false });
   }
   return choices;
 }
 
-function choiceParameterized(choice: ObservedValue[], parameters: AbstractedParameter[]) {
-  return choice.some((value) => parameters.some((parameter) => token(parameter.exampleValue) === token(value)));
+/**
+ * A choice the visitor made is accounted for when it is a parameter, or, for
+ * a pick, when the capability says it out loud: "order a dimmable desk lamp in
+ * a given finish" is honestly narrower, not secretly fixed. What the rule
+ * refuses is the silent case, a value the visitor asked for baked in where
+ * nobody reading the capability would know. Requiring a parameter always,
+ * while also refusing an example in the summary, left a model that wrote
+ * "dimmable" in the name no answer that passed both.
+ */
+function choiceAccountedFor(choice: RequiredChoice, parameters: AbstractedParameter[], summary: string[]) {
+  if (choice.values.some((value) => parameters.some((parameter) => token(parameter.exampleValue) === token(value)))) return true;
+  return !choice.typed && choice.values.some((value) => summary.some((text) => mentions(text, value)));
 }
 
 function observedExactBusinessLabels(experience: CapabilityExperience) {
@@ -200,7 +216,7 @@ function alignAbstractionParameterNames(
     return [{
       name,
       type: typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "string",
-      description: `用户提供的公开业务参数：${name}`,
+      description: name,
       required: true,
       exampleValue: value,
     }];
@@ -290,12 +306,16 @@ export function parseCapabilityExperienceAbstraction(value: Record<string, unkno
   for (const choice of requiredActionChoices(experience)) {
     // The value travels with the code: the repair turn needs to know which one
     // it missed, and so does whoever reads the intake's failure reason.
-    if (!choiceParameterized(choice, parameters)) throw new Error(`experience_action_value_not_parameterized:${String(choice[0]).slice(0, 80)}`);
+    if (!choiceAccountedFor(choice, parameters, [name, description, intent])) {
+      throw new Error(`experience_action_value_not_parameterized:${String(choice.values[0]).slice(0, 80)}`);
+    }
   }
   for (const parameter of parameters) {
-    if ([name, description, intent, ...aliases].some((item) => mentions(item, parameter.exampleValue))) {
-      throw new Error("experience_example_leaked_into_summary");
-    }
+    const field = ([["name", name], ["description", description], ["intent", intent], ...aliases.map((alias) => ["aliases", alias])] as const)
+      .find(([, text]) => mentions(text, parameter.exampleValue));
+    // Name the value and where it was written: the repair turn can only
+    // rephrase what it is told about, and the code alone told it nothing.
+    if (field) throw new Error(`experience_example_leaked_into_summary:${field[0]}:${String(parameter.exampleValue).slice(0, 80)}`);
   }
   const parameterInput = Object.fromEntries(parameters.map((parameter) => [parameter.name, parameter.exampleValue])) as Record<string, JsonValue>;
   const semantic = analyzeCapabilitySemantics({

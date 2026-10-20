@@ -4764,7 +4764,7 @@ export async function failTaskDispatch(
   };
   await appendTaskEvent(siteId, taskId, {
     eventType: "RunnerDispatchFailed",
-    payload: { phase: "Runner", message: reason },
+    payload: { phase: "Runner", message: "runner start retries exhausted", reason },
   });
   return saveTaskFull(updated);
 }
@@ -5118,11 +5118,6 @@ export async function markRunnerLost(
       // made the console tell a person their capability had not been made —
       // 「本次制作未完成」 — while the same page said it was queued.
       const waitingForCapacity = /capacity_exhausted/.test(reason);
-      const message = waitingForCapacity
-        ? "正在排队等待运行环境，稍后会自动开始。"
-        : reason.startsWith("runner_launch_failed")
-          ? `Runner 启动失败，系统将自动重试：${reason.split(":").slice(1).join(":") || "运行环境不可用"}`
-          : `Runner 已丢失，系统将自动重试：${reason}`;
       await saveTaskFull({
         ...task,
         runnerId: undefined,
@@ -5132,7 +5127,7 @@ export async function markRunnerLost(
           : {
               error: {
                 code: reason.split(":")[0] || "runner_lost",
-                message,
+                message: reason,
                 retryable: true,
               },
             }),
@@ -5140,7 +5135,17 @@ export async function markRunnerLost(
       });
       await appendTaskEvent(siteId, task.id, {
         eventType: "RunnerLost",
-        payload: { phase: "Runner", runnerId, message },
+        // A marker for the feed and the code for the record; the console words
+        // both, and the launcher's own detail stays in the code's suffix.
+        payload: {
+          phase: "Runner",
+          runnerId,
+          message: waitingForCapacity
+            ? "waiting for runner capacity"
+            : reason.startsWith("runner_launch_failed")
+              ? "runner launch failed; retrying"
+              : "runner lost; retrying",
+        },
       });
     }
   }
