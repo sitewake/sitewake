@@ -872,7 +872,7 @@ test("AI publish review requires a complete auditable decision reason", () => {
     {
       decision: "Approved",
       reason:
-        "AI 审核结论为 Approved；确定性质量门禁与独立 Validation 回放证据均已通过，可以发布。",
+        "ai review approved on gate evidence",
     },
   );
   assert.throws(
@@ -4854,7 +4854,10 @@ test("a second generation of an already published capability ends as AlreadyPubl
   assert.ok(events.includes("PublicationSuperseded"), events.join(","));
   const superseded = (await listTaskEvents(siteId, second.validationTaskId)).find((event) => event.eventType === "PublicationSuperseded");
   assert.equal(superseded.payload.capabilityId, published.capability.id);
-  assert.match(String(superseded.payload.message), /已由另一次制作发布并可用/);
+  // The event names the outcome and carries the capability that got there
+  // first; the console words it in the reader's language.
+  assert.equal(String(superseded.payload.message), "publication superseded");
+  assert.equal(superseded.payload.capabilityName, published.capability.name);
   // D itself answers the same way if called directly.
   const direct = await publishValidatedCapability(siteId, { generationTaskId: rerun.task.id, validated: second.validated, authorization });
   assert.equal(direct.outcome, "AlreadyPublished");

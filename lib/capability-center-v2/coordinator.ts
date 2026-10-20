@@ -72,7 +72,7 @@ export function parseReviewDecision(value: Record<string, unknown>) {
       decision: value.decision,
       reason: reason.length >= 20 && /[。！？.!?]$/u.test(reason)
         ? reason
-        : "AI 审核结论为 Approved；确定性质量门禁与独立 Validation 回放证据均已通过，可以发布。",
+        : "ai review approved on gate evidence",
     } as const;
   }
   if (reason.length < 20 || !/[。！？.!?]$/u.test(reason)) throw new Error("ai_review_reason_incomplete");
@@ -118,7 +118,7 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
   if (!config.configured) {
     return reviewVersion(siteId, versionId, { decision: "Error", reason: "AI review model is not configured", promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
   }
-  await appendTaskEvent(siteId, validation.id, { eventType: "PhaseChanged", payload: { phase: "Reviewing", message: "AI 正在审核已验证版本" } });
+  await appendTaskEvent(siteId, validation.id, { eventType: "PhaseChanged", payload: { phase: "Reviewing", message: "review started" } });
   await beginVersionReview(siteId, versionId, { promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
   try {
     const requiredInputs = Array.isArray(capability.contract.inputSchema.required)
@@ -245,7 +245,7 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
     return { outcome: "Error", reason: "AI review model is not configured" };
   }
   try {
-    await appendTaskEvent(siteId, task.id, { eventType: "PhaseChanged", payload: { phase: "Reviewing", message: "AI 审核已验证 Candidate" } }).catch(() => undefined);
+    await appendTaskEvent(siteId, task.id, { eventType: "PhaseChanged", payload: { phase: "Reviewing", message: "ai review started" } }).catch(() => undefined);
     const response = await requestStructuredModelJson(config, {
       system: prompt.text,
       payload: {
@@ -290,7 +290,7 @@ export async function reviewValidatedCandidate(siteId: string, task: CapabilityT
   if (existing) return existing;
   const flight = (async (): Promise<ReviewPublishResult> => {
     const superseded = async (result: Extract<CapabilityPublishResult, { outcome: "AlreadyPublished" }>) => {
-      await appendTaskEvent(siteId, task.id, { eventType: "PublicationSuperseded", payload: { phase: "Published", capabilityId: result.capability.id, versionId: result.version.id, capabilityName: result.capability.name, publishedAt: result.version.publishedAt || result.version.updatedAt, message: `同名能力「${result.capability.name}」已由另一次制作发布并可用，本次结果无需再发布；要改用本次的版本，从能力库该能力的最新版本重建。` } });
+      await appendTaskEvent(siteId, task.id, { eventType: "PublicationSuperseded", payload: { phase: "Published", capabilityId: result.capability.id, versionId: result.version.id, capabilityName: result.capability.name, publishedAt: result.version.publishedAt || result.version.updatedAt, message: "publication superseded" } });
       return result;
     };
     // A new capability whose name is already live cannot publish; another

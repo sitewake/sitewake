@@ -91,13 +91,13 @@ test("the progress feed shows a superseded publication and drops the review it m
   const events = [
     at(1, "PhaseChanged", { phase: "Validating", message: "C3 纯代码验证样例 case_1 已通过" }),
     at(2, "ReviewStarted", { phase: "Reviewing" }),
-    at(3, "PhaseChanged", { phase: "Reviewing", message: "AI 审核已验证 Candidate" }),
+    at(3, "PhaseChanged", { phase: "Reviewing", message: "ai review started" }),
     at(4, "ReviewCompleted", { phase: "Reviewing", decision: "Rejected", reason: "违反程序不能完整满足成功条件的规则……" }),
-    at(5, "PublicationSuperseded", { phase: "Published", capabilityId: "cap", message: "同名能力「查询记录」已由另一次制作发布并可用，本次结果无需再发布；要改用本次的版本，从能力库该能力的最新版本重建。" }),
+    at(5, "PublicationSuperseded", { phase: "Published", capabilityId: "cap", capabilityName: "查询记录", message: "publication superseded" }),
   ];
   const feed = progressActivity(events);
   assert.deepEqual(feed.map((event) => event.sequence), [5, 1], "the superseded outcome leads; the moot review is gone; validation stays");
-  assert.match(String(feed[0].payload.message), /已由另一次制作发布并可用/);
+  assert.equal(String(feed[0].payload.message), "publication superseded", "the feed carries a marker the console words");
   // Without a superseding publication the review history is shown as before.
   assert.deepEqual(progressActivity(events.slice(0, 4)).map((event) => event.sequence), [4, 3, 2, 1]);
 });
@@ -132,4 +132,69 @@ test("the console says what each validation case came to, and names the one refu
   assert.match(diagnostics, /diagnosis\("no_case_produced_a_result"/, "the refusal is coded, not stated in the record");
   assert.match(zh, /没有任何一条样例把能力跑出结果/, "the refusal is stated in Chinese");
   assert.match(en, /No case in the independent replay produced a result/i, "the refusal is stated in English");
+});
+
+/**
+ * The progress panel and the activity feed read copy, not the server's prose.
+ *
+ * Both used to render whatever the server had written: a projection's sentence
+ * and an event's message. Those were Chinese, so an English console showed the
+ * state of a capability run in Chinese while every label around it was
+ * translated. The producers now emit keys and markers, and these two tests are
+ * what stops prose coming back.
+ */
+test("the progress and activity producers emit keys, never sentences a reader would have to be fluent in", async () => {
+  const files = [
+    "../lib/capability-center-v2/production-status.ts",
+    "../lib/capability-center-v2/coordinator.ts",
+    "../runner/capability-v2/javascript-author.ts",
+    "../runner/capability-v2/process-runner.ts",
+  ];
+  const chinese = /[一-鿿]/;
+  for (const file of files) {
+    const source = await readFile(new URL(file, import.meta.url), "utf8");
+    const lines = source.split("\n");
+    lines.forEach((line, index) => {
+      // A prompt body, a model instruction and a detection pattern are all
+      // allowed to be Chinese; what a task record carries is not. A record's
+      // value can be a ternary, so a branch counts when the field it belongs
+      // to is just above it.
+      const field = /\b(?:message|reason):/;
+      const branch = /^\s*[?:]\s*["'`]/.test(line)
+        && lines.slice(Math.max(0, index - 3), index).some((above) => field.test(above));
+      if ((field.test(line) || branch) && chinese.test(line)) {
+        assert.fail(`${file.replace("../", "")}:${index + 1} puts prose in a record a console has to word: ${line.trim().slice(0, 90)}`);
+      }
+    });
+  }
+});
+
+test("every marker the activity feed words is worded in both languages", async () => {
+  const [zh, en] = await Promise.all([
+    readFile(new URL("../lib/i18n/zh.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/i18n/en.ts", import.meta.url), "utf8"),
+  ]);
+  const markers = (source) => {
+    const block = source.match(/activityMessage: \{([\s\S]*?)\} as Record<string, string>,/);
+    assert.ok(block, "the activity markers are a catalog block");
+    return [...block[1].matchAll(/^\s*"([^"]+)": "([^"]+)",$/gm)].map(([, key, value]) => [key, value]);
+  };
+  const zhMarkers = markers(zh);
+  const enMarkers = markers(en);
+  assert.deepEqual(zhMarkers.map(([key]) => key).sort(), enMarkers.map(([key]) => key).sort(), "the two catalogs word the same markers");
+  assert.ok(zhMarkers.length >= 8, `expected the known markers to be worded, found ${zhMarkers.length}`);
+  for (const [key, value] of [...zhMarkers, ...enMarkers]) {
+    assert.ok(value.trim().length > 4, `${key} has no usable copy`);
+  }
+  // The markers are what the producers actually emit, so a rename on one side
+  // shows up here rather than as an untranslated line in the feed.
+  const producers = await Promise.all([
+    readFile(new URL("../lib/capability-center-v2/coordinator.ts", import.meta.url), "utf8"),
+    readFile(new URL("../runner/capability-v2/javascript-author.ts", import.meta.url), "utf8"),
+    readFile(new URL("../runner/capability-v2/process-runner.ts", import.meta.url), "utf8"),
+  ]);
+  for (const marker of ["review started", "ai review started", "publication superseded", "ai review approved on gate evidence", "building the module", "run spec and module address checked"]) {
+    assert.ok(producers.some((source) => source.includes(`"${marker}"`)), `no producer emits the marker "${marker}"`);
+    assert.ok(zhMarkers.some(([key]) => key === marker), `"${marker}" is emitted but not worded`);
+  }
 });

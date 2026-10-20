@@ -29,12 +29,35 @@ test('published projection overrides stale errors; failures retry the correct mo
   assert.equal(projectProductionStatus({ ...task, type: 'Discovery', status: 'Failed' }).recovery, 'RetryProduction');
 });
 test('a generation superseded by an earlier publication of the same capability is done, not failed', () => {
-  const state = projectProductionStatus(task, [event('PublicationStarted', {}, 1), event('PublicationSuperseded', { phase: 'Published', capabilityId: 'cap', versionId: 'ver', message: '同名能力「查询记录」已由另一次制作发布并可用，本次结果无需再发布' }, 2)]);
+  const state = projectProductionStatus(task, [event('PublicationStarted', {}, 1), event('PublicationSuperseded', { phase: 'Published', capabilityId: 'cap', versionId: 'ver', capabilityName: '查询记录', message: 'publication superseded' }, 2)]);
   assert.equal(state.phase, 'Publication');
   assert.equal(state.state, 'Published');
   assert.equal(state.capabilityId, 'cap');
   assert.equal(state.versionId, 'ver');
   assert.equal(state.code, undefined, 'no error number for a capability that is available');
   assert.equal(state.recovery, 'None');
-  assert.match(state.message, /已由另一次制作发布并可用/);
+  assert.equal(state.messageKey, 'publishedSuperseded', 'the console words the outcome');
+  assert.equal(state.detail, '查询记录', 'the name of the capability that published first is data, not copy');
+});
+
+test('the projection names states and never writes prose', async () => {
+  // The projector runs on the server, where the reader's language is unknown.
+  const source = await (await import('node:fs/promises')).readFile(new URL('../../../lib/capability-center-v2/production-status.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /[\u4e00-\u9fff]/, 'the projector carries no copy of its own');
+  const cases = [
+    [{ ...task, status: 'Running' }, []],
+    [{ ...task, status: 'Running' }, [event('PhaseChanged', { phase: 'DraftReplay' })]],
+    [{ ...task, status: 'Failed' }, []],
+    [{ ...task, status: 'WaitingInput' }, []],
+    [{ ...task, status: 'Cancelled' }, []],
+    [task, [event('ReviewFailed', { reason: 'timeout' })]],
+    [task, [event('ReviewCompleted', { decision: 'Rejected', reason: 'no evidence' })]],
+    [task, [event('PublicationFailed', { code: 'X', reason: 'conflict' })]],
+  ];
+  for (const [input, events] of cases) {
+    const state = projectProductionStatus(input, events);
+    assert.equal(typeof state.messageKey, 'string');
+    assert.doesNotMatch(state.messageKey, /\s/, `${state.messageKey} is a key, not a sentence`);
+    if (state.detail !== undefined) assert.equal(typeof state.detail, 'string');
+  }
 });
