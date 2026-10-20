@@ -170,5 +170,5 @@ test("the console can record a skip without a session, and the status carries it
 test("the status endpoint still refuses to hand out anything secret", async () => {
   const route = await loadRoute(async () => ({ ok: true, status: {} }));
   const body = await (await route.GET()).json();
-  assert.deepEqual(Object.keys(body).sort(), ["configured", "enabled", "onboardingSkipped", "updatedAt"]);
+  assert.deepEqual(Object.keys(body).sort(), ["configured", "demoLock", "enabled", "onboardingSkipped", "updatedAt"]);
 });

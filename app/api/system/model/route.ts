@@ -13,7 +13,7 @@ import { managementAuthorized, siteAgentJson } from "../../site-agents/http";
 
 export async function GET(request: Request) {
   if (!(await managementAuthorized(request))) return siteAgentJson({ error: "unauthorized" }, 401);
-  return siteAgentJson({ ...publicModelSettings(), providers: VERIFIED_PROVIDERS }, 200, { "cache-control": "no-store" });
+  return siteAgentJson({ ...publicModelSettings(), providers: VERIFIED_PROVIDERS, demoLock: process.env.SITEWAKE_DEMO_LOCK === "1" }, 200, { "cache-control": "no-store" });
 }
 
 export async function PUT(request: Request) {

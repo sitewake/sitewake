@@ -37,7 +37,7 @@ function setSessionCookie(response: ReturnType<typeof siteAgentJson>, request: R
 // them separately would let the two answers come from different moments.
 export async function GET() {
   const [status, onboardingSkipped] = await Promise.all([getAccessStatus(), accessOnboardingSkipped()]);
-  return siteAgentJson({ ...status, onboardingSkipped });
+  return siteAgentJson({ ...status, onboardingSkipped, demoLock: process.env.SITEWAKE_DEMO_LOCK === "1" });
 }
 
 export async function POST(request: Request) {

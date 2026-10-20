@@ -19,6 +19,8 @@ export type ModelSettingsView = {
   executionModel: string;
   semanticModel: string;
   apiKeyMasked: string;
+  /** A showcase console: settings that are already in place cannot be changed. */
+  demoLock?: boolean;
   providers: ReadonlyArray<{ id: string; baseUrl: string; families: readonly string[] }>;
 };
 
@@ -128,6 +130,7 @@ export function ModelSettingsForm({ locale, compact, onSaved }: {
   if (loadFailed) return <p className="sw-mng-msg error" role="alert">{copy.loadFailed}</p>;
   if (!view) return <p className="sw-mng-hint" role="status">{copy.loading}</p>;
   const provider = view.providers.find((item) => item.id === providerId);
+  const locked = Boolean(view.demoLock && view.configured);
 
   return (
     <form className="sw-mng sw-model-form" data-model-form onSubmit={(event) => { event.preventDefault(); void verify(); }}>
@@ -135,6 +138,8 @@ export function ModelSettingsForm({ locale, compact, onSaved }: {
         <div className="sw-mng-status"><b className="on">{copy.current(view.model, view.apiKeyMasked)}</b></div>
       )}
       {!view.configured && <p className="sw-mng-hint sw-model-form-intro">{copy.notConfigured}</p>}
+      {locked && <p className="sw-mng-msg" role="status" data-demo-lock>{copy.demoLocked}</p>}
+      <fieldset className="sw-mng-fieldset" disabled={locked}>
 
       <label>
         <span className="sw-mng-label">{copy.provider}</span>
@@ -185,6 +190,7 @@ export function ModelSettingsForm({ locale, compact, onSaved }: {
         <button type="submit" className="sw-mng-ghost" disabled={!canVerify}>{verification.state === "running" ? copy.verifying : copy.verify}</button>
         <button type="button" className="sw-mng-primary" disabled={!verified || saving} onClick={() => void save()}>{saving ? copy.saving : copy.save}</button>
       </div>
+      </fieldset>
       <p className="sw-mng-hint">{verification.state === "idle" && view.configured && !verified && (apiKey || model !== view.model || baseUrl !== view.baseUrl) ? copy.changedSinceVerify : copy.verifyHint}</p>
     </form>
   );

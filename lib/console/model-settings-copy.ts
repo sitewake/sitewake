@@ -21,6 +21,7 @@ const zh = {
   notConfigured: "还没有接入模型。填好下面三项并验证，保存后立即生效。", loadFailed: "暂时读不到模型配置。", loading: "正在读取模型配置…",
   invalid: { base_url_invalid: "服务地址必须是 http(s) 地址。", model_required: "请填写模型。", api_key_required: "请填写 API Key。" } as Record<string, string>,
   change: "更换模型",
+  demoLocked: "演示环境已锁定模型配置，不能修改。",
 };
 const en: typeof zh = {
   providerName: (id) => providerNamesEn[id] || id,
@@ -38,6 +39,7 @@ const en: typeof zh = {
   current: (model, masked) => `Current: ${model} · ${masked}`,
   notConfigured: "No model yet. Fill in the three fields, verify, and save — it takes effect at once.", loadFailed: "The model configuration could not be loaded right now.", loading: "Loading the model configuration…",
   invalid: { base_url_invalid: "The service URL must be an http(s) address.", model_required: "Enter a model.", api_key_required: "Enter an API key." },
+  demoLocked: "Model settings are locked in this demo.",
   change: "Change model",
 };
 export function modelSettingsCopy(locale: Locale) { return locale === "en" ? en : zh; }
