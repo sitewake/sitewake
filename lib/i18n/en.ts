@@ -1235,6 +1235,7 @@ export const en: ConsoleCopy = {
         aria: "Capability Center",
         intro: "What the assistant can do on this site, and the tasks it is still learning.",
         create: "New capability",
+        createUnavailable: "Not available yet. Capabilities are learned from visitor sessions.",
         tabsAria: "Capability navigation",
         tabCapabilities: "Capabilities",
         tabTasks: "Production records",
