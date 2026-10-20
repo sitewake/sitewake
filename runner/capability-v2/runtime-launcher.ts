@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { appendTaskEvent, claimTask, failTaskDispatch, getTask, heartbeatRunner, listPendingTaskSites, listRunners, listTasks, markExpiredRunnersLost, markRunnerLost, registerRunner, releaseTaskClaim, terminateRunner } from "../../db/capability-center-v2-store";
 import type { CapabilityTask, RunnerInstance } from "../../lib/capability-center-v2/model";
 import { issueRunnerToken } from "../../lib/capability-center-v2/runner-auth";
+import { getPublicAddress } from "../../lib/public-address";
 import { capabilityV2RuntimeEndpoints } from "./module-delivery";
 
 export type RuntimeType = "Process" | "Container" | "Function";
@@ -19,8 +20,22 @@ export type RuntimeAdapter = { launch(task: CapabilityTask, runner: RunnerInstan
 
 const activeHandles = new Map<string, RuntimeHandle>();
 
+/**
+ * The public address the console holds, when an administrator set one there.
+ *
+ * `getPublicAddress()` answers with the environment's value too, and returning
+ * that here would quietly promote `SITEWAKE_PUBLIC_ORIGIN` above an explicit
+ * `CAPABILITY_V2_BROWSER_PUBLIC_URL`, which is a capability-specific override
+ * an operator may have set on purpose. Only a saved address is forwarded; with
+ * none, the environment decides in the order it always has.
+ */
+function consolePublicOrigin() {
+  const address = getPublicAddress();
+  return address.source === "console" ? address.origin : undefined;
+}
+
 export function runnerEnvironment(task: CapabilityTask, runner: RunnerInstance, runnerToken: string) {
-  const { controlPlaneUrl, browserPublicUrl } = capabilityV2RuntimeEndpoints();
+  const { controlPlaneUrl, browserPublicUrl } = capabilityV2RuntimeEndpoints(process.env, consolePublicOrigin());
   const allowed = [
     "SystemRoot", "ComSpec", "PATH", "PATHEXT", "TEMP", "TMP", "NODE_OPTIONS", "NODE_ENV",
     "PLAYWRIGHT_BROWSERS_PATH",
@@ -92,7 +107,7 @@ export class RemoteProcessRuntimeAdapter implements RuntimeAdapter {
   }
 
   async launch(task: CapabilityTask, runner: RunnerInstance, runnerToken: string) {
-    const { controlPlaneUrl, browserPublicUrl } = capabilityV2RuntimeEndpoints();
+    const { controlPlaneUrl, browserPublicUrl } = capabilityV2RuntimeEndpoints(process.env, consolePublicOrigin());
     await this.call("/launch", {
       siteId: task.siteId,
       taskId: task.id,
