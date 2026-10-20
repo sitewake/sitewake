@@ -143,7 +143,7 @@ export class RuntimeLauncher {
     const maxAttempts = Math.max(1, Number(process.env.CAPABILITY_V2_DISPATCH_MAX_ATTEMPTS || 3));
     const attempts = (await listRunners(siteId, { taskId: task.id })).runners.filter((runner) => runner.status === "Lost").length;
     if (attempts >= maxAttempts) {
-      await failTaskDispatch(siteId, task.id, `Runner 连续启动失败 ${attempts} 次，请检查执行环境后重新运行任务。`);
+      await failTaskDispatch(siteId, task.id, `runner_start_retry_exhausted:attempts=${attempts}`);
       return undefined;
     }
     const runnerId = crypto.randomUUID();

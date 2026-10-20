@@ -127,5 +127,9 @@ test("the console says what each validation case came to, and names the one refu
 
   const diagnostics = await readFile(new URL("../runner/capability-v2/failure-diagnostics.ts", import.meta.url), "utf8");
   assert.match(diagnostics, /validation_no_case_produced_a_result/);
-  assert.match(diagnostics, /没有任何一条样例把能力跑出结果/, "the refusal is stated, not coded");
+  // The runner names the refusal; each catalog states it, so the reader is
+  // told plainly in their own language rather than handed the predicate.
+  assert.match(diagnostics, /diagnosis\("no_case_produced_a_result"/, "the refusal is coded, not stated in the record");
+  assert.match(zh, /没有任何一条样例把能力跑出结果/, "the refusal is stated in Chinese");
+  assert.match(en, /No case in the independent replay produced a result/i, "the refusal is stated in English");
 });
