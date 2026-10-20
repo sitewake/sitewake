@@ -112,6 +112,14 @@ test("skipping the onboarding step does not silence the notice", async () => {
   });
 });
 
+test("a demo console is open on purpose and shows no notice", async () => {
+  await withNotice({ configured: false, demoLock: true }, async (page) => {
+    await page.waitForFunction(() => document.getElementById("root")?.textContent !== null, null, { timeout: 15_000 });
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator(NOTICE).count(), 0, "visitors to a demo cannot set its password");
+  });
+});
+
 test("a read that failed does not accuse a console of being open", async () => {
   await withNotice(null, async (page) => {
     await page.waitForFunction(() => document.getElementById("root")?.textContent !== null, null, { timeout: 15_000 });
