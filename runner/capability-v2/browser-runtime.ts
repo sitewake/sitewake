@@ -3524,7 +3524,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
       const previousRejection = history.at(-1);
       history.push({ action: "rejected", proposedAction: action.action, target: selectedTarget, url: snapshot.url, reason,
         feedback: "该链接离开当前网站，不是站内卡片详情入口；请重新选择可点击卡片或站内链接。" });
-      observe(observer, { stage: "explorer-action-result", message: "已拦截站外链接，重新选择站内目标", response: redactedTraceValue(history.at(-1)) });
+      observe(observer, { stage: "explorer-action-result", message: "off-site link blocked; choosing an in-site target", response: redactedTraceValue(history.at(-1)) });
       if (previousRejection?.action === "rejected" && object(previousRejection.target).href === selectedTarget.href) {
         throw new Error(`capability_exploration_failed:${reason}`);
       }
@@ -3701,7 +3701,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     Object.assign(receipt, { urlAfter: after.url, changed, openedUrls: openedPages.map((candidate) => candidate.url()),
       repeatedWithoutChange: !changed && previousAction?.action === action.action && previousAction.changed === false && object(previousAction.target).css === selectedTarget?.css,
       feedback: openedPages.length ? "动作打开了新窗口，当前页面未必达成目标；不要重复点击。" : changed ? "页面已变化，请检查目标是否完成。" : "当前页面没有可观察变化，请检查目标和动作结果，不要原样重复。" });
-    observe(observer, { stage: "explorer-action-result", message: `${action.action} · ${selectedTarget?.name || action.key || "页面"} · ${changed ? "页面已变化" : "页面未变化"}`, durationMs: Date.now() - actionStartedAt, response: redactedTraceValue(receipt) });
+    observe(observer, { stage: "explorer-action-result", message: `${action.action} · ${selectedTarget?.name || action.key || "page"} · ${changed ? "page changed" : "page unchanged"}`, durationMs: Date.now() - actionStartedAt, response: redactedTraceValue(receipt) });
     // The DSL authoring path cannot replay a popup transition. Surface that
     // limitation instead of generating a program for an unchanged parent page.
     if (openedPages.length) {

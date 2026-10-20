@@ -115,6 +115,35 @@ test("every progress message is a fixed marker, never prose built at run time", 
   }
 });
 
+/** The fixed text of an expression: literals, and the literal spans of a template. */
+function fixedText(node) {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
+  if (ts.isTemplateExpression(node)) return [node.head.text, ...node.templateSpans.flatMap((span) => [span.literal.text, ...fixedText(span.expression)])];
+  if (ts.isParenthesizedExpression(node)) return fixedText(node.expression);
+  if (ts.isConditionalExpression(node)) return [...fixedText(node.whenTrue), ...fixedText(node.whenFalse)];
+  if (ts.isBinaryExpression(node)) return [...fixedText(node.left), ...fixedText(node.right)];
+  return [];
+}
+
+test("a debug trace message is engineering text in English, wherever it is built", () => {
+  // Trace events ({ stage, message }) are shown verbatim in the engineering
+  // record, not worded from a catalog; "navigate · 页面 · 页面已变化" reached an
+  // English console this way.
+  const offenders = [];
+  for (const file of EMITTER_ROOTS.flatMap(sourceFiles)) {
+    const source = ts.createSourceFile(file, readFileSync(join(ROOT, file), "utf8"), ts.ScriptTarget.Latest, true);
+    const visit = (node) => {
+      if (ts.isObjectLiteralExpression(node) && property(node, "stage") && property(node, "message")) {
+        const text = fixedText(property(node, "message")).join("");
+        if (HAN.test(text)) offenders.push(`${file}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1} ${text.slice(0, 60)}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  assert.deepEqual(offenders, []);
+});
+
 test("every marker an emitter can produce is worded in both languages", async () => {
   const { zh, en } = await catalogs();
   assert.deepEqual(Object.keys(zh).sort(), Object.keys(en).sort(), "the two catalogs word the same markers");
