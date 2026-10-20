@@ -73,6 +73,29 @@ function token(value: unknown) {
   return String(value).normalize("NFKC").toLocaleLowerCase("zh-CN").replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
+const UNSPACED_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+
+/** Words, with a change into or out of an unspaced script as a boundary: "搜索Echo商品" holds "echo". */
+function words(value: unknown) {
+  return String(value).normalize("NFKC").toLocaleLowerCase("zh-CN")
+    .replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]+/gu, " $& ")
+    .split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
+/**
+ * Whether `text` mentions `value` as a whole. In a script that separates words
+ * the value's words must appear in order as whole words, so "red" is not found
+ * in "ordered" nor "us" in "focus"; in one that does not (Chinese, Japanese),
+ * the run of characters is all there is to match.
+ */
+function mentions(text: unknown, value: unknown) {
+  const needle = words(value);
+  if (!needle.length || token(value).length < 2) return false;
+  if (UNSPACED_SCRIPT.test(needle.join(""))) return token(text).includes(token(value));
+  const haystack = words(text);
+  return haystack.some((_, start) => needle.every((word, offset) => haystack[start + offset] === word));
+}
+
 /**
  * The values a capability built from this run must take as input, one entry per
  * logical choice. A choice is an array because one action can expose it twice:
@@ -87,11 +110,7 @@ function token(value: unknown) {
  * into a parameter, and no abstraction could satisfy both.
  */
 function requiredActionChoices(experience: CapabilityExperience): ObservedValue[][] {
-  const goal = token(experience.originalGoal);
-  const fromGoal = (values: ObservedValue[]) => values.some((value) => {
-    const text = token(value);
-    return text.length >= 2 && goal.includes(text);
-  });
+  const fromGoal = (values: ObservedValue[]) => values.some((value) => mentions(experience.originalGoal, value));
   const choices: ObservedValue[][] = [];
   for (const action of experience.actions) {
     if (action.action === "fill") {
@@ -274,9 +293,7 @@ export function parseCapabilityExperienceAbstraction(value: Record<string, unkno
     if (!choiceParameterized(choice, parameters)) throw new Error(`experience_action_value_not_parameterized:${String(choice[0]).slice(0, 80)}`);
   }
   for (const parameter of parameters) {
-    const example = normalize(String(parameter.exampleValue));
-    if (example.length < 2) continue;
-    if ([name, description, intent, ...aliases].some((item) => normalize(item).includes(example))) {
+    if ([name, description, intent, ...aliases].some((item) => mentions(item, parameter.exampleValue))) {
       throw new Error("experience_example_leaked_into_summary");
     }
   }

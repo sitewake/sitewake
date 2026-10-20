@@ -451,6 +451,29 @@ test("a dropdown pick is one choice: its visible option or its form value covers
   assert.deepEqual(result.parameters.map((item) => item.name), ["finish"]);
 });
 
+test("goal and summary checks match whole words, not fragments of other words", () => {
+  const page = { url: "https://lamps.example.test/product/lune", title: "Lune", heading: "Lune" };
+  const select = (option, value) => ({ action: "select", rawAction: "select_dropdown_option", input: { option, value }, element: { tag: "select" }, page, observedAt: "2026-10-20T02:56:30.000Z" });
+  const experience = pageAgentExperience({
+    originalGoal: "Order a red lamp for my focus corner",
+    endPage: page,
+    // "US" sits inside "focus" and was never asked for; "red" was.
+    actions: [select("Red", "red"), select("US", "us")],
+  });
+  const parse = (fields) => parseCapabilityExperienceAbstraction({
+    name: "Order a lamp",
+    aliases: [],
+    intent: "Order a lamp in a given colour",
+    parameters: [{ name: "colour", type: "string", description: "Lamp colour", required: true, exampleValue: "red" }],
+    ...fields,
+  }, experience);
+  // "red" inside "ordered" is not the example leaking into the summary.
+  assert.equal(parse({ description: "Places an ordered lamp in the cart" }).parameters.length, 1);
+  assert.throws(() => parse({ description: "Order a red lamp" }), /experience_example_leaked_into_summary/);
+  // A Latin example pressed against Chinese text still counts as written there.
+  assert.throws(() => parse({ description: "下单red台灯" }), /experience_example_leaked_into_summary/);
+});
+
 test("intrinsically stateful current-session operations may remain parameterless", () => {
   const experience = pageAgentExperience({
     episodeId: "episode-checkout-1",
