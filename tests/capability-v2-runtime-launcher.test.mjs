@@ -39,6 +39,10 @@ async function loadRuntimeLauncher() {
           contents: `export async function issueRunnerToken() { return "unused"; }`,
           loader: "ts",
         }));
+        builder.onLoad({ filter: /[\\/]lib[\\/]public-address\.ts$/ }, () => ({
+          contents: `export function getPublicAddress() { return globalThis.__consolePublicAddress || { origin: "", source: "none" }; }`,
+          loader: "ts",
+        }));
       },
     }],
   });
@@ -260,4 +264,59 @@ test("every runtime, validation included, is handed the control plane's model pr
     if (saved.proxy === undefined) delete process.env.SITEWAKE_MODEL_PROXY_URL; else process.env.SITEWAKE_MODEL_PROXY_URL = saved.proxy;
     if (saved.token === undefined) delete process.env.CAPABILITY_V2_DISPATCH_TOKEN; else process.env.CAPABILITY_V2_DISPATCH_TOKEN = saved.token;
   }
+});
+
+test("a public address saved in the console reaches the runner, ahead of the address the install was set up with", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const saved = {
+    CAPABILITY_V2_CONTROL_PLANE_URL: process.env.CAPABILITY_V2_CONTROL_PLANE_URL,
+    CAPABILITY_V2_BROWSER_PUBLIC_URL: process.env.CAPABILITY_V2_BROWSER_PUBLIC_URL,
+    SITEWAKE_PUBLIC_ORIGIN: process.env.SITEWAKE_PUBLIC_ORIGIN,
+    SITEWAKE_LOCAL_DEV: process.env.SITEWAKE_LOCAL_DEV,
+    NODE_ENV: process.env.NODE_ENV,
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    delete globalThis.__consolePublicAddress;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  let request;
+  globalThis.fetch = async (url, init) => {
+    request = { url, init };
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const { RemoteProcessRuntimeAdapter, runnerEnvironment } = await loadRuntimeLauncher();
+  const launch = (id) => new RemoteProcessRuntimeAdapter("http://runtime-launcher.internal:3320", "launcher-token")
+    .launch({ id, siteId: "site-1" }, { id: `runner-${id}` }, `token-${id}`);
+
+  // An install that `./setup` gave an address of its own, and whose
+  // administrator has since put a domain and a certificate in front of it. The
+  // environment still holds what the installer derived; only the console knows
+  // the address a visitor's browser actually loads the page from.
+  process.env.NODE_ENV = "production";
+  delete process.env.SITEWAKE_LOCAL_DEV;
+  process.env.CAPABILITY_V2_CONTROL_PLANE_URL = "http://control-plane.internal:3000";
+  process.env.CAPABILITY_V2_BROWSER_PUBLIC_URL = "http://203.0.113.10:3000";
+  process.env.SITEWAKE_PUBLIC_ORIGIN = "http://203.0.113.10:3000";
+  globalThis.__consolePublicAddress = { origin: "https://console.example.test", source: "console" };
+
+  await launch("task-1");
+  const dispatched = JSON.parse(request.init.body);
+  assert.equal(dispatched.browserPublicUrl, "https://console.example.test", "an https page cannot load a module over http");
+  assert.equal(dispatched.controlPlaneUrl, "http://control-plane.internal:3000", "the runner still reaches the control plane over the internal address");
+
+  const environment = runnerEnvironment({ id: "task-2", siteId: "site-1", type: "Discovery" }, { id: "runner-2" }, "token-2");
+  assert.equal(environment.CAPABILITY_V2_BROWSER_PUBLIC_URL, "https://console.example.test", "the local runtime reads the same address as the broker");
+
+  // Nothing was saved in the console, so the address came from the
+  // environment. A capability-specific override is deliberate and keeps
+  // precedence over it.
+  process.env.CAPABILITY_V2_BROWSER_PUBLIC_URL = "https://capability-override.example.test";
+  globalThis.__consolePublicAddress = { origin: "http://203.0.113.10:3000", source: "env" };
+  await launch("task-3");
+  assert.equal(JSON.parse(request.init.body).browserPublicUrl, "https://capability-override.example.test");
 });

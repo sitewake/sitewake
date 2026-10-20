@@ -1,6 +1,19 @@
-export function capabilityV2RuntimeEndpoints(environment: NodeJS.ProcessEnv = process.env) {
+/**
+ * Where a runner reaches the control plane, and where a visitor's browser
+ * reaches the capability module.
+ *
+ * `consoleOrigin` is the address an administrator saved in the console, and it
+ * wins. An install is set up before it has a domain and a certificate, so the
+ * environment keeps the address `./setup` could derive on its own — usually
+ * plain http on an IP address — long after the console has been told the real
+ * one. Only the control plane can pass it, because only the control plane can
+ * read the setting; a runner has no database and resolves from its own
+ * environment, which is why this stays a parameter rather than a lookup.
+ */
+export function capabilityV2RuntimeEndpoints(environment: NodeJS.ProcessEnv = process.env, consoleOrigin?: string) {
   const controlPlaneUrl = (environment.CAPABILITY_V2_CONTROL_PLANE_URL || "http://127.0.0.1:3000").trim().replace(/\/$/, "");
-  const browserPublicUrl = environment.CAPABILITY_V2_BROWSER_PUBLIC_URL?.trim()
+  const browserPublicUrl = consoleOrigin?.trim()
+    || environment.CAPABILITY_V2_BROWSER_PUBLIC_URL?.trim()
     || environment.SITEWAKE_PUBLIC_ORIGIN?.trim()
     || (environment.SITEWAKE_LOCAL_DEV === "1" && environment.NODE_ENV !== "production" ? controlPlaneUrl : undefined);
   return { controlPlaneUrl, browserPublicUrl };
