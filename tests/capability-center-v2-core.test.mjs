@@ -430,8 +430,29 @@ test("only the values the visitor asked for must become parameters; the run's ow
 
   // The plug, the "Table lamp" filter and the product slug are the run's choices.
   assert.deepEqual(abstraction([feature, finish]).parameters.map((item) => item.name), ["feature", "finish"]);
-  // "Dimmable" is the visitor's own word; leaving it out still fails, and says which value.
+  // "Dimmable" is the visitor's own word; leaving it out silently still fails, and says which value.
   assert.throws(() => abstraction([finish]), /experience_action_value_not_parameterized:Dimmable/);
+  // Kept fixed and said out loud is honest, and is what the model wrote when
+  // the two rules used to leave it no passing answer.
+  const named = parseCapabilityExperienceAbstraction({
+    name: "Order a dimmable desk lamp",
+    description: "Order a dimmable desk lamp in the requested finish",
+    aliases: [],
+    intent: "Order a dimmable desk lamp in a given finish",
+    parameters: [finish],
+  }, experience);
+  assert.deepEqual(named.parameters.map((item) => item.name), ["finish"]);
+});
+
+test("typed text is the visitor's data even when the summary names it", () => {
+  const experience = pageAgentExperience();
+  assert.throws(() => parseCapabilityExperienceAbstraction({
+    name: "搜索 Echo 商品",
+    description: "搜索 Echo 商品并展示结果",
+    aliases: [],
+    intent: "搜索 Echo 商品",
+    parameters: [],
+  }, experience), /experience_action_value_not_parameterized:Echo/);
 });
 
 test("a dropdown pick is one choice: its visible option or its form value covers it", () => {
