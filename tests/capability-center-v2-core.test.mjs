@@ -36,6 +36,7 @@ const {
   capabilityUrlTemplateMatches,
   claimTask,
   cleanParameterPlan,
+  withoutGoalEchoes,
   decomposeCompositeSearchParameter,
   evaluateResultDeterministic,
   executeProgram,
@@ -1801,6 +1802,46 @@ test("parameter-plan cleanup rejects technical parameters and preserves the fina
     { 商品: "Arc 弧光台灯" },
     { 商品: "Echo 桌面音箱" },
   ]);
+});
+
+test("a session's planner keeps the visitor's inputs, not values the run picked on its own", () => {
+  // The demo lamp task: intake supplied only the finish the visitor asked for;
+  // the planner added the plug type the agent chose, as a required input the
+  // explored path never acted on.
+  const snapshot = { url: "https://lamps.example.test/product/lune", title: "Lune", heading: "Lune", text: "Finish Brass Matte black Plug type US plug (Type A/B) UK plug (Type G)", elements: [] };
+  const raw = {
+    parameters: [
+      { name: "finish", type: "string", description: "Lamp finish", required: true, exampleValue: "Brass" },
+      { name: "plugType", type: "string", description: "Plug type", required: true, exampleValue: "US plug (Type A/B)" },
+    ],
+  };
+  const fromSession = cleanParameterPlan(raw, "Order a dimmable desk lamp in brass", {
+    parameters: { finish: "Brass" },
+    context: {},
+    interactions: [],
+    trigger: {},
+    experience: { originalGoal: "Order a dimmable desk lamp in brass", actions: [], output: {} },
+  }, snapshot);
+  assert.deepEqual(fromSession.parameters.map((parameter) => parameter.name), ["finish"]);
+  // A task with no session has only the planner to define its inputs.
+  const fromAdmin = cleanParameterPlan(raw, "Order a lamp with a chosen finish and plug", { parameters: {}, context: {}, interactions: [], trigger: {} }, snapshot);
+  assert.deepEqual(fromAdmin.parameters.map((parameter) => parameter.name).sort(), ["finish", "plugType"]);
+});
+
+test("a control named with the visitor's whole request is not part of the site", () => {
+  const snapshot = { url: "https://lamps.example.test/", elements: [
+    { index: 1, name: "Order a dimmable desk lamp in brass" },
+    { index: 2, name: "Brass" },
+    { index: 3, name: "Add to cart" },
+    { index: 4, label: "Try asking: Order a dimmable desk lamp in brass" },
+  ] };
+  const kept = withoutGoalEchoes(snapshot, ["Order a dimmable desk lamp in brass", undefined]);
+  assert.deepEqual(kept.elements.map((element) => element.index), [2, 3]);
+  // A goal a button may share is not used to exclude anything.
+  assert.equal(withoutGoalEchoes(snapshot, ["Add to cart"]).elements.length, 4);
+  // A request in a script without spaces is measured in characters.
+  const chinese = { elements: [{ index: 1, name: "下单一盏可调光的黄铜台灯" }, { index: 2, name: "黄铜" }] };
+  assert.deepEqual(withoutGoalEchoes(chinese, ["下单一盏可调光的黄铜台灯"]).elements.map((element) => element.index), [2]);
 });
 
 test("parameter-plan cleanup collapses model-synonym target fields onto the supplied field", () => {

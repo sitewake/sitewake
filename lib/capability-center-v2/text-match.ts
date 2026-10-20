@@ -26,3 +26,31 @@ export function capabilityTextIncludes(actual: unknown, expected: unknown) {
   const needle = normalizeCapabilityText(expected);
   return needle.length > 0 && normalizeCapabilityText(actual).includes(needle);
 }
+
+/** Case, spacing and punctuation free: a slug and its visible label are one value. */
+export function capabilityTextToken(value: unknown) {
+  return String(value).normalize("NFKC").toLocaleLowerCase("zh-CN").replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+const UNSPACED_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+
+/** Words, with a change into or out of an unspaced script as a boundary: "搜索Echo商品" holds "echo". */
+function words(value: unknown) {
+  return String(value).normalize("NFKC").toLocaleLowerCase("zh-CN")
+    .replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]+/gu, " $& ")
+    .split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
+/**
+ * Whether `text` mentions `value` as a whole. In a script that separates words
+ * the value's words must appear in order as whole words, so "red" is not found
+ * in "ordered" nor "us" in "focus"; in one that does not (Chinese, Japanese),
+ * the run of characters is all there is to match.
+ */
+export function capabilityTextMentions(text: unknown, value: unknown) {
+  const needle = words(value);
+  if (!needle.length || capabilityTextToken(value).length < 2) return false;
+  if (UNSPACED_SCRIPT.test(needle.join(""))) return capabilityTextToken(text).includes(capabilityTextToken(value));
+  const haystack = words(text);
+  return haystack.some((_, start) => needle.every((word, offset) => haystack[start + offset] === word));
+}

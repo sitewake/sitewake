@@ -9,6 +9,7 @@ import { getModelConfig } from "../model-config";
 import type { CapabilityContract, CapabilityExperience, LegacyCapabilityScope, CapabilityTaskInput, JsonObject, JsonValue } from "./model";
 import { requestStructuredModelJson } from "./model-json";
 import { makeDebugEvent, type CapabilityDebugEvent } from "./debug-trace";
+import { capabilityTextMentions as mentions, capabilityTextToken as token } from "./text-match";
 import { EXPERIENCE_ABSTRACTION_PROMPT } from "./prompts/experience-abstraction";
 import { capabilityExperienceRouteBindings, capabilityExperienceStartUrl, discoveryGenerationInputFromExperience } from "./experience";
 import type { CapabilityExperienceAuthority } from "./experience-authority";
@@ -66,34 +67,6 @@ type ObservedValue = string | number | boolean;
 
 function observedValue(value: unknown): value is ObservedValue {
   return typeof value === "number" || typeof value === "boolean" || (typeof value === "string" && value.trim().length > 0);
-}
-
-/** Case, spacing and punctuation free: a slug and its visible label are one value. */
-function token(value: unknown) {
-  return String(value).normalize("NFKC").toLocaleLowerCase("zh-CN").replace(/[^\p{L}\p{N}]+/gu, "");
-}
-
-const UNSPACED_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
-
-/** Words, with a change into or out of an unspaced script as a boundary: "搜索Echo商品" holds "echo". */
-function words(value: unknown) {
-  return String(value).normalize("NFKC").toLocaleLowerCase("zh-CN")
-    .replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]+/gu, " $& ")
-    .split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-}
-
-/**
- * Whether `text` mentions `value` as a whole. In a script that separates words
- * the value's words must appear in order as whole words, so "red" is not found
- * in "ordered" nor "us" in "focus"; in one that does not (Chinese, Japanese),
- * the run of characters is all there is to match.
- */
-function mentions(text: unknown, value: unknown) {
-  const needle = words(value);
-  if (!needle.length || token(value).length < 2) return false;
-  if (UNSPACED_SCRIPT.test(needle.join(""))) return token(text).includes(token(value));
-  const haystack = words(text);
-  return haystack.some((_, start) => needle.every((word, offset) => haystack[start + offset] === word));
 }
 
 /**

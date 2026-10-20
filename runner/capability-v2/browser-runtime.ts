@@ -1,7 +1,7 @@
 import { assertCapabilityOutput } from "../../lib/site-knowledge/capability-output";
 import type { Locator, Page } from "playwright";
 import { getModelConfig } from "../../lib/model-config";
-import { capabilityTextIncludes } from "../../lib/capability-center-v2/text-match";
+import { capabilityTextIncludes, capabilityTextMentions, capabilityTextToken } from "../../lib/capability-center-v2/text-match";
 import { expectedValuesEqual } from "../../lib/capability-center-v2/expected-output";
 import { capabilityUrlTemplateMatches, renderCapabilityInputTemplate } from "../../lib/capability-center-v2/input-template";
 import { requestStructuredModelJson } from "../../lib/capability-center-v2/model-json";
@@ -1906,7 +1906,19 @@ export function cleanParameterPlan(raw: Record<string, unknown>, goal: string, i
     if (!validParameterName(name) || technicalParameterName(name) || exampleValue === null || typeof exampleValue === "object" || parsedParameters.some((item) => item.name === name)) continue;
     parsedParameters.push({ name, type: jsonType(exampleValue), description: name, required: true, exampleValue });
   }
-  const deduped = dedupeSemanticParameters(parsedParameters, supplied);
+  // A session's intake already decided which values are the visitor's: what
+  // it supplied, and anything the visitor's own words name. A further value
+  // the run happened to pick (a default plug type, a filter on the way) stays
+  // fixed in the capability. Made a required input, every caller would have
+  // to name it and the explored path, which never chose it from an input,
+  // could not act on it. A task with no session has only the planner to
+  // define its inputs and is left as it is.
+  const visitorWords = [input.experience?.originalGoal, goal].filter((text): text is string => typeof text === "string");
+  const visitorParameters = input.experience && Object.keys(supplied).length
+    ? parsedParameters.filter((parameter) => parameter.name in supplied
+      || visitorWords.some((text) => capabilityTextMentions(text, parameter.exampleValue)))
+    : parsedParameters;
+  const deduped = dedupeSemanticParameters(visitorParameters, supplied);
   const parameters = deduped.parameters;
   const canonicalRaw = remapParameterReferences(raw, deduped.aliases);
   const parametersBeforeDecomposition = [...parameters];
@@ -3367,6 +3379,26 @@ async function chooseAction(goal: string, snapshot: Awaited<ReturnType<typeof in
   return normalized;
 }
 
+/**
+ * A page control whose name or label carries the visitor's whole request is a
+ * shortcut to the assistant — an example-question chip, a "send this to the
+ * assistant" button — not the site doing the work. A real control is named
+ * for what it does ("Add to cart", "Brass"), never with a sentence. Clicking
+ * one "completed" an exploration that never touched the shop, and the
+ * contract then took the chip's own acknowledgement as success.
+ */
+export function withoutGoalEchoes<T extends { elements: Array<{ name?: string; label?: string }> }>(snapshot: T, goals: Array<string | undefined>): T {
+  // Long enough that no control is named that way: five words, or eight
+  // characters of a script written without spaces. "Add to cart" is a goal a
+  // button may legitimately share.
+  const sentence = (goal: string) => goal.trim().split(/\s+/u).length >= 5
+    || (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(goal) && capabilityTextToken(goal).length >= 8);
+  const sentences = goals.filter((goal): goal is string => typeof goal === "string" && sentence(goal));
+  if (!sentences.length) return snapshot;
+  const echoes = (text: string | undefined) => Boolean(text) && sentences.some((goal) => capabilityTextMentions(text, goal));
+  return { ...snapshot, elements: snapshot.elements.filter((element) => !echoes(element.name) && !echoes(element.label)) };
+}
+
 export async function exploreCapability(page: Page, goal: string, startUrl: string, input: CapabilityTaskInput, maxSteps = 16, observer?: ExplorationObserver, guidance?: string) {
   await page.goto(startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
   await settlePage(page);
@@ -3385,7 +3417,11 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
   let replayMovedAt = -1;
   for (let index = 0; index < maxSteps; index += 1) {
     await settlePage(page);
-    const snapshot = await inspectPage(page);
+    const inspected = await inspectPage(page);
+    const snapshot = withoutGoalEchoes(inspected, [goal, input.experience?.originalGoal]);
+    if (snapshot.elements.length !== inspected.elements.length) {
+      observe(observer, { stage: "explorer-goal-echo-excluded", message: "controls named with the request itself were left out", response: redactedTraceValue(inspected.elements.filter((element) => !snapshot.elements.includes(element)).map((element) => ({ index: element.index, name: element.name }))) });
+    }
     const pageBlock = diagnoseBlockedPage(snapshot);
     if (pageBlock) throw new Error(pageBlock.code);
     // A default control may only become visible after dynamic navigation. In
