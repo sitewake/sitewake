@@ -787,7 +787,7 @@ export async function authorJavaScriptCapability(options: {
     draftPending = false;
     let draftResult: Record<string, unknown> | undefined;
       if (!source) throw new Error("capability_source_missing;hint=src/capability.ts has not been written yet. Call write_file({ path: 'capability.ts', content }) with the full module first, then run_draft.");
-      await options.onEvent?.({ phase: "Building", message: "构建并检查 JavaScript 模块" });
+      await options.onEvent?.({ phase: "Building", message: "building the module" });
       const bundle = await transpile(source);
       const requiredInputPaths = Object.keys(record(record(options.contract.inputSchema).properties));
       const validation = validateCapabilityJavaScriptSource(

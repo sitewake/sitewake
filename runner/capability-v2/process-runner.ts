@@ -201,7 +201,7 @@ function interactionFor(error: MissingInputError): TaskInteraction {
     id: `runtime-${error.key.replace(/[^a-z0-9_-]/gi, "-")}`,
     status: "Requested",
     audience: "Administrator",
-    message: `任务继续执行需要提供：${error.key}`,
+    message: `runtime_input_required:${error.key}`,
     resumeMode: "Continue",
     fields: [field],
   };
@@ -1336,7 +1336,7 @@ async function run() {
         runnerId,
         eventType: "PhaseChanged",
         phase: "Preflight",
-        message: "RunSpec 与浏览器模块公共地址检查通过",
+        message: "run spec and module address checked",
         payload: {},
       }),
     });
