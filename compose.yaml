@@ -55,6 +55,8 @@ services:
       SITEWAKE_RUNNER_VISIBILITY: ${SITEWAKE_RUNNER_VISIBILITY:-full}
       # Factory default only: the address set in the console wins over it.
       SITEWAKE_PUBLIC_ORIGIN: ${SITEWAKE_PUBLIC_ORIGIN:-}
+      # 1 = showcase console: password and an existing model are read-only in the UI.
+      SITEWAKE_DEMO_LOCK: ${SITEWAKE_DEMO_LOCK:-0}
       SITEWAKE_BUILD_SHA: ${SITEWAKE_BUILD_SHA:-development}
       # Independent site-level rollout controls: off/on, sites:id-a,id-b, or
       # percent:10. Evidence V2 is additionally gated by Runtime V2.

@@ -2173,6 +2173,7 @@ export const zh = {
     /** Access panel: set the password, toggle the gate, sign out sessions. */
     manage: {
       statusPrefix: "当前状态：",
+      demoLocked: "演示环境已锁定控制台密码，不能修改。",
       statusLoading: "读取中…",
       statusUnset: "未设置访问密码（当前站点公开访问）",
       statusEnabled: "已开启门禁",

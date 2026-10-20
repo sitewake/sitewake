@@ -463,3 +463,6 @@
 @media(max-width:600px) { .sw-model-form { padding: 4px 18px 20px; } }
 .sw-overview-model-missing { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; padding: 12px 16px; border: 1px solid #f0d9a8; border-radius: 12px; background: #fff8e8; color: #6b4e00; font-size: 13px; }
 .sw-overview-model-missing button { min-height: 32px; padding: 0 12px; border: 1px solid #e6c67a; border-radius: 8px; background: #fff; color: #6b4e00; font: inherit; font-size: 13px; font-weight: 600; }
+
+/* Groups a form's controls so a demo lock can disable them at once; adds no box of its own. */
+.sw-mng-fieldset { display: contents; border: 0; margin: 0; padding: 0; min-width: 0; }

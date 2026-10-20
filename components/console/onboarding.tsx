@@ -462,10 +462,10 @@ export function OnboardingFlow({
     const controller = new AbortController();
     void fetch("/api/access", { cache: "no-store", signal: controller.signal })
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error("unavailable"))))
-      .then((value: { configured?: unknown; onboardingSkipped?: unknown }) => {
+      .then((value: { configured?: unknown; onboardingSkipped?: unknown; demoLock?: unknown }) => {
         if (controller.signal.aborted) return;
         setAccess(typeof value.configured === "boolean"
-          ? { configured: value.configured, onboardingSkipped: value.onboardingSkipped === true }
+          ? { configured: value.configured, onboardingSkipped: value.onboardingSkipped === true || value.demoLock === true }
           : null);
       })
       .catch(() => { if (!controller.signal.aborted) setAccess(null); });

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ConfirmDialog } from "./ui";
 import { t, type ConsoleCopy, type Locale } from "@/lib/i18n";
 
-type Status = { configured: boolean; enabled: boolean; updatedAt: string | null };
+type Status = { configured: boolean; enabled: boolean; updatedAt: string | null; demoLock?: boolean };
 
 // Maps the server's error codes onto the shared copy catalog.
 /**
@@ -107,6 +107,8 @@ export function AccessManagePanel({ locale, showLogout = false }: { locale: Loca
         <span>{copy.statusPrefix}</span>
         <b className={status?.enabled ? "on" : undefined}>{statusText}</b>
       </div>
+      {status?.demoLock && <p className="sw-mng-msg" role="status" data-demo-lock>{copy.demoLocked}</p>}
+      <fieldset className="sw-mng-fieldset" disabled={Boolean(status?.demoLock)}>
 
       <div>
         <span className="sw-mng-label">{copy.authLabel}</span>
@@ -133,6 +135,7 @@ export function AccessManagePanel({ locale, showLogout = false }: { locale: Loca
         <button className="sw-mng-ghost" disabled={busy || !status?.configured} onClick={() => setConfirmingRevoke(true)}>{copy.revokeSessions}</button>
         {showLogout ? <button className="sw-mng-ghost" disabled={busy} onClick={() => void logout()}>{copy.logout}</button> : null}
       </div>
+      </fieldset>
 
       <ConfirmDialog
         open={confirmingRevoke}

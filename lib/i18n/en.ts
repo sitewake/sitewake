@@ -2052,6 +2052,7 @@ export const en: ConsoleCopy = {
     /** Access management: set the password, turn the gate on or off, sign everyone out. */
     manage: {
       statusPrefix: "Current status: ",
+      demoLocked: "The console password is locked in this demo.",
       statusLoading: "Loading…",
       statusUnset: "No access password set (this site is publicly reachable)",
       statusEnabled: "Gate is on",
