@@ -129,7 +129,7 @@ function taskFailure(task: CapabilityTask) {
     code: task.error.code,
     message: curated || (rawOnly ? copy.runnerFailed(task.error.message) : task.error.message),
     retryable: task.error.retryable,
-    cause: taskFailureCause(task.error.cause?.message || (curated ? task.error.message : undefined)),
+    cause: taskFailureCause(task.error.cause?.message),
   };
 }
 function schemaFields(capability?: Capability) {

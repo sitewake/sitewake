@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 
 const bundle = await build({
   entryPoints: [fileURLToPath(new URL("../runner/capability-v2/failure-diagnostics.ts", import.meta.url))],
@@ -33,8 +34,6 @@ test("reports a website security challenge instead of page_changed", () => {
   });
   assert.equal(result.code, "site_access_challenge");
   assert.equal(result.retryable, false);
-  assert.match(result.message, /尚未进入业务页面/);
-  assert.match(result.message, /访问白名单/);
 });
 
 test("reports a 403 access restriction from document labels", () => {
@@ -75,7 +74,6 @@ test("translates low-level element errors into an actionable page diagnostic", (
     text: "搜索商品",
   });
   assert.equal(result.code, "page_changed");
-  assert.match(result.message, /找不到预期的页面元素/);
   assert.equal(result.retryable, true);
 });
 
@@ -88,7 +86,6 @@ test("preserves target ambiguity as a distinct non-retryable root cause", () => 
   });
   assert.equal(result.code, "target_ambiguous");
   assert.equal(result.retryable, false);
-  assert.match(result.message, /多个符合条件/);
 });
 
 test("classifies a browser dynamic-import failure as module_load_failed with actionable configuration guidance", () => {
@@ -102,8 +99,6 @@ test("classifies a browser dynamic-import failure as module_load_failed with act
   });
   assert.equal(result.code, "module_load_failed");
   assert.equal(result.retryable, true);
-  assert.match(result.message, /CAPABILITY_V2_BROWSER_PUBLIC_URL/);
-  assert.match(result.message, /HTTPS/);
   assert.equal(result.cause.code, "runner_root_cause");
   assert.match(result.cause.message, /Failed to fetch dynamically imported module/);
   assert.doesNotMatch(result.message, /control-plane:3000/);
@@ -116,7 +111,6 @@ test("maps an invalid browser-public base to module_load_failed instead of model
   const result = diagnostics.diagnoseRunnerFailure(error);
   assert.equal(result.code, "module_load_failed");
   assert.notEqual(result.code, "model_protocol_error");
-  assert.match(result.message, /CAPABILITY_V2_BROWSER_PUBLIC_URL/);
 });
 
 test("authoring budget exhaustion retains its last repairable root cause", () => {
@@ -154,8 +148,9 @@ test("an expired or invalid site certificate is named as such, not as a generic 
   const result = diagnostics.diagnoseRunnerFailure(new Error('page.goto: net::ERR_CERT_DATE_INVALID at https://www.example.org/\nCall log:\n  - navigating to "https://www.example.org/", waiting until "domcontentloaded"'));
   assert.equal(result.code, "site_certificate_invalid");
   assert.equal(result.retryable, true);
-  assert.match(result.message, /www\.example\.org/);
-  assert.match(result.message, /证书/);
+  // The host is engineering detail, so it travels in the cause rather than in
+  // copy that would have to name it in every language.
+  assert.match(result.cause.message, /www\.example\.org/);
 });
 
 test("a spent time budget is not reported as a contract problem", () => {
@@ -165,7 +160,62 @@ test("a spent time budget is not reported as a contract problem", () => {
     new Error("javascript_author_repeated_failure: draft_grounding_example_failed:example_1:capability_control_flow_timeout:stage_verify:pending=budget-exhausted-before-stage"),
   );
   assert.equal(diagnosed.code, "control_flow_timeout");
-  assert.match(diagnosed.message, /\u4e0d\u662f\u751f\u6210\u4ee3\u7801\u7684\u95ee\u9898/, "it says whose problem it is not");
-  assert.doesNotMatch(diagnosed.message, /\u5408\u540c\u6216\u89c4\u5219/, "and does not send the operator after a contract");
   assert.equal(diagnosed.retryable, true);
+});
+
+// The record names a code; what a reader is told is the console's copy for it,
+// in the console's language. Both halves are checked here: that every code the
+// runner can produce has copy in both catalogs, and that the copy still says
+// what the records used to say.
+const catalogs = await (async () => {
+  const bundled = await build({
+    entryPoints: [fileURLToPath(new URL("./fixtures/i18n-failure-copy.ts", import.meta.url))],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    write: false,
+  });
+  return import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
+})();
+
+test("every failure a runner can report has copy in both catalogs", async () => {
+  const source = await readFile(new URL("../runner/capability-v2/failure-diagnostics.ts", import.meta.url), "utf8");
+  const codes = [...source.matchAll(/diagnosis\("([a-z0-9_]+)"/g)].map((match) => match[1]);
+  const unique = [...new Set(codes)];
+  assert.ok(unique.length >= 20, `expected the diagnostics to cover the known failures, found ${unique.length}`);
+  for (const code of unique) {
+    for (const [locale, failure] of Object.entries(catalogs.failureCopy)) {
+      const copy = failure[code];
+      assert.equal(typeof copy, "string", `${locale} has no copy for ${code}`);
+      assert.ok(copy.trim().length > 20, `${locale} copy for ${code} is too short to act on`);
+    }
+  }
+});
+
+test("a record carries no prose, so neither language reaches the other", async () => {
+  const chinese = /[\u4e00-\u9fff]/;
+  for (const diagnosed of [
+    diagnostics.diagnoseRunnerFailure(new Error("javascript_author_repeated_failure: capability_control_flow_timeout:stage_verify")),
+    diagnostics.diagnoseRunnerFailure("target_ambiguous:step_1"),
+    diagnostics.diagnoseRunnerFailure("interaction_timeout"),
+  ]) {
+    assert.doesNotMatch(diagnosed.message, chinese, `${diagnosed.code} stored prose in the record`);
+    assert.equal(diagnosed.message, diagnosed.code);
+  }
+});
+
+test("the copy keeps the judgements the records used to carry", () => {
+  for (const [locale, failure] of Object.entries(catalogs.failureCopy)) {
+    // A spent clock is not a contract problem, and the operator was once sent
+    // after one.
+    for (const code of ["control_flow_timeout", "navigation_timeout"]) {
+      assert.match(failure[code], locale === "zh" ? /不是生成代码的问题/ : /not a problem with the generated code/i, `${locale}/${code}`);
+    }
+    assert.doesNotMatch(failure.control_flow_timeout, locale === "zh" ? /合同或规则/ : /contract/i, `${locale} sends the operator after a contract`);
+    // The module failure is a deployment setting, and names the one to look at.
+    assert.match(failure.module_load_failed, /CAPABILITY_V2_BROWSER_PUBLIC_URL/, locale);
+    assert.match(failure.module_load_failed, /HTTPS/i, locale);
+    // A challenge page is answered with access, not with a retry.
+    assert.match(failure.site_access_challenge, locale === "zh" ? /白名单/ : /allowlist/i, locale);
+  }
 });
