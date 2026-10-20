@@ -293,9 +293,11 @@ export function parseCapabilityExperienceAbstraction(value: Record<string, unkno
     if (!choiceParameterized(choice, parameters)) throw new Error(`experience_action_value_not_parameterized:${String(choice[0]).slice(0, 80)}`);
   }
   for (const parameter of parameters) {
-    if ([name, description, intent, ...aliases].some((item) => mentions(item, parameter.exampleValue))) {
-      throw new Error("experience_example_leaked_into_summary");
-    }
+    const field = ([["name", name], ["description", description], ["intent", intent], ...aliases.map((alias) => ["aliases", alias])] as const)
+      .find(([, text]) => mentions(text, parameter.exampleValue));
+    // Name the value and where it was written: the repair turn can only
+    // rephrase what it is told about, and the code alone told it nothing.
+    if (field) throw new Error(`experience_example_leaked_into_summary:${field[0]}:${String(parameter.exampleValue).slice(0, 80)}`);
   }
   const parameterInput = Object.fromEntries(parameters.map((parameter) => [parameter.name, parameter.exampleValue])) as Record<string, JsonValue>;
   const semantic = analyzeCapabilitySemantics({

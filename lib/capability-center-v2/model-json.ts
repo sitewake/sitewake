@@ -100,7 +100,7 @@ export async function requestStructuredModelJson(
             { role: "assistant", content: invalidContent.slice(0, 4_000) },
             {
               role: "user",
-              content: `上一条回复不符合结构化输出协议（${invalidReason || "validation_failed"}）。请修正语法或字段结构并重新输出完整 JSON 对象；不要解释，也不要省略任何必需字段。`,
+              content: `上一条回复不符合结构化输出协议（${invalidReason || "validation_failed"}）。请按括号中的原因修正（可能是语法、字段结构，也可能是字段内容），并重新输出完整 JSON 对象；不要解释，也不要省略任何必需字段。`,
             },
           ]
           : []),

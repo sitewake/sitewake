@@ -469,7 +469,7 @@ test("goal and summary checks match whole words, not fragments of other words", 
   }, experience);
   // "red" inside "ordered" is not the example leaking into the summary.
   assert.equal(parse({ description: "Places an ordered lamp in the cart" }).parameters.length, 1);
-  assert.throws(() => parse({ description: "Order a red lamp" }), /experience_example_leaked_into_summary/);
+  assert.throws(() => parse({ description: "Order a red lamp" }), /experience_example_leaked_into_summary:description:red/);
   // A Latin example pressed against Chinese text still counts as written there.
   assert.throws(() => parse({ description: "下单red台灯" }), /experience_example_leaked_into_summary/);
 });
