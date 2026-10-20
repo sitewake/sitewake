@@ -62,14 +62,73 @@ function evidenceCorpus(experience: CapabilityExperience) {
   }));
 }
 
-function variableActionValues(experience: CapabilityExperience) {
-  return experience.actions.flatMap((action) => {
-    if (action.action === "fill") return [action.input.text, action.input.value];
-    if (action.action === "select") return [action.input.option, action.input.value];
-    return [];
-  }).concat(capabilityExperienceRouteBindings(experience))
-    .filter((value): value is string | number | boolean =>
-    typeof value === "number" || typeof value === "boolean" || (typeof value === "string" && value.trim().length > 0));
+type ObservedValue = string | number | boolean;
+
+function observedValue(value: unknown): value is ObservedValue {
+  return typeof value === "number" || typeof value === "boolean" || (typeof value === "string" && value.trim().length > 0);
+}
+
+/** Case, spacing and punctuation free: a slug and its visible label are one value. */
+function token(value: unknown) {
+  return String(value).normalize("NFKC").toLocaleLowerCase("zh-CN").replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+const UNSPACED_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+
+/** Words, with a change into or out of an unspaced script as a boundary: "搜索Echo商品" holds "echo". */
+function words(value: unknown) {
+  return String(value).normalize("NFKC").toLocaleLowerCase("zh-CN")
+    .replace(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]+/gu, " $& ")
+    .split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+}
+
+/**
+ * Whether `text` mentions `value` as a whole. In a script that separates words
+ * the value's words must appear in order as whole words, so "red" is not found
+ * in "ordered" nor "us" in "focus"; in one that does not (Chinese, Japanese),
+ * the run of characters is all there is to match.
+ */
+function mentions(text: unknown, value: unknown) {
+  const needle = words(value);
+  if (!needle.length || token(value).length < 2) return false;
+  if (UNSPACED_SCRIPT.test(needle.join(""))) return token(text).includes(token(value));
+  const haystack = words(text);
+  return haystack.some((_, start) => needle.every((word, offset) => haystack[start + offset] === word));
+}
+
+/**
+ * The values a capability built from this run must take as input, one entry per
+ * logical choice. A choice is an array because one action can expose it twice:
+ * a dropdown's visible option and its form value name the same pick, and either
+ * one being a parameter covers it.
+ *
+ * Typed text is always the visitor's data. A dropdown pick or a value bound
+ * into an address is required only when it comes from the visitor's own words;
+ * otherwise the run chose it on the way (a filter that narrowed the list, the
+ * product page it opened, a default plug) and the capability may keep it fixed.
+ * Demanding those too contradicted the rule against turning a browsed product
+ * into a parameter, and no abstraction could satisfy both.
+ */
+function requiredActionChoices(experience: CapabilityExperience): ObservedValue[][] {
+  const fromGoal = (values: ObservedValue[]) => values.some((value) => mentions(experience.originalGoal, value));
+  const choices: ObservedValue[][] = [];
+  for (const action of experience.actions) {
+    if (action.action === "fill") {
+      const values = [action.input.text, action.input.value].filter(observedValue);
+      if (values.length) choices.push(values);
+    } else if (action.action === "select") {
+      const values = [action.input.option, action.input.value].filter(observedValue);
+      if (values.length && fromGoal(values)) choices.push(values);
+    }
+  }
+  for (const value of capabilityExperienceRouteBindings(experience).filter(observedValue)) {
+    if (fromGoal([value])) choices.push([value]);
+  }
+  return choices;
+}
+
+function choiceParameterized(choice: ObservedValue[], parameters: AbstractedParameter[]) {
+  return choice.some((value) => parameters.some((parameter) => token(parameter.exampleValue) === token(value)));
 }
 
 function observedExactBusinessLabels(experience: CapabilityExperience) {
@@ -228,15 +287,13 @@ export function parseCapabilityExperienceAbstraction(value: Record<string, unkno
   if (parameters.some((parameter) => isConcreteObservedTarget(parameter, experience))) {
     throw new Error("experience_concrete_target_not_generalized");
   }
-  for (const actionValue of variableActionValues(experience)) {
-    if (!parameters.some((parameter) => normalize(String(parameter.exampleValue)) === normalize(String(actionValue)))) {
-      throw new Error("experience_action_value_not_parameterized");
-    }
+  for (const choice of requiredActionChoices(experience)) {
+    // The value travels with the code: the repair turn needs to know which one
+    // it missed, and so does whoever reads the intake's failure reason.
+    if (!choiceParameterized(choice, parameters)) throw new Error(`experience_action_value_not_parameterized:${String(choice[0]).slice(0, 80)}`);
   }
   for (const parameter of parameters) {
-    const example = normalize(String(parameter.exampleValue));
-    if (example.length < 2) continue;
-    if ([name, description, intent, ...aliases].some((item) => normalize(item).includes(example))) {
+    if ([name, description, intent, ...aliases].some((item) => mentions(item, parameter.exampleValue))) {
       throw new Error("experience_example_leaked_into_summary");
     }
   }

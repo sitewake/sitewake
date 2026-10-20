@@ -26,11 +26,13 @@ export function AccessNotice() {
 
   const read = useCallback((signal?: AbortSignal) => fetch("/api/access", { cache: "no-store", signal })
     .then((response) => (response.ok ? response.json() : Promise.reject(new Error("unavailable"))))
-    .then((value: { configured?: unknown }) => {
+    .then((value: { configured?: unknown; demoLock?: unknown }) => {
       if (signal?.aborted) return;
       // A read that fails says nothing either way, so it must not accuse a
       // protected console of being open. Only a definite `false` shows this.
-      setConfigured(typeof value.configured === "boolean" ? value.configured : null);
+      // A demo console is open on purpose and its password cannot be set from
+      // here, so it has nothing to warn about.
+      setConfigured(value.demoLock === true ? null : typeof value.configured === "boolean" ? value.configured : null);
     })
     .catch(() => { if (!signal?.aborted) setConfigured(null); }), []);
 

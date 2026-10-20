@@ -401,6 +401,79 @@ test("experience abstraction requires action values to become reusable business 
   );
 });
 
+test("only the values the visitor asked for must become parameters; the run's own choices may stay fixed", () => {
+  // The demo session that sat in "waiting to retry" forever: the visitor asked
+  // for a dimmable desk lamp in brass; the agent narrowed the shop with filters,
+  // opened one product and picked a plug type nobody asked for.
+  const page = { url: "https://lamps.example.test/product/lune-table-lamp", title: "Lune Table Lamp", heading: "Lune Table Lamp" };
+  const select = (option, value) => ({ action: "select", rawAction: "select_dropdown_option", input: { option, value }, element: { tag: "select" }, page, observedAt: "2026-10-20T02:56:30.000Z" });
+  const experience = pageAgentExperience({
+    originalGoal: "Order a dimmable desk lamp in brass",
+    endPage: page,
+    actions: [
+      select("Table lamp", "table"),
+      select("Dimmable", "yes"),
+      { action: "click", rawAction: "click_element_by_index", input: { index: 11 }, element: { tag: "button", accessibleName: "Brass" }, page, observedAt: "2026-10-20T02:56:50.000Z" },
+      select("US plug (Type A/B)", "us"),
+    ],
+    routes: [{ url: "https://lamps.example.test/product/lune-table-lamp", bindings: { product: "lune-table-lamp" }, observedAt: "2026-10-20T02:56:44.000Z" }],
+  });
+  const abstraction = (parameters) => parseCapabilityExperienceAbstraction({
+    name: "Order a lamp",
+    description: "Order a table lamp with the requested feature and finish",
+    aliases: [],
+    intent: "Order a lamp with a given feature and finish",
+    parameters,
+  }, experience);
+  const feature = { name: "feature", type: "string", description: "Lamp feature", required: true, exampleValue: "Dimmable" };
+  const finish = { name: "finish", type: "string", description: "Lamp finish", required: true, exampleValue: "brass" };
+
+  // The plug, the "Table lamp" filter and the product slug are the run's choices.
+  assert.deepEqual(abstraction([feature, finish]).parameters.map((item) => item.name), ["feature", "finish"]);
+  // "Dimmable" is the visitor's own word; leaving it out still fails, and says which value.
+  assert.throws(() => abstraction([finish]), /experience_action_value_not_parameterized:Dimmable/);
+});
+
+test("a dropdown pick is one choice: its visible option or its form value covers it", () => {
+  const page = { url: "https://lamps.example.test/product/lune", title: "Lune", heading: "Lune" };
+  const experience = pageAgentExperience({
+    originalGoal: "Order the lamp in brass",
+    endPage: page,
+    actions: [{ action: "select", rawAction: "select_dropdown_option", input: { option: "Brass", value: "sku-finish-07" }, element: { tag: "select" }, page, observedAt: "2026-10-20T02:56:30.000Z" }],
+  });
+  const result = parseCapabilityExperienceAbstraction({
+    name: "Order a lamp",
+    description: "Order the lamp in the requested finish",
+    aliases: [],
+    intent: "Order the lamp in a given finish",
+    parameters: [{ name: "finish", type: "string", description: "Lamp finish", required: true, exampleValue: "Brass" }],
+  }, experience);
+  assert.deepEqual(result.parameters.map((item) => item.name), ["finish"]);
+});
+
+test("goal and summary checks match whole words, not fragments of other words", () => {
+  const page = { url: "https://lamps.example.test/product/lune", title: "Lune", heading: "Lune" };
+  const select = (option, value) => ({ action: "select", rawAction: "select_dropdown_option", input: { option, value }, element: { tag: "select" }, page, observedAt: "2026-10-20T02:56:30.000Z" });
+  const experience = pageAgentExperience({
+    originalGoal: "Order a red lamp for my focus corner",
+    endPage: page,
+    // "US" sits inside "focus" and was never asked for; "red" was.
+    actions: [select("Red", "red"), select("US", "us")],
+  });
+  const parse = (fields) => parseCapabilityExperienceAbstraction({
+    name: "Order a lamp",
+    aliases: [],
+    intent: "Order a lamp in a given colour",
+    parameters: [{ name: "colour", type: "string", description: "Lamp colour", required: true, exampleValue: "red" }],
+    ...fields,
+  }, experience);
+  // "red" inside "ordered" is not the example leaking into the summary.
+  assert.equal(parse({ description: "Places an ordered lamp in the cart" }).parameters.length, 1);
+  assert.throws(() => parse({ description: "Order a red lamp" }), /experience_example_leaked_into_summary/);
+  // A Latin example pressed against Chinese text still counts as written there.
+  assert.throws(() => parse({ description: "下单red台灯" }), /experience_example_leaked_into_summary/);
+});
+
 test("intrinsically stateful current-session operations may remain parameterless", () => {
   const experience = pageAgentExperience({
     episodeId: "episode-checkout-1",

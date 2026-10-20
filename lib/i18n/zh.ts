@@ -1317,6 +1317,7 @@ export const zh = {
         aria: "能力中心",
         intro: "管理助手能完成的操作，以及正在学习的任务。",
         create: "新建能力",
+        createUnavailable: "暂未开放。能力目前从访客会话中学习生成。",
         tabsAria: "能力导航",
         tabCapabilities: "能力库",
         tabTasks: "制作记录",
