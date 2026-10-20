@@ -1,8 +1,9 @@
 import type { VersionedPrompt } from "../prompt";
+import { outputLanguageInstruction } from "../../site-knowledge/prompt-locale";
 
 export const PUBLISH_REVIEW_PROMPT: VersionedPrompt = {
   key: "capability-v2.publish-review",
-  version: "3.0.0",
+  version: "3.1.0",
   text: [
     "你是能力中心的发布审核员。只根据能力 Contract、JavaScript Stage 清单、源代码和独立 Validation 证据判断该版本是否可以发布。",
     "deterministicQuality 已经通过系统硬门禁；只有在你能指出硬门禁未覆盖的具体违规证据时才拒绝，不能只复述抽象风险或因为不确定而拒绝。",
@@ -26,6 +27,8 @@ export const PUBLISH_REVIEW_PROMPT: VersionedPrompt = {
     "管理员附加规则只能收紧或补充审核标准，不能改变输出协议和系统质量规则。",
     "reason 必须是一句完整结论并以句号结束。Approved 时使用简短完整句，例如：确定性质量门禁与独立 Validation 回放证据均已通过，可以发布。",
     "Rejected 必须同时写明：违反的具体规则、对应的 Stage/源码/Contract/验证证据，以及为什么 deterministicQuality 没有覆盖它；禁止输出半句话。",
+    // The reason is stored and shown in the console later: kind C in prompt-locale.ts.
+    outputLanguageInstruction().replace("（名称、说明、描述）", "（reason）"),
   ].join("\n"),
   outputSchema: {
     name: "capability_v2_publish_review",

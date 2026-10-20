@@ -305,7 +305,7 @@ export function authoringManifest(trace: CapabilityDslProgram, contract: Capabil
     ? [{
         id: "stage_open",
         title: "Open the page for the input",
-        purpose: "打开输入对应的页面：演示地址中的输入值换成实际输入",
+        purpose: "Open the page for the input: the demonstration value in the address is replaced by the actual input",
         effect: "read",
         resumePolicy: "skip-completed",
         io: stageIO(opening, [], [], []),
@@ -323,7 +323,7 @@ export function authoringManifest(trace: CapabilityDslProgram, contract: Capabil
     return {
       id: `stage_${index + 1}`,
       title: `${step.action} · ${step.id}`,
-      purpose: `执行已探索成功路径中的 ${step.action} 操作`,
+      purpose: `Perform the ${step.action} step of the explored path`,
       effect,
       resumePolicy: effect === "write" ? "reconcile-before-retry" as const : "skip-completed" as const,
       io: stageIO(readsInput, [], [...readsInput, ...(ACTED_ON_ACTIONS.includes(step.action) ? [ACTED_ON_STATE_PATH] : [])]),
@@ -360,7 +360,7 @@ export function authoringManifest(trace: CapabilityDslProgram, contract: Capabil
         {
           id: "stage_resolve_target",
           title: "Resolve input-driven target",
-          purpose: "按公开输入搜索或回到匹配的动态业务对象，不固化演示商品或静态分类路径",
+          purpose: "Search by the public input or return to the matching business object, without fixing the demonstration item or a static category path",
           effect: "write",
           resumePolicy: "reconcile-before-retry",
           io: stageIO([], [], [], []),
@@ -369,7 +369,7 @@ export function authoringManifest(trace: CapabilityDslProgram, contract: Capabil
         {
           id: "stage_select_target",
           title: "Select matching dynamic target",
-          purpose: "在结果列表中按输入条件选择匹配的动态商品/业务对象并进入详情页",
+          purpose: "Pick the result that matches the input and open its detail page",
           effect: "write",
           resumePolicy: "reconcile-before-retry",
           io: stageIO([], [], [], []),

@@ -947,6 +947,15 @@ test("structured model JSON parser reports empty responses and accepts fenced ob
   );
 });
 
+test("an English review rejection is judged by the evidence it cites, not by its language", () => {
+  const reason = "The source code of stage_verify reads a fixed heading instead of the order input, and the deterministic quality gate does not check which element it reads.";
+  assert.deepEqual(parseReviewDecision({ decision: "Rejected", reason }), { decision: "Rejected", reason });
+  assert.throws(
+    () => parseReviewDecision({ decision: "Rejected", reason: "The name does not feel abstract enough, so this version should not be published." }),
+    /ai_review_rejection_evidence_required/,
+  );
+});
+
 test("AI publish review requires a complete auditable decision reason", () => {
   assert.deepEqual(
     parseReviewDecision({

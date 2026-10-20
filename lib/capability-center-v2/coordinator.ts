@@ -78,8 +78,10 @@ export function parseReviewDecision(value: Record<string, unknown>) {
   if (reason.length < 20 || !/[。！？.!?]$/u.test(reason)) throw new Error("ai_review_reason_incomplete");
   if (
     reason.length < 40
-    || !/(?:Stage|源码|代码|Contract|Validation|验证|管理员附加)/iu.test(reason)
-    || !/(?:deterministicQuality|确定性|质量门禁|硬门禁)/iu.test(reason)
+    // The reviewer writes in the recorded output language, so the evidence a
+    // rejection must cite is recognised in either language's own words.
+    || !/(?:Stage|源码|代码|Contract|Validation|验证|管理员附加|source|code|administrator)/iu.test(reason)
+    || !/(?:deterministicQuality|deterministic|quality gate|确定性|质量门禁|硬门禁)/iu.test(reason)
   ) throw new Error("ai_review_rejection_evidence_required");
   return { decision: value.decision, reason } as const;
 }
