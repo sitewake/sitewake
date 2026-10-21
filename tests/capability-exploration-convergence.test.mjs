@@ -398,3 +398,31 @@ test("a recorded scroll passes the turn to the next recorded step, not to the mo
     });
   } finally { await browser.close(); await site.close(); }
 });
+
+test("a scope several cards satisfy still finds a target that only one of them holds", async () => {
+  // Replaying the visitor's click on "Lune Table Lamp" was scoped to cards
+  // offering the input finish; three cards offered Brass, and the replay
+  // failed as ambiguous although only one held that link.
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    const cards = (second) => `<ul>
+      <li class="card"><a href="#aurora">Aurora Lamp</a><p>Finishes: Copper, Steel</p></li>
+      <li class="card"><a href="#${second.toLowerCase().replace(" ", "-")}">${second}</a><p>Finishes: Copper</p></li>
+      <li class="card"><a href="#cora">Cora Lamp</a><p>Finishes: Steel</p></li></ul>`;
+    const input = { parameters: { finish: "Copper" }, context: {}, trigger: {}, interactions: [] };
+    const program = { schemaVersion: "1.0", entry: { mode: "CurrentPage" }, defaults: { timeoutMs: 1500, retryCount: 0 }, result: {}, steps: [{
+      id: "open", action: "click",
+      target: {
+        scope: { strategies: [{ type: "css", value: "li.card", containsTextAll: [{ source: "input", path: "finish" }], match: "contains" }] },
+        strategies: [{ type: "role", role: "link", name: "Aurora Lamp", match: "exact" }],
+      },
+    }] };
+    await page.setContent(cards("Borealis Lamp"));
+    await executeProgram(page, program, input);
+    assert.match(page.url(), /#aurora$/);
+    // The same name in two of the matching cards is a real ambiguity.
+    await page.setContent(cards("Aurora Lamp"));
+    await assert.rejects(executeProgram(page, program, input), /target_ambiguous:open:scope/);
+  } finally { await browser.close(); }
+});

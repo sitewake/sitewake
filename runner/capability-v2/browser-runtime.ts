@@ -460,9 +460,12 @@ export async function inspectPage(page: Page) {
       heading: (document.querySelector("h1,[role=heading]")?.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 500),
       text: hasPassword ? "[authentication page; sensitive values redacted]" : (document.body?.innerText || "").replace(/\\s+/g, " ").trim().slice(0, 8000),
       signals,
+      // What the site says went wrong, apart from what it reports as progress.
+      alerts: [...document.querySelectorAll('[role="alert"]')].filter(visible)
+        .map((element) => (element.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 300)).filter(Boolean).slice(0, 10),
       elements,
     };
-  })()`) as Promise<{ url: string; title: string; heading: string; text: string; signals: string[]; elements: PageElement[] }>;
+  })()`) as Promise<{ url: string; title: string; heading: string; text: string; signals: string[]; alerts?: string[]; elements: PageElement[] }>;
 }
 
 function redactedTraceValue(value: unknown, key = "", depth = 0): unknown {
@@ -758,14 +761,22 @@ async function locatorFor(page: Page, step: ProgramStep, input: CapabilityTaskIn
       if (await candidate.isVisible().catch(() => false)) visibleScopes.push(candidate);
     }
     if (visibleScopes.length === 1) { scopeLocator = visibleScopes[0]; break; }
-    if (visibleScopes.length > 1 && hasInputBackedStrategy(target.strategies)) {
+    if (visibleScopes.length > 1) {
+      // Several cards satisfy the scope; the question is in how many the
+      // target itself is found. An input-backed target may take the first,
+      // as before. A concrete one found in exactly one card is that card's:
+      // "Lune Table Lamp" under a scope of "cards that offer Brass" is one
+      // link even though three cards offer Brass, and failing it ended a
+      // replay of a path the visitor had already walked. Found in several,
+      // a concrete target still fails closed.
       const matches: Locator[] = [];
       for (const scope of visibleScopes) {
-        try { matches.push(await oneVisible(target.strategies, scope, input, variables, `${step.id}:candidate`)); } catch { /* try the next card */ }
+        try { matches.push(await oneVisible(target.strategies, scope, input, variables, `${step.id}:candidate`)); } catch { /* not in this card */ }
       }
-      if (matches.length) return matches[0];
+      if (matches.length && hasInputBackedStrategy(target.strategies)) return matches[0];
+      if (matches.length === 1) return matches[0];
+      throw new Error(`target_ambiguous:${step.id}:scope`);
     }
-    if (visibleScopes.length > 1) throw new Error(`target_ambiguous:${step.id}:scope`);
   }
   if (!scopeLocator) throw new Error(`locator_not_found:${step.id}:scope`);
   return oneVisible(target.strategies, scopeLocator, input, variables, step.id);
@@ -3415,6 +3426,14 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
   let replayCursor = 0;
   let replayRetried = false;
   let replayMovedAt = -1;
+  // A recorded step the site answered with an alert ("Please choose a plug
+  // type.") is retried after the model has done what the alert asks. A
+  // recording cannot show state the visitor's browser already had — a plug
+  // chosen in an earlier visit — and a fresh browser meets that requirement
+  // the first time. Twice per step at most.
+  const seenAlerts = new Set(initialSnapshot.alerts || []);
+  let lastReplayedStep = -1;
+  const alertRetries = new Map<number, number>();
   for (let index = 0; index < maxSteps; index += 1) {
     await settlePage(page);
     const inspected = await inspectPage(page);
@@ -3457,6 +3476,17 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     // authoring was left to invent the rest of the path. Once the recording
     // is exhausted, or there is none, a fresh signal ends exploration as
     // before, so a confirmed write is still never repeated.
+    const freshAlerts = (snapshot.alerts || []).filter((alert) => !seenAlerts.has(alert));
+    for (const alert of snapshot.alerts || []) seenAlerts.add(alert);
+    let alertGuidance: string | undefined;
+    if (freshAlerts.length && lastReplayedStep >= 0 && (alertRetries.get(lastReplayedStep) || 0) < 2) {
+      alertRetries.set(lastReplayedStep, (alertRetries.get(lastReplayedStep) || 0) + 1);
+      replayCursor = lastReplayedStep;
+      replayMovedAt = lastReplayedStep;
+      replayRetried = false;
+      alertGuidance = `The page answered the last recorded step with: ${freshAlerts.map((alert) => `"${alert}"`).join(", ")}. Do what it asks on this page (for example choose a required option); do not repeat that step yourself, it is retried next.`;
+      observe(observer, { stage: "explorer-alert-retry", message: "the page asked for something before the recorded step can complete", response: redactedTraceValue({ alerts: freshAlerts, step: lastReplayedStep + 1 }) });
+    }
     const recordingPending = replayCursor < recordedActions.length;
     const freshSignals = recordingPending ? [] : snapshot.signals.filter((signal) => !seenSignals.has(signal));
     let replayed: ExplorerAction | undefined;
@@ -3465,12 +3495,12 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     // turn goes to the next recorded step: handing it to the model instead let
     // it wander off the proven path — a lamp generation picked another product
     // right after the visitor's scroll and failed on an ambiguous card.
-    while (!autoCompletionReason && !freshSignals.length && replayCursor < recordedActions.length
+    while (!alertGuidance && !autoCompletionReason && !freshSignals.length && replayCursor < recordedActions.length
       && !["click", "fill", "select"].includes(recordedActions[replayCursor].action)
       && (replayMovedAt === replayCursor || !recordedPageMove(recordedActions[replayCursor], snapshot.url, allowedOrigin))) {
       replayCursor += 1;
     }
-    const pendingRecorded = autoCompletionReason || freshSignals.length ? undefined : recordedActions[replayCursor];
+    const pendingRecorded = alertGuidance || autoCompletionReason || freshSignals.length ? undefined : recordedActions[replayCursor];
     if (pendingRecorded) {
       // Once per recorded step: a redirect that lands somewhere else must not
       // make the loop ask for the same address again.
@@ -3482,6 +3512,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
       } else if (["click", "fill", "select"].includes(pendingRecorded.action)) {
         replayed = recordedExplorerAction(pendingRecorded, snapshot, effectiveInput);
         if (replayed) {
+          lastReplayedStep = replayCursor;
           replayCursor += 1;
           replayRetried = false;
           observe(observer, { stage: "explorer-action-replayed", response: redactedTraceValue({ step: replayCursor, action: replayed, recorded: pendingRecorded.rawAction }) });
@@ -3501,7 +3532,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
       ? { action: "done", reason: autoCompletionReason }
       : freshSignals.length
       ? { action: "done", reason: "fresh_page_business_signal" }
-      : replayed || await chooseAction(goal, snapshot, effectiveInput, history, observer, guidance);
+      : replayed || await chooseAction(goal, snapshot, effectiveInput, history, observer, alertGuidance ? [guidance, alertGuidance].filter(Boolean).join("\n") : guidance);
     autoCompletionReason = undefined;
     // A long DOM snapshot can be refreshed by a SPA while the model is
     // deciding.  Treat an out-of-range element index as a recoverable planning
