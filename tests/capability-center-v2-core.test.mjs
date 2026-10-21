@@ -445,6 +445,27 @@ test("only the values the visitor asked for must become parameters; the run's ow
   assert.deepEqual(named.parameters.map((item) => item.name), ["finish"]);
 });
 
+test("an input is a value the visitor chose, not a number that appears on the page", () => {
+  // The demo's lamp abstraction required "quantity: 4" because the cart link
+  // read "Cart, 4 items"; no recorded step ever set a quantity.
+  const page = { url: "https://lamps.example.test/product/lune", title: "Lune", heading: "Lune" };
+  const click = (role, accessibleName) => ({ action: "click", rawAction: "click_element_by_index", input: {}, element: { role, accessibleName }, page, observedAt: "2026-10-21T04:00:00.000Z" });
+  const parse = (actions) => parseCapabilityExperienceAbstraction({
+    name: "Order a lamp",
+    description: "Order a lamp in the requested finish",
+    aliases: [],
+    intent: "Order a lamp in a given finish",
+    parameters: [
+      { name: "finish", type: "string", description: "Lamp finish", required: true, exampleValue: "Brass" },
+      { name: "quantity", type: "number", description: "How many", required: true, exampleValue: 4 },
+    ],
+  }, pageAgentExperience({ originalGoal: "Order a lamp in brass", endPage: page, actions }));
+  assert.deepEqual(parse([click("radio", "Brass"), click("link", "Cart, 4 items")]).parameters.map((item) => item.name), ["finish"]);
+  // Typed, the same number is the visitor's.
+  const typed = { action: "fill", rawAction: "input_text", input: { text: "4" }, element: { role: "spinbutton", accessibleName: "Quantity" }, page, observedAt: "2026-10-21T04:00:00.000Z" };
+  assert.deepEqual(parse([click("radio", "Brass"), typed]).parameters.map((item) => item.name), ["finish", "quantity"]);
+});
+
 test("typed text is the visitor's data even when the summary names it", () => {
   const experience = pageAgentExperience();
   assert.throws(() => parseCapabilityExperienceAbstraction({
