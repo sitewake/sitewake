@@ -47,3 +47,45 @@ test('the settle wait stops on cancellation',async()=>{
   assert.ok(Date.now()-started<200,'已取消就不再等待');
  }finally{restore();}
 });
+
+test("a stage that waits with settle() runs in the page the way the runner sends it", async () => {
+  // The runner hands executeBrowserCapabilityStage to page.evaluate, which
+  // sends only that function's own text. settle() called a helper declared
+  // beside it and every program that waited threw "settleCapabilityPage is
+  // not defined".
+  const { chromium } = await import("playwright");
+  const { executeBrowserCapabilityStage } = await import("../lib/capability-center-v2/browser-stage-sdk.ts");
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.route("http://stage.test/**", (route) => route.request().url().endsWith(".js")
+      ? route.fulfill({ contentType: "text/javascript", body: 'export const capability={version:2,stages:[{id:"wait",async run({settle}){await settle(50,300);return {outcome:"Success",output:{settled:true}};}}]};' })
+      : route.fulfill({ contentType: "text/html", body: "<!doctype html><title>stage</title><p>ready</p>" }));
+    await page.goto("http://stage.test/");
+    const result = await page.evaluate(executeBrowserCapabilityStage, JSON.stringify({
+      moduleUrl: "http://stage.test/module.js", index: 0, input: {}, state: {}, inputPaths: [], statePaths: [],
+      stageId: "wait", deadlineAt: new Date(Date.now() + 10_000).toISOString(),
+    }));
+    assert.equal(JSON.stringify(result).includes('"settled":true'), true, JSON.stringify(result).slice(0, 300));
+  } finally { await browser.close(); }
+});
+
+test("in a self-test a wait that never settles fails in seconds and names itself; elsewhere it keeps waiting", async () => {
+  const { chromium } = await import("playwright");
+  const { executeBrowserCapabilityStage } = await import("../lib/capability-center-v2/browser-stage-sdk.ts");
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.route("http://stage.test/**", (route) => route.request().url().endsWith(".js")
+      ? route.fulfill({ contentType: "text/javascript", body: 'export const capability={version:2,stages:[{id:"wait",async run({waitUntil}){await waitUntil(()=>document.title==="never","title is never");return {outcome:"Success",output:{}};}}]};' })
+      : route.fulfill({ contentType: "text/html", body: "<!doctype html><title>stage</title>" }));
+    await page.goto("http://stage.test/");
+    const payload = (extra) => JSON.stringify({ moduleUrl: "http://stage.test/module.js", index: 0, input: {}, state: {}, inputPaths: [], statePaths: [], stageId: "wait", deadlineAt: new Date(Date.now() + 4_000).toISOString(), ...extra });
+    const started = Date.now();
+    await assert.rejects(page.evaluate(executeBrowserCapabilityStage, payload({ waitCapMs: 300 })), /capability_control_flow_timeout:wait:pending=title is never/);
+    assert.ok(Date.now() - started < 2_000, "a capped wait fails long before the stage deadline");
+    const uncapped = Date.now();
+    await assert.rejects(page.evaluate(executeBrowserCapabilityStage, payload({})), /capability_control_flow_timeout:wait/);
+    assert.ok(Date.now() - uncapped >= 3_000, "without a cap the wait runs to the deadline, as published capabilities need");
+  } finally { await browser.close(); }
+});

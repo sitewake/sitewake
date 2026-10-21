@@ -291,6 +291,32 @@ test("an authoring example that fails outright still goes back for repair", asyn
   );
 });
 
+test("edit_file changes one passage of the seeded source and leaves the rest as it was", async () => {
+  // A repair used to be a whole-file rewrite; the seeded action stages are
+  // proven by exploration and an edit leaves them untouched.
+  const turns = [
+    toolTurn(1, "edit_file", { path: "capability.ts", old_str: 'throw new Error("stage_verify_not_authored");', new_str: 'return {outcome:"Success",output:{ok:true}};' }),
+    toolTurn(2, "run_draft"),
+  ];
+  const completed = await runAuthor({ turns, stageRun: async () => successfulDraft() });
+  assert.equal(completed.result.draft.outcome, "Success");
+  const [seed, edited] = completed.persisted.slice(-2);
+  assert.ok(!edited.includes("stage_verify_not_authored"), "the stub was replaced");
+  assert.equal(edited.length - seed.length, 'return {outcome:"Success",output:{ok:true}};'.length - 'throw new Error("stage_verify_not_authored");'.length, "nothing else changed");
+});
+
+test("edit_file refuses a passage that is missing or not unique, and says which", async () => {
+  const turns = [
+    toolTurn(1, "edit_file", { path: "capability.ts", old_str: "this text is not in the source", new_str: "x" }),
+    toolTurn(2, "edit_file", { path: "capability.ts", old_str: 'throw new Error("stage_verify_not_authored");', new_str: 'return {outcome:"Success",output:{ok:true}};' }),
+    toolTurn(3, "run_draft"),
+  ];
+  const completed = await runAuthor({ turns, stageRun: async () => successfulDraft() });
+  const feedback = completed.requests[1].messages.findLast((message) => message.role === "tool");
+  assert.match(feedback.content, /edit_file_old_str_not_found/);
+  assert.equal(completed.result.draft.outcome, "Success");
+});
+
 test("repair budget exhaustion retains the last root cause", async () => {
   const turns = [
     toolTurn(1, "write_file", { path: "capability.ts", content: source }),

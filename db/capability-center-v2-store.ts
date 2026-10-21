@@ -2210,8 +2210,8 @@ export async function createCapabilityMaintenanceTask(
     guidance:
       input.guidance?.trim() ||
       (input.mode === "Repair"
-        ? "管理员确认页面结构或业务流程发生变化，重新探索可用路径。"
-        : "管理员主动重新构建该能力的新版本。"),
+        ? "An administrator confirmed the page structure or business flow changed; explore the path again."
+        : "An administrator asked for a new version of this capability to be built."),
     input: {
       parameters,
       context,

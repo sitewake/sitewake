@@ -460,9 +460,12 @@ export async function inspectPage(page: Page) {
       heading: (document.querySelector("h1,[role=heading]")?.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 500),
       text: hasPassword ? "[authentication page; sensitive values redacted]" : (document.body?.innerText || "").replace(/\\s+/g, " ").trim().slice(0, 8000),
       signals,
+      // What the site says went wrong, apart from what it reports as progress.
+      alerts: [...document.querySelectorAll('[role="alert"]')].filter(visible)
+        .map((element) => (element.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 300)).filter(Boolean).slice(0, 10),
       elements,
     };
-  })()`) as Promise<{ url: string; title: string; heading: string; text: string; signals: string[]; elements: PageElement[] }>;
+  })()`) as Promise<{ url: string; title: string; heading: string; text: string; signals: string[]; alerts?: string[]; elements: PageElement[] }>;
 }
 
 function redactedTraceValue(value: unknown, key = "", depth = 0): unknown {
@@ -654,6 +657,12 @@ export function strategiesFor(element: PageElement, input: CapabilityTaskInput):
   if (label) strategies.push({ type: "label", value: label, match: "exact" });
   if (element.testId) strategies.push({ type: "testId", value: element.testId });
   if (name && (element.role === "button" || element.role === "link")) strategies.push({ type: "text", value: name, match: "exact" });
+  // A choice made by clicking its label or swatch has no role to carry its
+  // name: a finish swatch reading exactly "Brass" was located by its position
+  // alone, so the capability clicked the first swatch whatever finish it was
+  // asked for, and every draft failed "input not acted on". When the visible
+  // name is exactly an input's value, find it by that input.
+  if (dynamicName && !element.role) strategies.push({ type: "text", value: name!, match: "exact" });
   if (element.css) strategies.push({ type: "css", value: element.css });
   // Product cards often expose an image/link hit target with no accessible
   // name of its own; the meaningful name lives on a sibling title/details
@@ -758,14 +767,22 @@ async function locatorFor(page: Page, step: ProgramStep, input: CapabilityTaskIn
       if (await candidate.isVisible().catch(() => false)) visibleScopes.push(candidate);
     }
     if (visibleScopes.length === 1) { scopeLocator = visibleScopes[0]; break; }
-    if (visibleScopes.length > 1 && hasInputBackedStrategy(target.strategies)) {
+    if (visibleScopes.length > 1) {
+      // Several cards satisfy the scope; the question is in how many the
+      // target itself is found. An input-backed target may take the first,
+      // as before. A concrete one found in exactly one card is that card's:
+      // "Lune Table Lamp" under a scope of "cards that offer Brass" is one
+      // link even though three cards offer Brass, and failing it ended a
+      // replay of a path the visitor had already walked. Found in several,
+      // a concrete target still fails closed.
       const matches: Locator[] = [];
       for (const scope of visibleScopes) {
-        try { matches.push(await oneVisible(target.strategies, scope, input, variables, `${step.id}:candidate`)); } catch { /* try the next card */ }
+        try { matches.push(await oneVisible(target.strategies, scope, input, variables, `${step.id}:candidate`)); } catch { /* not in this card */ }
       }
-      if (matches.length) return matches[0];
+      if (matches.length && hasInputBackedStrategy(target.strategies)) return matches[0];
+      if (matches.length === 1) return matches[0];
+      throw new Error(`target_ambiguous:${step.id}:scope`);
     }
-    if (visibleScopes.length > 1) throw new Error(`target_ambiguous:${step.id}:scope`);
   }
   if (!scopeLocator) throw new Error(`locator_not_found:${step.id}:scope`);
   return oneVisible(target.strategies, scopeLocator, input, variables, step.id);
@@ -2261,12 +2278,14 @@ function inputSchemaFor(plan: ParameterPlan, addressInputs: Record<string, strin
       const shown = demonstrated[parameter.name];
       const ran = !SENSITIVE_PARAMETER.test(parameter.name) && typeof shown === "string" && shown.trim() ? shown.trim() : "";
       const written = addressInputs[parameter.name];
-      // The model's own description may already end in a full stop.
+      // The model's own description may already end in a full stop. The
+      // note is shown in the console and read by callers, in the same
+      // recorded language as the description it follows (prompt-locale.ts).
       const sentence = String(parameter.description || "").replace(/[。.\s]+$/u, "");
       const description = written
-        ? `${sentence}。取值写法与页面地址一致，例如「${written}」。`
+        ? `${sentence}. Write it the way the page address does, for example "${written}".`
         : ran
-          ? `${sentence}。取值写法与示例一致，例如「${ran}」。`
+          ? `${sentence}. Write it the way the example is written, for example "${ran}".`
           : parameter.description;
       const example = written || ran;
       return [parameter.name, {
@@ -3032,6 +3051,15 @@ export function normalizeExplorerInputPath(action: ExplorerAction, input: Capabi
   if (!action.inputPath) return action;
   const resolved = resolveInputParameter(input.parameters, action.inputPath);
   if (resolved.value === undefined) {
+    // A choice the task does not take as an input ("US plug" when only the
+    // finish is one) is a fixed part of the path. When the model gave the
+    // value too, use it: the repair turn that followed pressed the model to
+    // pick one of the real input keys instead, and the plug dropdown was set
+    // from the finish.
+    if (action.value !== undefined && action.value !== null && String(action.value).trim()) {
+      const { inputPath: _ignored, ...literal } = action;
+      return literal;
+    }
     throw new InvalidModelInputPathError(action.inputPath, Object.keys(input.parameters));
   }
   return resolved.path === action.inputPath ? action : { ...action, inputPath: resolved.path };
@@ -3332,7 +3360,7 @@ async function chooseAction(goal: string, snapshot: Awaited<ReturnType<typeof in
       demonstrationGoal: input.experience?.originalGoal,
       guidance: repairAttempt === 0
         ? guidance || undefined
-        : [guidance, `上一动作的 inputPath 无效。只能逐字使用 canonical inputKeys：${inputKeys.join(", ")}；禁止使用数组下标、DOM index、数字字符串或 envelope 路径。请针对同一页面重新给出一个单步动作。`].filter(Boolean).join("\n"),
+        : [guidance, `上一动作的 inputPath 无效。inputPath 只能逐字使用 canonical inputKeys：${inputKeys.join(", ")}；禁止使用数组下标、DOM index、数字字符串或 envelope 路径。如果要填写或选择的值不是任何一个输入，就不要写 inputPath，直接在 value 里给出页面上的选项文字。请针对同一页面重新给出一个单步动作。`].filter(Boolean).join("\n"),
       inputKeys,
       inputValues: Object.fromEntries(Object.entries(input.parameters).map(([key, value]) => [key, sensitiveFieldName(key) ? "[provided]" : value])),
       page: snapshot,
@@ -3415,6 +3443,16 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
   let replayCursor = 0;
   let replayRetried = false;
   let replayMovedAt = -1;
+  // A recorded step the site answered with an alert ("Please choose a plug
+  // type.") is retried after the model has done what the alert asks. A
+  // recording cannot show state the visitor's browser already had — a plug
+  // chosen in an earlier visit — and a fresh browser meets that requirement
+  // the first time. Twice per step at most.
+  const seenAlerts = new Set(initialSnapshot.alerts || []);
+  let lastReplayedStep = -1;
+  // Index in `steps` of the program step the last replayed action produced.
+  let lastReplayedProgramStep = -1;
+  const alertRetries = new Map<number, number>();
   for (let index = 0; index < maxSteps; index += 1) {
     await settlePage(page);
     const inspected = await inspectPage(page);
@@ -3457,6 +3495,21 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     // authoring was left to invent the rest of the path. Once the recording
     // is exhausted, or there is none, a fresh signal ends exploration as
     // before, so a confirmed write is still never repeated.
+    const freshAlerts = (snapshot.alerts || []).filter((alert) => !seenAlerts.has(alert));
+    for (const alert of snapshot.alerts || []) seenAlerts.add(alert);
+    let alertGuidance: string | undefined;
+    if (freshAlerts.length && lastReplayedStep >= 0 && (alertRetries.get(lastReplayedStep) || 0) < 2) {
+      alertRetries.set(lastReplayedStep, (alertRetries.get(lastReplayedStep) || 0) + 1);
+      replayCursor = lastReplayedStep;
+      replayMovedAt = lastReplayedStep;
+      replayRetried = false;
+      // The attempt the page refused is not part of the path: kept, every
+      // draft replayed a click that changes nothing and waited out its budget.
+      if (lastReplayedProgramStep >= 0 && lastReplayedProgramStep === steps.length - 1) steps.pop();
+      lastReplayedProgramStep = -1;
+      alertGuidance = `The page answered the last recorded step with: ${freshAlerts.map((alert) => `"${alert}"`).join(", ")}. Do what it asks on this page (for example choose a required option); do not repeat that step yourself, it is retried next.`;
+      observe(observer, { stage: "explorer-alert-retry", message: "the page asked for something before the recorded step can complete", response: redactedTraceValue({ alerts: freshAlerts, step: lastReplayedStep + 1 }) });
+    }
     const recordingPending = replayCursor < recordedActions.length;
     const freshSignals = recordingPending ? [] : snapshot.signals.filter((signal) => !seenSignals.has(signal));
     let replayed: ExplorerAction | undefined;
@@ -3465,12 +3518,12 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     // turn goes to the next recorded step: handing it to the model instead let
     // it wander off the proven path — a lamp generation picked another product
     // right after the visitor's scroll and failed on an ambiguous card.
-    while (!autoCompletionReason && !freshSignals.length && replayCursor < recordedActions.length
+    while (!alertGuidance && !autoCompletionReason && !freshSignals.length && replayCursor < recordedActions.length
       && !["click", "fill", "select"].includes(recordedActions[replayCursor].action)
       && (replayMovedAt === replayCursor || !recordedPageMove(recordedActions[replayCursor], snapshot.url, allowedOrigin))) {
       replayCursor += 1;
     }
-    const pendingRecorded = autoCompletionReason || freshSignals.length ? undefined : recordedActions[replayCursor];
+    const pendingRecorded = alertGuidance || autoCompletionReason || freshSignals.length ? undefined : recordedActions[replayCursor];
     if (pendingRecorded) {
       // Once per recorded step: a redirect that lands somewhere else must not
       // make the loop ask for the same address again.
@@ -3482,6 +3535,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
       } else if (["click", "fill", "select"].includes(pendingRecorded.action)) {
         replayed = recordedExplorerAction(pendingRecorded, snapshot, effectiveInput);
         if (replayed) {
+          lastReplayedStep = replayCursor;
           replayCursor += 1;
           replayRetried = false;
           observe(observer, { stage: "explorer-action-replayed", response: redactedTraceValue({ step: replayCursor, action: replayed, recorded: pendingRecorded.rawAction }) });
@@ -3501,7 +3555,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
       ? { action: "done", reason: autoCompletionReason }
       : freshSignals.length
       ? { action: "done", reason: "fresh_page_business_signal" }
-      : replayed || await chooseAction(goal, snapshot, effectiveInput, history, observer, guidance);
+      : replayed || await chooseAction(goal, snapshot, effectiveInput, history, observer, alertGuidance ? [guidance, alertGuidance].filter(Boolean).join("\n") : guidance);
     autoCompletionReason = undefined;
     // A long DOM snapshot can be refreshed by a SPA while the model is
     // deciding.  Treat an out-of-range element index as a recoverable planning
@@ -3765,6 +3819,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     }
     if (step.action === "extract" && stepResult.output[saveAs] !== undefined) extractedOutput[saveAs] = stepResult.output[saveAs];
     steps.push(step);
+    lastReplayedProgramStep = replayed && action === replayed ? steps.length - 1 : -1;
     const resultUrl = String(stepResult.variables.__pageUrl || "");
     // Same rule: a pick that changed the address finishes exploration only
     // when nothing of the recorded path is left to replay.

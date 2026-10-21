@@ -456,6 +456,13 @@ async function moduleShape(page: Page, moduleUrl: string) {
   };
 }
 
+/**
+ * In a self-test, how long any one wait inside a stage may go unmet. The
+ * explored path replays each step in about a second; a wait still unmet
+ * after this is waiting for something that will not happen.
+ */
+const SELF_TEST_WAIT_CAP_MS = 15_000;
+
 async function executeStage(
   page: Page,
   moduleUrl: string,
@@ -465,9 +472,11 @@ async function executeStage(
   receipts: JavaScriptStageReceipt[],
   deadlineAt: number,
   manifest: CapabilityProgram["stages"][number],
+  waitCapMs?: number,
 ): Promise<{ value: unknown; observedText?: string }> {
   try {
     const execution = page.evaluate(executeBrowserCapabilityStage, JSON.stringify({
+      ...(waitCapMs ? { waitCapMs } : {}),
       moduleUrl, index:stageIndex, input, state,
       inputPaths:manifest.io.reads.input, statePaths:manifest.io.reads.state,
       stageId:manifest.id, deadlineAt:new Date(deadlineAt).toISOString(),
@@ -605,7 +614,7 @@ export async function runCapabilityJavaScriptStages(options: {
       try {
         const deadlineAt = capped(control.capabilityStageDeadline(program, cursor, manifest.id));
         control.assertCapabilityControlFlowBudget(program, cursor, Date.now());
-        const executed = await executeStage(page, options.moduleUrl, stageIndex, stageInput, { ...state }, receipts, deadlineAt, manifest);
+        const executed = await executeStage(page, options.moduleUrl, stageIndex, stageInput, { ...state }, receipts, deadlineAt, manifest, options.deadlineCapMs ? SELF_TEST_WAIT_CAP_MS : undefined);
         rawResult = executed.value;
         stageObservedText = executed.observedText;
       }
@@ -702,7 +711,7 @@ export async function runCapabilityJavaScriptStages(options: {
         await page.waitForTimeout(500);
         const deadlineAt = capped(control.capabilityStageDeadline(program, cursor, manifest.id));
         control.assertCapabilityControlFlowBudget(program, cursor, Date.now());
-        const retryExecuted = await executeStage(page, options.moduleUrl, stageIndex, stageInput, { ...state }, receipts, deadlineAt, manifest);
+        const retryExecuted = await executeStage(page, options.moduleUrl, stageIndex, stageInput, { ...state }, receipts, deadlineAt, manifest, options.deadlineCapMs ? SELF_TEST_WAIT_CAP_MS : undefined);
         stageObservedText = retryExecuted.observedText || stageObservedText;
         const retryResult = normalizeStageResult(retryExecuted.value, manifest);
         result = retryResult;

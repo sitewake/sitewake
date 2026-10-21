@@ -7,9 +7,9 @@ export async function executeBrowserCapabilityStage(payload: string | {
   moduleUrl?: string; index?: number;
   input: Record<string, unknown>; state: Record<string, unknown>;
   inputPaths: string[]; statePaths: string[]; stageId: string;
-  deadlineAt: string; signal?: AbortSignal;
+  deadlineAt: string; signal?: AbortSignal; waitCapMs?: number;
 }): Promise<unknown> {
-  const args = typeof payload === "string" ? JSON.parse(payload) as {run?: (context: any) => unknown;moduleUrl?:string;index?:number;input:Record<string,unknown>;state:Record<string,unknown>;inputPaths:string[];statePaths:string[];stageId:string;deadlineAt:string;signal?:AbortSignal} : payload;
+  const args = typeof payload === "string" ? JSON.parse(payload) as {run?: (context: any) => unknown;moduleUrl?:string;index?:number;input:Record<string,unknown>;state:Record<string,unknown>;inputPaths:string[];statePaths:string[];stageId:string;deadlineAt:string;signal?:AbortSignal;waitCapMs?:number} : payload;
   const pageWindow = globalThis as typeof globalThis & {__name?: (fn: unknown, name?: string) => unknown};
   if (typeof pageWindow.__name !== 'function') pageWindow.__name = fn => fn;
   const {inputPaths,statePaths,stageId} = args;
@@ -69,9 +69,14 @@ export async function executeBrowserCapabilityStage(payload: string | {
   const waitUntil = async <T>(check: () => T | Promise<T>, label?: string): Promise<NonNullable<T>> => {
     const description = label || `waitUntil(${String(check).replace(/\s+/g, ' ').slice(0, 160)})`;
     pendingWait = description;
+    // A self-test sets a cap on any one wait: a wrong condition then fails in
+    // seconds with its name, instead of spending the whole draft budget —
+    // three minutes per draft — before saying the same thing.
+    const waitStarted = Date.now();
     try {
       while (true) {
         if (abort.signal.aborted) throw abort.signal.reason;
+        if (args.waitCapMs && Date.now() - waitStarted > args.waitCapMs) throw new Error(`capability_control_flow_timeout:${stageId}:pending=${description}`);
         const result = await check();
         if (result) return result as NonNullable<T>;
         await new Promise<void>((resolve, reject) => {
@@ -226,7 +231,24 @@ export async function executeBrowserCapabilityStage(payload: string | {
     const parts = [source, ...String(actedOn ?? "").split(/[\n\r]+/u).map(clean)].filter((part) => part.length >= 2);
     return parts.some((part) => part.includes(target) || target.includes(part));
   };
-  const settle = (quietMs = 300, capMs = 1500) => settleCapabilityPage(abort.signal, quietMs, capMs);
+  // This function reaches the page as its own source text (page.evaluate),
+  // so it may not call anything declared outside it: settle() used to call
+  // settleCapabilityPage below and threw "settleCapabilityPage is not
+  // defined" in every program that waited for the page to settle. The same
+  // wait, kept inside.
+  const settle = async (quietMs = 300, capMs = 1500) => {
+    const started = Date.now();
+    let previous = "";
+    let quietSince = 0;
+    while (Date.now() - started < capMs) {
+      if (abort.signal.aborted) return;
+      const shape = `${location.href}|${document.body?.innerText.length ?? 0}|${document.querySelectorAll("*").length}`;
+      const now = Date.now();
+      if (shape !== previous) { previous = shape; quietSince = now; }
+      else if (now - quietSince >= quietMs) return;
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    }
+  };
   const timer = setTimeout(() => abort.abort(new Error(pendingWait ? `capability_control_flow_timeout:${stageId}:pending=${pendingWait}` : `capability_control_flow_timeout:${stageId}`)), remaining);
   try {
     return await Promise.race([Promise.resolve().then(() => {
