@@ -2701,6 +2701,16 @@ test("invalid explorer input paths fail as model contract errors, never as admin
     ),
     { action: "fill", index: 10, inputPath: "productType" },
   );
+  // A choice the task does not take as an input, given with its value, is a
+  // fixed step: the value is kept and the stray inputPath dropped, rather
+  // than pressing the model to bind it to an unrelated input.
+  assert.deepEqual(
+    normalizeExplorerInputPath(
+      { action: "select", index: 24, inputPath: "plugType", value: "US" },
+      input,
+    ),
+    { action: "select", index: 24, value: "US" },
+  );
   assert.deepEqual(
     normalizeExplorerInputPath(
       { action: "fill", index: 10, inputPath: "customization_text" },

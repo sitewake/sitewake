@@ -3049,6 +3049,15 @@ export function normalizeExplorerInputPath(action: ExplorerAction, input: Capabi
   if (!action.inputPath) return action;
   const resolved = resolveInputParameter(input.parameters, action.inputPath);
   if (resolved.value === undefined) {
+    // A choice the task does not take as an input ("US plug" when only the
+    // finish is one) is a fixed part of the path. When the model gave the
+    // value too, use it: the repair turn that followed pressed the model to
+    // pick one of the real input keys instead, and the plug dropdown was set
+    // from the finish.
+    if (action.value !== undefined && action.value !== null && String(action.value).trim()) {
+      const { inputPath: _ignored, ...literal } = action;
+      return literal;
+    }
     throw new InvalidModelInputPathError(action.inputPath, Object.keys(input.parameters));
   }
   return resolved.path === action.inputPath ? action : { ...action, inputPath: resolved.path };
@@ -3349,7 +3358,7 @@ async function chooseAction(goal: string, snapshot: Awaited<ReturnType<typeof in
       demonstrationGoal: input.experience?.originalGoal,
       guidance: repairAttempt === 0
         ? guidance || undefined
-        : [guidance, `上一动作的 inputPath 无效。只能逐字使用 canonical inputKeys：${inputKeys.join(", ")}；禁止使用数组下标、DOM index、数字字符串或 envelope 路径。请针对同一页面重新给出一个单步动作。`].filter(Boolean).join("\n"),
+        : [guidance, `上一动作的 inputPath 无效。inputPath 只能逐字使用 canonical inputKeys：${inputKeys.join(", ")}；禁止使用数组下标、DOM index、数字字符串或 envelope 路径。如果要填写或选择的值不是任何一个输入，就不要写 inputPath，直接在 value 里给出页面上的选项文字。请针对同一页面重新给出一个单步动作。`].filter(Boolean).join("\n"),
       inputKeys,
       inputValues: Object.fromEntries(Object.entries(input.parameters).map(([key, value]) => [key, sensitiveFieldName(key) ? "[provided]" : value])),
       page: snapshot,
