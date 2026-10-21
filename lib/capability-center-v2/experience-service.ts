@@ -115,6 +115,25 @@ function requiredActionChoices(experience: CapabilityExperience): RequiredChoice
  * while also refusing an example in the summary, left a model that wrote
  * "dimmable" in the name no answer that passed both.
  */
+/**
+ * Whether a value is something the visitor chose: named in their own words,
+ * typed or picked, carried in an address the run entered, or the exact name
+ * of a control they clicked ("Brass"). A value that only appears somewhere in
+ * the page text was not chosen by anyone: the demo's lamp abstraction made
+ * "quantity: 4" a required input because the cart link read "Cart, 4 items",
+ * and no recorded step ever set a quantity for the program to act on.
+ */
+function visitorChoseValue(value: ObservedValue, experience: CapabilityExperience) {
+  if (mentions(experience.originalGoal, value)) return true;
+  const chosen = experience.actions.flatMap((action) => {
+    if (action.action === "fill") return [action.input.text, action.input.value];
+    if (action.action === "select") return [action.input.option, action.input.value];
+    if (action.action === "click") return [action.element?.accessibleName, action.element?.label];
+    return [];
+  }).concat(capabilityExperienceRouteBindings(experience)).filter(observedValue);
+  return chosen.some((candidate) => token(candidate) === token(value));
+}
+
 function choiceAccountedFor(choice: RequiredChoice, parameters: AbstractedParameter[], summary: string[]) {
   if (choice.values.some((value) => parameters.some((parameter) => token(parameter.exampleValue) === token(value)))) return true;
   return !choice.typed && choice.values.some((value) => summary.some((text) => mentions(text, value)));
@@ -271,7 +290,8 @@ export function parseCapabilityExperienceAbstraction(value: Record<string, unkno
     throw new Error("experience_abstraction_text_invalid");
   }
   const corpus = evidenceCorpus(experience);
-  const parameters = (Array.isArray(value.parameters) ? value.parameters : []).map((item) => parseParameter(item, corpus));
+  const parameters = (Array.isArray(value.parameters) ? value.parameters : []).map((item) => parseParameter(item, corpus))
+    .filter((parameter) => visitorChoseValue(parameter.exampleValue, experience));
   if (new Set(parameters.map((item) => item.name)).size !== parameters.length) throw new Error("experience_parameter_duplicate");
   if (parameters.some((parameter) => isConcreteObservedTarget(parameter, experience))) {
     throw new Error("experience_concrete_target_not_generalized");
