@@ -368,3 +368,33 @@ test("a result count announced on the way does not end exploration while the vis
     });
   } finally { await browser.close(); await site.close(); }
 });
+
+test("a recorded scroll passes the turn to the next recorded step, not to the model", async () => {
+  // Right after the visitor's scroll, the model was asked instead, chose a
+  // different product than the visitor had, and the run failed on it.
+  const site = await startCountingShop();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await withShopModel(async (explorerCalls) => {
+      const at = (path) => ({ url: `${site.origin}${path}` });
+      const input = {
+        parameters: { finish: "Copper" }, context: {}, trigger: {}, interactions: [],
+        experience: {
+          schemaVersion: "1.0", originalGoal: "Add the Aurora lamp in copper to my cart",
+          actions: [
+            { action: "scroll", rawAction: "scroll", input: { down: true }, page: at("/shop?type=table"), observedAt: "2026-10-21T04:00:00.000Z" },
+            { action: "click", rawAction: "click_element_by_index", input: {}, element: { role: "link", accessibleName: "Aurora Lamp" }, page: at("/shop?type=table"), observedAt: "2026-10-21T04:00:01.000Z" },
+            { action: "click", rawAction: "click_element_by_index", input: {}, element: { role: "button", accessibleName: "Copper" }, page: at("/product/aurora"), observedAt: "2026-10-21T04:00:02.000Z" },
+            { action: "click", rawAction: "click_element_by_index", input: {}, element: { role: "button", accessibleName: "Add to cart" }, page: at("/product/aurora"), observedAt: "2026-10-21T04:00:03.000Z" },
+          ],
+          endPage: at("/product/aurora"),
+        },
+      };
+      const result = await exploreCapability(page, "Add the Aurora lamp in copper to my cart", site.origin, input, 12);
+      assert.equal(result.program.steps.filter((step) => step.action === "click").length, 3, `got ${JSON.stringify(result.program.steps.map((step) => step.action))}`);
+      assert.equal(explorerCalls.length, 0, "the recorded path needed no model turn");
+      assert.match(await page.locator("#cart").innerText(), /Added Aurora Lamp in Copper to cart/);
+    });
+  } finally { await browser.close(); await site.close(); }
+});

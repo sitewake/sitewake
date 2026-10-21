@@ -3460,6 +3460,16 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     const recordingPending = replayCursor < recordedActions.length;
     const freshSignals = recordingPending ? [] : snapshot.signals.filter((signal) => !seenSignals.has(signal));
     let replayed: ExplorerAction | undefined;
+    // Scrolling and waiting leave nothing to replay, and the loop settles the
+    // page itself. Pass over them here, on the page they happened on, so the
+    // turn goes to the next recorded step: handing it to the model instead let
+    // it wander off the proven path — a lamp generation picked another product
+    // right after the visitor's scroll and failed on an ambiguous card.
+    while (!autoCompletionReason && !freshSignals.length && replayCursor < recordedActions.length
+      && !["click", "fill", "select"].includes(recordedActions[replayCursor].action)
+      && (replayMovedAt === replayCursor || !recordedPageMove(recordedActions[replayCursor], snapshot.url, allowedOrigin))) {
+      replayCursor += 1;
+    }
     const pendingRecorded = autoCompletionReason || freshSignals.length ? undefined : recordedActions[replayCursor];
     if (pendingRecorded) {
       // Once per recorded step: a redirect that lands somewhere else must not
