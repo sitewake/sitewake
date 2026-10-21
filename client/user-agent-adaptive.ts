@@ -1,4 +1,5 @@
 import { PageAgentCore, tool, type AgentActivity, type AgentStepEvent, type PageAgentTool } from "@page-agent/core";
+import { resolveSelectOptionLabel } from "./select-option-match";
 import type { BrowserState } from "@page-agent/page-controller";
 import * as z from "zod/v4";
 import {
@@ -1429,9 +1430,17 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
           return { success: true, message: `Clicked visible option ${String(option)}` };
         }
       }
-      const result = await selectOption(index, option);
+      // A native dropdown is named by its exact label; resolve a value or a
+      // differently-cased label to that label first (select-option-match.ts).
+      const choices = liveTarget instanceof HTMLSelectElement
+        ? [...liveTarget.options].map((choice) => ({ text: choice.textContent || "", value: choice.value }))
+        : undefined;
+      const label = choices ? resolveSelectOptionLabel(choices, String(option)) : undefined;
+      // Unresolvable: say what the dropdown does offer, so the record shows it.
+      if (choices && label === undefined) throw new Error(`select_option_not_found:${String(option)}; options: ${choices.map((choice) => choice.text.trim()).join(" | ")}`);
+      const result = await selectOption(index, label ?? option);
       if (!result.success) throw new Error(result.message || `select_target_not_found:${index}`);
-      record("select", "select_dropdown_option", index, { index, option });
+      record("select", "select_dropdown_option", index, { index, option: label ?? option });
       return result;
     }
     catch (error) { actionFailure = error instanceof Error ? error.message : String(error); throw error; }
