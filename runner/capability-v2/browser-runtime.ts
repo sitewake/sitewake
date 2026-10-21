@@ -657,6 +657,12 @@ export function strategiesFor(element: PageElement, input: CapabilityTaskInput):
   if (label) strategies.push({ type: "label", value: label, match: "exact" });
   if (element.testId) strategies.push({ type: "testId", value: element.testId });
   if (name && (element.role === "button" || element.role === "link")) strategies.push({ type: "text", value: name, match: "exact" });
+  // A choice made by clicking its label or swatch has no role to carry its
+  // name: a finish swatch reading exactly "Brass" was located by its position
+  // alone, so the capability clicked the first swatch whatever finish it was
+  // asked for, and every draft failed "input not acted on". When the visible
+  // name is exactly an input's value, find it by that input.
+  if (dynamicName && !element.role) strategies.push({ type: "text", value: name!, match: "exact" });
   if (element.css) strategies.push({ type: "css", value: element.css });
   // Product cards often expose an image/link hit target with no accessible
   // name of its own; the meaningful name lives on a sibling title/details
@@ -3433,6 +3439,8 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
   // the first time. Twice per step at most.
   const seenAlerts = new Set(initialSnapshot.alerts || []);
   let lastReplayedStep = -1;
+  // Index in `steps` of the program step the last replayed action produced.
+  let lastReplayedProgramStep = -1;
   const alertRetries = new Map<number, number>();
   for (let index = 0; index < maxSteps; index += 1) {
     await settlePage(page);
@@ -3484,6 +3492,10 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
       replayCursor = lastReplayedStep;
       replayMovedAt = lastReplayedStep;
       replayRetried = false;
+      // The attempt the page refused is not part of the path: kept, every
+      // draft replayed a click that changes nothing and waited out its budget.
+      if (lastReplayedProgramStep >= 0 && lastReplayedProgramStep === steps.length - 1) steps.pop();
+      lastReplayedProgramStep = -1;
       alertGuidance = `The page answered the last recorded step with: ${freshAlerts.map((alert) => `"${alert}"`).join(", ")}. Do what it asks on this page (for example choose a required option); do not repeat that step yourself, it is retried next.`;
       observe(observer, { stage: "explorer-alert-retry", message: "the page asked for something before the recorded step can complete", response: redactedTraceValue({ alerts: freshAlerts, step: lastReplayedStep + 1 }) });
     }
@@ -3796,6 +3808,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     }
     if (step.action === "extract" && stepResult.output[saveAs] !== undefined) extractedOutput[saveAs] = stepResult.output[saveAs];
     steps.push(step);
+    lastReplayedProgramStep = replayed && action === replayed ? steps.length - 1 : -1;
     const resultUrl = String(stepResult.variables.__pageUrl || "");
     // Same rule: a pick that changed the address finishes exploration only
     // when nothing of the recorded path is left to replay.

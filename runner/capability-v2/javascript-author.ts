@@ -755,7 +755,7 @@ export async function authorJavaScriptCapability(options: {
   await workspace.write('context/connectors.json', connectors.catalog);
   await workspace.write('context/runtime.json', {target:'browser-sdk',kernelVersion:'2',buildSha:process.env.SITEWAKE_BUILD_SHA || 'development'});
   await workspace.write('context/browser-stage-sdk.js', 'export ' + executeBrowserCapabilityStage.toString(), true);
-  const allowed = new Set(["get_dom", "execute_js", "write_file", "read_file", "run_draft", "reset_browser"]);
+  const allowed = new Set(["get_dom", "execute_js", "write_file", "edit_file", "read_file", "run_draft", "reset_browser"]);
   const toolDefinitions = JAVASCRIPT_AUTHOR_TOOLS as unknown as readonly ToolDefinition[];
   /**
    * Two budgets with separate jobs.
@@ -1084,10 +1084,23 @@ export async function authorJavaScriptCapability(options: {
           if (args.target === 'last_draft' && !debugContext) throw new Error('debug_page_unavailable');
           const value = debugContext && args.target !== 'exploration' ? await debugContext.page.evaluate(code) : await connectors.browser.evaluate(code);
           result = { ok: true, value: value === undefined ? null : value };
-        } else if (call.function.name === "write_file") {
-          if (args.path !== "capability.ts" || typeof args.content !== "string") throw new Error("write_file_arguments_invalid");
-          if (new TextEncoder().encode(args.content).byteLength > CAPABILITY_V2_MAX_MODULE_BYTES) throw new Error("capability_module_too_large");
-          await workspace.revision(args.content);
+        } else if (call.function.name === "write_file" || call.function.name === "edit_file") {
+          // edit_file changes one exact passage of the current source. A
+          // repair used to cost a whole-file rewrite — about a minute of
+          // output per turn at production speed — and each rewrite risked
+          // breaking action stages the exploration had already proven.
+          let content: string;
+          if (call.function.name === "edit_file") {
+            if (args.path !== "capability.ts" || typeof args.old_str !== "string" || !args.old_str || typeof args.new_str !== "string") throw new Error("edit_file_arguments_invalid");
+            const occurrences = source.split(args.old_str).length - 1;
+            if (occurrences !== 1) throw new Error(occurrences ? `edit_file_old_str_not_unique:${occurrences}` : "edit_file_old_str_not_found: copy old_str exactly from the current src/capability.ts (read_file shows it)");
+            content = source.replace(args.old_str, () => args.new_str as string);
+          } else {
+            if (args.path !== "capability.ts" || typeof args.content !== "string") throw new Error("write_file_arguments_invalid");
+            content = args.content;
+          }
+          if (new TextEncoder().encode(content).byteLength > CAPABILITY_V2_MAX_MODULE_BYTES) throw new Error("capability_module_too_large");
+          await workspace.revision(content);
           source = await (await import('node:fs/promises')).readFile(`${workspace.directory}/src/capability.ts`, 'utf8');
           successful = undefined;
           draftPending = true;
