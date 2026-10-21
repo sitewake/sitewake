@@ -144,6 +144,28 @@ test("a debug trace message is engineering text in English, wherever it is built
   assert.deepEqual(offenders, []);
 });
 
+test("guidance a task record carries is English, wherever it is written", () => {
+  // Task guidance is read by the authoring models and shown verbatim in the
+  // console's engineering details; "能力目标已由 B 抽象为：…" reached an
+  // English reader that way.
+  const offenders = [];
+  for (const file of EMITTER_ROOTS.flatMap(sourceFiles)) {
+    const source = ts.createSourceFile(file, readFileSync(join(ROOT, file), "utf8"), ts.ScriptTarget.Latest, true);
+    const visit = (node) => {
+      const guidance = ts.isPropertyAssignment(node) && node.name.getText(source) === "guidance";
+      const derived = ts.isPropertyAssignment(node) && node.name.getText(source) === "text"
+        && node.parent?.parent?.parent && ts.isPropertyAssignment(node.parent.parent.parent) && node.parent.parent.parent.name.getText(source) === "__derivedGuidance";
+      if (guidance || derived) {
+        const text = fixedText(node.initializer).join("");
+        if (HAN.test(text)) offenders.push(`${file}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1} ${text.slice(0, 60)}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  assert.deepEqual(offenders, []);
+});
+
 test("every marker an emitter can produce is worded in both languages", async () => {
   const { zh, en } = await catalogs();
   assert.deepEqual(Object.keys(zh).sort(), Object.keys(en).sort(), "the two catalogs word the same markers");

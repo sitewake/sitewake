@@ -212,7 +212,7 @@ export async function advanceCompletedTask(task: CapabilityTask) {
       type: "Validation",
       versionId,
       goal: task.goal,
-      guidance: "独立回放候选 Program，并严格验证 Contract 成功条件。",
+      guidance: "Replay the candidate program independently and verify the Contract's success conditions strictly.",
       input: task.input,
       rerunOfTaskId: task.id,
     });

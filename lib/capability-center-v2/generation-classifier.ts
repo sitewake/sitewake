@@ -47,7 +47,8 @@ function taskInput(input: CapabilityGenerationInput, options: ClassifierOptions)
     ...(input.requirements?.length ? { __requirements: input.requirements } : {}),
     ...(candidate?.semantic ? {
       __derivedGuidance: [{
-        text: `能力目标已由 B 抽象为：${candidate.intent}`,
+        // Read by the authoring models and shown in the task record: English, not prose for one reader.
+        text: `Capability goal as abstracted from the session: ${candidate.intent}`,
         basedOn: candidate.semantic.evidenceRefs.map((id) => ({ kind: "observation", id })),
       }],
     } : {}),
