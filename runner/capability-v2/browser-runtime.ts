@@ -2278,12 +2278,14 @@ function inputSchemaFor(plan: ParameterPlan, addressInputs: Record<string, strin
       const shown = demonstrated[parameter.name];
       const ran = !SENSITIVE_PARAMETER.test(parameter.name) && typeof shown === "string" && shown.trim() ? shown.trim() : "";
       const written = addressInputs[parameter.name];
-      // The model's own description may already end in a full stop.
+      // The model's own description may already end in a full stop. The
+      // note is shown in the console and read by callers, in the same
+      // recorded language as the description it follows (prompt-locale.ts).
       const sentence = String(parameter.description || "").replace(/[。.\s]+$/u, "");
       const description = written
-        ? `${sentence}。取值写法与页面地址一致，例如「${written}」。`
+        ? `${sentence}. Write it the way the page address does, for example "${written}".`
         : ran
-          ? `${sentence}。取值写法与示例一致，例如「${ran}」。`
+          ? `${sentence}. Write it the way the example is written, for example "${ran}".`
           : parameter.description;
       const example = written || ran;
       return [parameter.name, {
