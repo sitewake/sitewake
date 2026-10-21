@@ -3449,7 +3449,16 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     // signal as a terminal exploration boundary. Executing another write after
     // that boundary can duplicate a side effect. Contract design, DraftReplay,
     // independent Validation and review still decide whether it is publishable.
-    const freshSignals = snapshot.signals.filter((signal) => !seenSignals.has(signal));
+    // The visitor's recorded path is the proof of what completing the task
+    // takes. While steps of it remain, a status line that just appeared
+    // ("Showing 5 of 16 lamps", "12 results") is the page reporting progress,
+    // not the task being done: treating it as done ended exploration at the
+    // first filtered list on any site that announces its result count, and
+    // authoring was left to invent the rest of the path. Once the recording
+    // is exhausted, or there is none, a fresh signal ends exploration as
+    // before, so a confirmed write is still never repeated.
+    const recordingPending = replayCursor < recordedActions.length;
+    const freshSignals = recordingPending ? [] : snapshot.signals.filter((signal) => !seenSignals.has(signal));
     let replayed: ExplorerAction | undefined;
     const pendingRecorded = autoCompletionReason || freshSignals.length ? undefined : recordedActions[replayCursor];
     if (pendingRecorded) {
@@ -3491,14 +3500,14 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     // grounding (we never guess an index or select the first candidate) while
     // avoiding false failures caused by a stale model response.
     let groundedAction = proposedAction;
-    if (!freshSignals && ["click", "fill", "select", "check", "hover", "waitFor", "extract"].includes(groundedAction.action)) {
+    if (!freshSignals.length && ["click", "fill", "select", "check", "hover", "waitFor", "extract"].includes(groundedAction.action)) {
       for (let repair = 0; repair < 2 && groundedAction.index !== undefined && !snapshot.elements.some((element) => element.index === groundedAction.index); repair += 1) {
         observe(observer, { stage: "explorer-action-repair", response: redactedTraceValue({ reason: "element_index_not_in_snapshot", action: groundedAction }) });
         history.push({ action: "invalid", reason: "element_index_not_in_snapshot", index: groundedAction.index, url: snapshot.url });
         groundedAction = await chooseAction(goal, snapshot, effectiveInput, history, observer, guidance);
       }
     }
-    let action = freshSignals ? proposedAction : overrideRepeatedAction(groundedAction, snapshot, history);
+    let action = freshSignals.length ? proposedAction : overrideRepeatedAction(groundedAction, snapshot, history);
     const searchGuarded = guardSearchResultDetailClick(action, snapshot, goal, effectiveInput, history);
     if (searchGuarded !== action) {
       action = searchGuarded;
@@ -3512,7 +3521,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     // another matching product.  This keeps required customisation fields
     // from becoming accidental admin interactions or opaque page_changed
     // failures.
-    for (let disabledRepair = 0; !freshSignals && disabledRepair < 2 && ["click", "check"].includes(action.action) && action.index !== undefined; disabledRepair += 1) {
+    for (let disabledRepair = 0; !freshSignals.length && disabledRepair < 2 && ["click", "check"].includes(action.action) && action.index !== undefined; disabledRepair += 1) {
       const target = snapshot.elements.find((element) => element.index === action.index);
       if (!target?.disabled && !target?.ariaDisabled) break;
       const repairReason = "target_disabled";
@@ -3526,7 +3535,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     // disabled control is a product-detail Add-to-cart button, prefer a
     // matching enabled related-product card; otherwise return an explicit
     // exploration failure so the task remains retryable and auditable.
-    if (!freshSignals && ["click", "check"].includes(action.action) && action.index !== undefined) {
+    if (!freshSignals.length && ["click", "check"].includes(action.action) && action.index !== undefined) {
       const target = snapshot.elements.find((element) => element.index === action.index);
       if (target?.disabled || target?.ariaDisabled) {
         const alternative = selectEnabledAddToCartAlternative(snapshot, effectiveInput, target);
@@ -3747,7 +3756,9 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
     if (step.action === "extract" && stepResult.output[saveAs] !== undefined) extractedOutput[saveAs] = stepResult.output[saveAs];
     steps.push(step);
     const resultUrl = String(stepResult.variables.__pageUrl || "");
-    if (resultUrl && resultUrl !== snapshot.url && (step.action === "select" || urlContainsAppliedInput(resultUrl, effectiveInput))) {
+    // Same rule: a pick that changed the address finishes exploration only
+    // when nothing of the recorded path is left to replay.
+    if (replayCursor >= recordedActions.length && resultUrl && resultUrl !== snapshot.url && (step.action === "select" || urlContainsAppliedInput(resultUrl, effectiveInput))) {
       autoCompletionReason = step.action === "select" ? "selection_navigation_applied" : "input_navigation_applied";
       observe(observer, { stage: "explorer-auto-complete", response: redactedTraceValue({ reason: autoCompletionReason, urlBefore: snapshot.url, urlAfter: resultUrl }) });
     }
