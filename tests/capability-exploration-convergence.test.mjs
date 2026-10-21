@@ -287,3 +287,84 @@ test("an input is a target only where a stage picks that target off the page", (
     assert.ok(actingWrites.has(binding.identityStatePath), `${binding.identityStatePath} 必须有阶段写入`);
   }
 });
+
+/**
+ * A small shop that announces its result count in a status region, the way
+ * most listing pages do. A visitor's recorded path goes past that list.
+ */
+async function startCountingShop() {
+  const page = (body) => `<!doctype html><html><head><title>Shop</title></head><body>${body}</body></html>`;
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, "http://shop.test");
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    if (url.pathname === "/shop") return response.end(page(`<h1>Lamps</h1><p role="status">Showing 2 of 2 items</p><ul><li><a href="/product/aurora">Aurora Lamp</a></li><li><a href="/product/borealis">Borealis Lamp</a></li></ul>`));
+    if (url.pathname.startsWith("/product/")) return response.end(page(`<h1>Aurora Lamp</h1>
+      <div><button type="button" aria-pressed="false" onclick="this.setAttribute('aria-pressed','true');window.finish=this.textContent">Copper</button>
+      <button type="button" aria-pressed="false" onclick="this.setAttribute('aria-pressed','true');window.finish=this.textContent">Steel</button></div>
+      <button type="button" onclick="document.getElementById('cart').textContent='Added Aurora Lamp in '+(window.finish||'')+' to cart'">Add to cart</button>
+      <div id="cart" role="status"></div>`));
+    return response.end(page(`<h1>Welcome</h1><a href="/shop?type=table">Shop</a>`));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return { origin: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((resolve) => server.close(resolve)) };
+}
+
+async function withShopModel(run) {
+  const explorerCalls = [];
+  const server = createServer(async (request, response) => {
+    const chunks = []; for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks));
+    const schema = body.response_format?.json_schema?.name;
+    const payload = JSON.parse(body.messages.find((message) => message.role === "user").content);
+    let result;
+    if (schema === "capability_v2_specification" && payload.aliasRepairMissing) result = { siteTerms: [] };
+    else if (schema === "capability_v2_specification") result = {
+      name: "Add a lamp to the cart", description: "Add a lamp in a chosen finish to the cart", intent: "Add a lamp in {{finish}} to the cart", aliases: [], siteTerms: [],
+      parameters: [{ name: "finish", type: "string", description: "Lamp finish", required: true, exampleValue: "Copper" }],
+      groundingExamples: [{ finish: "Copper" }], scope: { kind: "site-global", onMismatch: "no-match" },
+    };
+    else if (schema === "capability_v2_explorer_action") { explorerCalls.push(payload); result = { action: "done", reason: "added to cart" }; }
+    else if (schema === "capability_v2_contract") result = { outputSchema: { type: "object", properties: {}, additionalProperties: true }, preconditions: [], successConditions: [{ type: "textIncludes", value: "Added" }] };
+    else { response.writeHead(500).end(JSON.stringify({ error: `unexpected ${schema}` })); return; }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: JSON.stringify(result) } }] }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const names = ["MODEL_API_KEY", "MODEL_BASE_URL", "MODEL", "MODEL_EXECUTION", "MODEL_SEMANTIC", "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"];
+  const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  for (const name of names) delete process.env[name];
+  Object.assign(process.env, { OPENAI_API_KEY: "fixture-only", OPENAI_BASE_URL: `http://127.0.0.1:${server.address().port}/v1`, OPENAI_MODEL: "fixture-only" });
+  try { await run(explorerCalls); }
+  finally { for (const name of names) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; } await new Promise((resolve) => server.close(resolve)); }
+}
+
+test("a result count announced on the way does not end exploration while the visitor's path goes on", async () => {
+  // The demo's lamp generations stopped at "Showing 5 of 16 lamps": the
+  // explorer took that status line for completion, kept only the navigation
+  // to the list, and authoring had to invent picking a finish and adding to
+  // the cart. The recorded path is the proof of what completion takes.
+  const site = await startCountingShop();
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await withShopModel(async () => {
+      const step = (action, role, accessibleName, path) => ({ action, rawAction: `${action}_element_by_index`, input: {}, element: { role, accessibleName }, page: { url: `${site.origin}${path}` }, observedAt: "2026-10-21T04:00:00.000Z" });
+      const input = {
+        parameters: { finish: "Copper" }, context: {}, trigger: {}, interactions: [],
+        experience: {
+          schemaVersion: "1.0", originalGoal: "Add the Aurora lamp in copper to my cart",
+          actions: [
+            step("click", "link", "Aurora Lamp", "/shop?type=table"),
+            step("click", "button", "Copper", "/product/aurora"),
+            step("click", "button", "Add to cart", "/product/aurora"),
+          ],
+          endPage: { url: `${site.origin}/product/aurora` },
+        },
+      };
+      const result = await exploreCapability(page, "Add the Aurora lamp in copper to my cart", site.origin, input, 12);
+      const clicked = result.program.steps.filter((step) => step.action === "click").length;
+      assert.equal(clicked, 3, `the whole recorded path is explored, got ${JSON.stringify(result.program.steps.map((step) => step.action))}`);
+      assert.match(await page.locator("#cart").innerText(), /Added Aurora Lamp in Copper to cart/);
+    });
+  } finally { await browser.close(); await site.close(); }
+});
