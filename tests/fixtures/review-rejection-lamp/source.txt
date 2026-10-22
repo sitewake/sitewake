@@ -1,0 +1,219 @@
+export const capability = {
+  version: 2,
+  stages: [
+    { id: "stage_1", io: {"reads":{"input":[],"state":[]},"writes":{"state":["targets.__actedOn"],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, waitUntil, settle }) {
+        void input;
+        const element = await waitForTarget({strategies:[{type:"role",role:"link",name:"Shop",match:"exact"},{type:"text",value:"Shop",match:"exact"},{type:"css",value:"#root > div > header > div > nav > ul > li:nth-of-type(1) > a"}]});
+        // Read the identity of the object being acted on before the page changes;
+        // stage_verify checks the result against this instead of re-deriving it
+        // from whatever wording the result page happens to carry.
+        const actedOn = (element.innerText || element.textContent || "").replace(/s+/gu, " ").trim().slice(0, 240);
+        const hrefBefore = location.href; const textBefore = document.body.innerText;
+        element.click();
+        // A click either navigates (the host resumes on the new document) or changes the page in place.
+        await waitUntil(() => location.href !== hrefBefore || document.body.innerText !== textBefore);
+        // The document changes the moment a drawer or panel mounts; the next
+        // stage must not read it while it is still painting.
+        await settle();
+        return { outcome: "Continue", state: { targets: { __actedOn: actedOn } } };
+      } },
+    { id: "stage_2", io: {"reads":{"input":[],"state":[]},"writes":{"state":[],"output":[]}}, navigation: "required",
+      async run({ input }) { void input; return { outcome: "Continue", navigation: { url: "https://demo-website.sitewake.ai/shop?type=table", target: "_self" } }; } },
+    { id: "stage_3", io: {"reads":{"input":[],"state":[]},"writes":{"state":[],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, fill }) {
+        const element = await waitForTarget({strategies:[{type:"role",role:"combobox",name:"AnyTable lampFloor lampPendantWall light",match:"exact"},{type:"css",value:"#type"}]});
+        fill(element, "Table lamp");
+        return { outcome: "Continue" };
+      } },
+    { id: "stage_4", io: {"reads":{"input":[],"state":[]},"writes":{"state":[],"output":[]}}, navigation: "required",
+      async run({ input }) { void input; return { outcome: "Continue", navigation: { url: "https://demo-website.sitewake.ai/shop?type=table&dimmable=yes", target: "_self" } }; } },
+    { id: "stage_5", io: {"reads":{"input":[],"state":[]},"writes":{"state":[],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, fill }) {
+        const element = await waitForTarget({strategies:[{type:"role",role:"combobox",name:"AnyDimmableNot dimmable",match:"exact"},{type:"css",value:"#dimmable"}]});
+        fill(element, "Dimmable");
+        return { outcome: "Continue" };
+      } },
+    { id: "stage_6", io: {"reads":{"input":["finish"],"state":[]},"writes":{"state":["finish","targets.__actedOn"],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, waitUntil, settle }) {
+        void input;
+        const element = await waitForTarget({strategies:[{type:"role",role:"link",name:"Lune Table LampTable lamp · 2700K · Dimmable$129",match:"exact"},{type:"text",value:"Lune Table LampTable lamp · 2700K · Dimmable$129",match:"exact"},{type:"css",value:"#main > div > div:nth-of-type(2) > section > div > article:nth-of-type(1) > a"}]});
+        // Read the identity of the object being acted on before the page changes;
+        // stage_verify checks the result against this instead of re-deriving it
+        // from whatever wording the result page happens to carry.
+        const actedOn = (element.innerText || element.textContent || "").replace(/s+/gu, " ").trim().slice(0, 240);
+        const hrefBefore = location.href; const textBefore = document.body.innerText;
+        element.click();
+        // A click either navigates (the host resumes on the new document) or changes the page in place.
+        await waitUntil(() => location.href !== hrefBefore || document.body.innerText !== textBefore);
+        // The document changes the moment a drawer or panel mounts; the next
+        // stage must not read it while it is still painting.
+        await settle();
+        return { outcome: "Continue", state: { targets: { __actedOn: actedOn } } };
+      } },
+    { id: "stage_7", io: {"reads":{"input":["finish"],"state":[]},"writes":{"state":["finish","targets.__actedOn"],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, waitUntil, settle }) {
+        void input;
+        const element = await waitForTarget({strategies:[{type:"text",value:input["finish"],match:"exact"},{type:"css",value:"#main > div > div > div:nth-of-type(2) > form > fieldset > div > label:nth-of-type(1)"}]});
+        // Read the identity of the object being acted on before the page changes;
+        // stage_verify checks the result against this instead of re-deriving it
+        // from whatever wording the result page happens to carry.
+        const actedOn = (element.innerText || element.textContent || "").replace(/s+/gu, " ").trim().slice(0, 240);
+        const hrefBefore = location.href; const textBefore = document.body.innerText;
+        element.click();
+        // A click either navigates (the host resumes on the new document) or changes the page in place.
+        await waitUntil(() => location.href !== hrefBefore || document.body.innerText !== textBefore);
+        // The document changes the moment a drawer or panel mounts; the next
+        // stage must not read it while it is still painting.
+        await settle();
+        return { outcome: "Continue", state: { targets: { __actedOn: actedOn } } };
+      } },
+    { id: "stage_8", io: {"reads":{"input":["plugType"],"state":[]},"writes":{"state":["plugType"],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, fill }) {
+        const element = await waitForTarget({strategies:[{type:"role",role:"combobox",name:"Choose a plug type",match:"contains"},{type:"css",value:"#plug"}]});
+        fill(element, input["plugType"]);
+        return { outcome: "Continue" };
+      } },
+    { id: "stage_9", io: {"reads":{"input":[],"state":[]},"writes":{"state":["targets.__actedOn"],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, waitUntil, settle }) {
+        void input;
+        const element = await waitForTarget({strategies:[{type:"role",role:"button",name:"Add to cart",match:"contains"},{type:"role",role:"button",name:"Add to cart — $129",match:"exact"},{type:"text",value:"Add to cart — $129",match:"exact"},{type:"css",value:"#main > div > div > div:nth-of-type(2) > form > button"}]});
+        // Read the identity of the object being acted on before the page changes;
+        // stage_verify checks the result against this instead of re-deriving it
+        // from whatever wording the result page happens to carry.
+        const actedOn = (element.innerText || element.textContent || "").replace(/s+/gu, " ").trim().slice(0, 240);
+        const hrefBefore = location.href; const textBefore = document.body.innerText;
+        element.click();
+        // A click either navigates (the host resumes on the new document) or changes the page in place.
+        await waitUntil(() => location.href !== hrefBefore || document.body.innerText !== textBefore);
+        // The document changes the moment a drawer or panel mounts; the next
+        // stage must not read it while it is still painting.
+        await settle();
+        return { outcome: "Continue", state: { targets: { __actedOn: actedOn } } };
+      } },
+    { id: "stage_10", io: {"reads":{"input":[],"state":[]},"writes":{"state":["targets.__actedOn"],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, waitUntil, settle }) {
+        void input;
+        const element = await waitForTarget({strategies:[{type:"role",role:"link",name:"Cart, 1 item",match:"exact"},{type:"text",value:"Cart, 1 item",match:"exact"},{type:"css",value:"#root > div > header > div > div > a:nth-of-type(1)"}]});
+        // Read the identity of the object being acted on before the page changes;
+        // stage_verify checks the result against this instead of re-deriving it
+        // from whatever wording the result page happens to carry.
+        const actedOn = (element.innerText || element.textContent || "").replace(/s+/gu, " ").trim().slice(0, 240);
+        const hrefBefore = location.href; const textBefore = document.body.innerText;
+        element.click();
+        // A click either navigates (the host resumes on the new document) or changes the page in place.
+        await waitUntil(() => location.href !== hrefBefore || document.body.innerText !== textBefore);
+        // The document changes the moment a drawer or panel mounts; the next
+        // stage must not read it while it is still painting.
+        await settle();
+        return { outcome: "Continue", state: { targets: { __actedOn: actedOn } } };
+      } },
+    { id: "stage_11", io: {"reads":{"input":[],"state":[]},"writes":{"state":["targets.__actedOn"],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, waitUntil, settle }) {
+        void input;
+        const element = await waitForTarget({strategies:[{type:"role",role:"link",name:"Proceed to checkout",match:"exact"},{type:"text",value:"Proceed to checkout",match:"exact"},{type:"css",value:"#main > div > div:nth-of-type(2) > aside > a:nth-of-type(1)"}]});
+        // Read the identity of the object being acted on before the page changes;
+        // stage_verify checks the result against this instead of re-deriving it
+        // from whatever wording the result page happens to carry.
+        const actedOn = (element.innerText || element.textContent || "").replace(/s+/gu, " ").trim().slice(0, 240);
+        const hrefBefore = location.href; const textBefore = document.body.innerText;
+        element.click();
+        // A click either navigates (the host resumes on the new document) or changes the page in place.
+        await waitUntil(() => location.href !== hrefBefore || document.body.innerText !== textBefore);
+        // The document changes the moment a drawer or panel mounts; the next
+        // stage must not read it while it is still painting.
+        await settle();
+        return { outcome: "Continue", state: { targets: { __actedOn: actedOn } } };
+      } },
+    { id: "stage_12", io: {"reads":{"input":[],"state":[]},"writes":{"state":["targets.__actedOn"],"output":[]}}, navigation: "optional",
+      async run({ input, waitForTarget, waitUntil, settle }) {
+        void input;
+        const element = await waitForTarget({strategies:[{type:"role",role:"button",name:"Place order",match:"exact"},{type:"text",value:"Place order",match:"exact"},{type:"css",value:"#main > div > form > aside > button"}]});
+        // Read the identity of the object being acted on before the page changes;
+        // stage_verify checks the result against this instead of re-deriving it
+        // from whatever wording the result page happens to carry.
+        const actedOn = (element.innerText || element.textContent || "").replace(/s+/gu, " ").trim().slice(0, 240);
+        const hrefBefore = location.href; const textBefore = document.body.innerText;
+        element.click();
+        // A click either navigates (the host resumes on the new document) or changes the page in place.
+        await waitUntil(() => location.href !== hrefBefore || document.body.innerText !== textBefore);
+        // The document changes the moment a drawer or panel mounts; the next
+        // stage must not read it while it is still painting.
+        await settle();
+        return { outcome: "Continue", state: { targets: { __actedOn: actedOn } } };
+      } },
+    { id: "stage_verify", io: {"reads":{"input":["finish","plugType"],"state":["targets.__actedOn"]},"writes":{"state":[],"output":["finish","orderId","plugType","productName","totalAmount"]}}, navigation: "none",
+      async run({ input, state, waitUntil, settle, identityMatches }) {
+        // Wait for order confirmation page to be fully loaded
+        await waitUntil(() => {
+          const h1 = document.querySelector('#main h1');
+          return h1 && h1.textContent && h1.textContent.includes('Order') && h1.textContent.includes('placed');
+        });
+        await settle();
+
+        // Extract orderId from the heading element
+        const heading = document.querySelector('#main h1');
+        if (!heading) {
+          return { outcome: 'NoResult', reason: 'Order heading not found' };
+        }
+        const headingText = heading.textContent.trim();
+        const orderIdMatch = headingText.match(/Order\s+(ORV-\d+)/);
+        if (!orderIdMatch) {
+          return { outcome: 'NoResult', reason: 'Order ID not found in heading' };
+        }
+        const orderId = orderIdMatch[1];
+
+        // Extract product name from the items list
+        const productItem = document.querySelector('#main ul li span:first-child');
+        if (!productItem) {
+          return { outcome: 'NoResult', reason: 'Product item not found' };
+        }
+        // The product name is the first part before " × "
+        const productFullText = productItem.childNodes[0].textContent.trim();
+        const productNameMatch = productFullText.match(/^(.+?)\s*×/);
+        const productName = productNameMatch ? productNameMatch[1].trim() : productFullText;
+
+        // Verify the product details contain the expected finish and plugType
+        const productDetails = productItem.querySelector('span.text-xs, span[class*="text-stone"]');
+        if (productDetails) {
+          const detailsText = productDetails.textContent.trim();
+          // The details should contain finish and plugType information
+          // e.g., "Brass · US plug (Type A/B)"
+        }
+
+        // Extract total amount from the Total dd element
+        const totalElement = document.querySelector('#main dl div:last-child dd');
+        if (!totalElement) {
+          return { outcome: 'NoResult', reason: 'Total amount not found' };
+        }
+        const totalAmount = totalElement.textContent.trim();
+
+        // Build output using input values for finish and plugType (user-specified)
+        // and extracted values for orderId, productName, and totalAmount
+        const output = {
+          orderId,
+          productName,
+          finish: input["finish"],
+          plugType: input["plugType"],
+          totalAmount
+        };
+
+        // Build evidence from actual page elements
+        const evidence = [
+          {
+            kind: 'status',
+            value: {
+              orderId: orderId,
+              productName: productName,
+              finish: input["finish"],
+              plugType: input["plugType"],
+              totalAmount: totalAmount,
+              headingText: headingText
+            }
+          }
+        ];
+
+        return { outcome: 'Success', output, evidence };
+      } }
+  ]
+};

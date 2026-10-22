@@ -21,6 +21,7 @@ import { promptHash, type VersionedPrompt } from "./prompt";
 import { PUBLISH_REVIEW_PROMPT } from "./prompts/publish-review";
 import { inspectCapabilityQuality, qualityReportJson, demonstrationParametersOf } from "./quality";
 import { decodeC2CaseGenerationOutput } from "./case-generation";
+import { adjudicateReviewRejection } from "./review-adjudication";
 
 /** Review is a read-only gate over the exact persisted C3 package. */
 function assertValidatedPackageForReview(validated: ValidatedCapabilityPackage) {
@@ -167,8 +168,20 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
       },
     });
     const decision = parseReviewDecision(response);
-    await appendTaskEvent(siteId, validation.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: decision.decision, reason: decision.reason } });
-    return reviewVersion(siteId, versionId, { ...decision, promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
+    // A rejection is only as good as the facts it cites. Verify the claimed
+    // violations against the program before letting one block publication; a
+    // rejection whose claims do not check out is overturned here.
+    const adjudicated = decision.decision === "Rejected"
+      ? await adjudicateReviewRejection(config, {
+        reason: decision.reason,
+        program: version.program,
+        source: sourceTask?.result?.candidateSource || "",
+        requiredInputs,
+        demonstrationParameters: demonstrationParametersOf(sourceTask),
+      })
+      : { ...decision, adjudication: undefined };
+    await appendTaskEvent(siteId, validation.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: adjudicated.decision, reason: adjudicated.reason, ...(adjudicated.adjudication ? { adjudication: adjudicated.adjudication } : {}) } });
+    return reviewVersion(siteId, versionId, { decision: adjudicated.decision, reason: adjudicated.reason, promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     await appendTaskEvent(siteId, validation.id, { eventType: "ReviewFailed", payload: { phase: "Reviewing", reason } });

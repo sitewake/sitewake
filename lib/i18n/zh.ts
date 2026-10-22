@@ -1424,6 +1424,7 @@ export const zh = {
           "review rejected": "审核未通过",
           "review failed": "审核未能完成",
           "ai review approved on gate evidence": "AI 审核结论为通过：确定性质量门禁与独立回放证据均已通过，可以发布。",
+          "ai review approved; the rejection's claims do not match the program": "AI 审核最初未通过，但其指出的问题与程序实际声明不符；确定性质量门禁与独立回放证据均已通过，可以发布。",
           "publication superseded": "同名能力已由另一次制作先行发布",
         } as Record<string, string | ((data: Record<string, unknown>) => string)>,
         activityUpdate: "进展更新",
