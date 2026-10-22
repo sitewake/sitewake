@@ -1342,6 +1342,7 @@ export const en: ConsoleCopy = {
           "review rejected": "Review did not approve it",
           "review failed": "The review could not finish",
           "ai review approved on gate evidence": "The review approved it: the deterministic quality gates and the independent replay evidence both passed, so it can be published.",
+          "ai review approved; the rejection's claims do not match the program": "The AI review first declined it, but the problems it named do not match the program's actual declarations; the deterministic quality gates and the independent replay evidence both passed, so it can be published.",
           "publication superseded": "Another generation of this capability published first",
         },
         activityUpdate: "Progress update",

@@ -1,0 +1,5 @@
+{
+  "reason": "Stages 3, 4, 5, and 8 declare empty io.reads but must consume user inputs 'finish' or 'plugType' to select specific variants; this undeclared input consumption is a hard violation not covered by deterministicQuality.",
+  "requiredInputs": ["finish", "plugType"],
+  "demonstrationParameters": { "finish": "Brass", "plugType": "US plug (Type A/B)" }
+}

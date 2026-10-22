@@ -135,7 +135,7 @@ function conditionIssue(value: JsonValue) {
   if (type === "modelGoal") return typeof condition.goal === "string" && condition.goal.trim() ? undefined : "condition_goal_missing";
   return "condition_type_unsupported";
 }
-function containsLiteral(value: unknown, needle: string): boolean {
+export function containsLiteral(value: unknown, needle: string): boolean {
   if (typeof value === "string") return value.includes(needle);
   if (Array.isArray(value)) return value.some((item) => containsLiteral(item, needle));
   if (value && typeof value === "object") return Object.values(value).some((item) => containsLiteral(item, needle));
