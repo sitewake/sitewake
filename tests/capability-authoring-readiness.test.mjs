@@ -89,3 +89,28 @@ test("in a self-test a wait that never settles fails in seconds and names itself
     assert.ok(Date.now() - uncapped >= 3_000, "without a cap the wait runs to the deadline, as published capabilities need");
   } finally { await browser.close(); }
 });
+
+test("fill() on a dropdown accepts the option a reader sees, and fails loudly on one that is not offered", async () => {
+  // The lamp program wrote "US plug (Type A/B)" into a select whose option
+  // value is "US"; the dropdown was left empty and the cart never filled.
+  const { chromium } = await import("playwright");
+  const { executeBrowserCapabilityStage } = await import("../lib/capability-center-v2/browser-stage-sdk.ts");
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage();
+    const module = (wanted) => `export const capability={version:2,stages:[{id:"pick",async run({fill}){fill(document.querySelector("select"),${JSON.stringify(wanted)});return {outcome:"Success",output:{value:document.querySelector("select").value}};}}]};`;
+    let wanted = "";
+    await page.route("http://stage.test/**", (route) => route.request().url().endsWith(".js")
+      ? route.fulfill({ contentType: "text/javascript", body: module(wanted) })
+      : route.fulfill({ contentType: "text/html", body: `<!doctype html><select><option value="">Choose a plug type</option><option value="US">US plug (Type A/B)</option><option value="UK">UK plug (Type G)</option></select>` }));
+    const run = async (value) => {
+      wanted = value;
+      await page.goto("http://stage.test/");
+      return page.evaluate(executeBrowserCapabilityStage, JSON.stringify({ moduleUrl: `http://stage.test/module-${encodeURIComponent(value)}.js`, index: 0, input: {}, state: {}, inputPaths: [], statePaths: [], stageId: "pick", deadlineAt: new Date(Date.now() + 10_000).toISOString() }));
+    };
+    assert.match(JSON.stringify(await run("US plug (Type A/B)")), /"value":"US"/, "a label selects its option");
+    assert.match(JSON.stringify(await run("uk plug (type g)")), /"value":"UK"/, "case and spacing do not matter");
+    assert.match(JSON.stringify(await run("US")), /"value":"US"/, "the value itself still works");
+    await assert.rejects(run("EU plug"), /capability_stage_select_option_missing:pick:EU plug; options: Choose a plug type \| US plug \(Type A\/B\) \| UK plug \(Type G\)/);
+  } finally { await browser.close(); }
+});

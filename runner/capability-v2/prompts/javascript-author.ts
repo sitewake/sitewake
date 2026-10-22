@@ -75,7 +75,7 @@ export const JAVASCRIPT_AUTHOR_TOOLS = [
       description: "在 capability.ts 中把恰好出现一次的 old_str 替换为 new_str。修复时优先使用：只改出错的那一段，已经按探索路径跑通的动作阶段保持不动。",
       parameters: {
         type: "object",
-        properties: { path: { type: "string", enum: ["capability.ts"] }, old_str: { type: "string", minLength: 1, maxLength: 40000 }, new_str: { type: "string", maxLength: 40000 } },
+        properties: { path: { type: "string", enum: ["capability.ts", "src/capability.ts"] }, old_str: { type: "string", minLength: 1, maxLength: 40000 }, new_str: { type: "string", maxLength: 40000 } },
         required: ["path", "old_str", "new_str"],
         additionalProperties: false,
       },
@@ -88,7 +88,7 @@ export const JAVASCRIPT_AUTHOR_TOOLS = [
       description: "写入完整 capability.ts；每次调用覆盖上一版本。只在需要整体重写时使用，局部修复用 edit_file。",
       parameters: {
         type: "object",
-        properties: { path: { type: "string", enum: ["capability.ts"] }, content: { type: "string", maxLength: 120000 } },
+        properties: { path: { type: "string", enum: ["capability.ts", "src/capability.ts"] }, content: { type: "string", maxLength: 120000 } },
         required: ["path", "content"],
         additionalProperties: false,
       },
