@@ -317,6 +317,21 @@ test("edit_file refuses a passage that is missing or not unique, and says which"
   assert.equal(completed.result.draft.outcome, "Success");
 });
 
+test("a malformed tool call is the model's to correct, not the end of authoring", async () => {
+  // A path the schema refused ended a run whose draft already replayed every
+  // action stage; "src/capability.ts" is now accepted as the same file.
+  const bad = { path: "lib/other.ts", old_str: "x", new_str: "y" };
+  const turns = [
+    toolTurn(1, "edit_file", bad),
+    toolTurn(2, "edit_file", bad),
+    toolTurn(3, "edit_file", { path: "src/capability.ts", old_str: 'throw new Error("stage_verify_not_authored");', new_str: 'return {outcome:"Success",output:{ok:true}};' }),
+    toolTurn(4, "run_draft"),
+  ];
+  const completed = await runAuthor({ turns, stageRun: async () => successfulDraft(), maxToolCalls: 10 });
+  assert.equal(completed.result.draft.outcome, "Success");
+  assert.ok(completed.events.some((event) => event.message === "tool call failed" && /tool_argument_enum_invalid/.test(event.payload?.error || "")));
+});
+
 test("repair budget exhaustion retains the last root cause", async () => {
   const turns = [
     toolTurn(1, "write_file", { path: "capability.ts", content: source }),

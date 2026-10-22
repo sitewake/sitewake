@@ -1048,6 +1048,17 @@ export async function authorJavaScriptCapability(options: {
         modelStalled = true;
         break;
       }
+      // A malformed call (an argument outside its schema, an unknown tool) is
+      // the model's to correct, not the end of authoring: one wrong path
+      // spelling ended a run whose draft already replayed every action stage.
+      // It costs a tool call, so the budget still bounds it.
+      if (error instanceof Error && /^tool_(?:argument|arguments|call_unknown|call_type|call_name|call_id)/.test(error.message)) {
+        toolCallsUsed += 1;
+        await workspace.event('model.invalid_tool_call', { error: error.message, toolCallsUsed });
+        await options.onEvent?.({ phase: "Authoring", message: "tool call failed", payload: { tool: "protocol", code: "tool_call_invalid", error: error.message.slice(0, 600) } });
+        messages.push({ role: "user", content: `Your last tool call was rejected: ${error.message}. Call one of the declared tools again with arguments that match its schema exactly.` });
+        continue;
+      }
       throw error;
     }
     await workspace.event('model.response', turn.message);
@@ -1091,12 +1102,12 @@ export async function authorJavaScriptCapability(options: {
           // breaking action stages the exploration had already proven.
           let content: string;
           if (call.function.name === "edit_file") {
-            if (args.path !== "capability.ts" || typeof args.old_str !== "string" || !args.old_str || typeof args.new_str !== "string") throw new Error("edit_file_arguments_invalid");
+            if (!["capability.ts", "src/capability.ts"].includes(String(args.path)) || typeof args.old_str !== "string" || !args.old_str || typeof args.new_str !== "string") throw new Error("edit_file_arguments_invalid");
             const occurrences = source.split(args.old_str).length - 1;
             if (occurrences !== 1) throw new Error(occurrences ? `edit_file_old_str_not_unique:${occurrences}` : "edit_file_old_str_not_found: copy old_str exactly from the current src/capability.ts (read_file shows it)");
             content = source.replace(args.old_str, () => args.new_str as string);
           } else {
-            if (args.path !== "capability.ts" || typeof args.content !== "string") throw new Error("write_file_arguments_invalid");
+            if (!["capability.ts", "src/capability.ts"].includes(String(args.path)) || typeof args.content !== "string") throw new Error("write_file_arguments_invalid");
             content = args.content;
           }
           if (new TextEncoder().encode(content).byteLength > CAPABILITY_V2_MAX_MODULE_BYTES) throw new Error("capability_module_too_large");

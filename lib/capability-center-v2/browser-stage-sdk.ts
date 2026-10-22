@@ -114,8 +114,27 @@ export async function executeBrowserCapabilityStage(payload: string | {
       throw new Error(`capability_stage_fill_target_not_editable:${stageId}:${element.tagName.toLowerCase()}`);
     }
     element.focus();
+    // A dropdown is written with one of its options' values, but a program
+    // usually names the option a reader sees: "US plug (Type A/B)" for the
+    // value "US". Written as is, that value matched no option, the dropdown
+    // was left empty and the step after it failed far from the cause. The
+    // exact value first, then the exact label, then either ignoring case and
+    // spacing — one option only, otherwise fail and say what was offered.
+    let written = text;
+    if (element instanceof HTMLSelectElement) {
+      const options = [...element.options].map((option) => ({ value: option.value, label: (option.textContent || '').trim() }));
+      const loose = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/\s+/gu, ' ').trim();
+      const wanted = text.trim();
+      const pick = (matches: Array<{value: string; label: string}>) => matches.length === 1 ? matches[0].value : undefined;
+      const resolved = pick(options.filter((option) => option.value === wanted))
+        ?? pick(options.filter((option) => option.label === wanted))
+        ?? pick(options.filter((option) => loose(option.label) === loose(wanted)))
+        ?? pick(options.filter((option) => option.value !== '' && loose(option.value) === loose(wanted)));
+      if (resolved === undefined) throw new Error(`capability_stage_select_option_missing:${stageId}:${wanted}; options: ${options.map((option) => option.label).join(' | ')}`);
+      written = resolved;
+    }
     const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
-    if (setter) setter.call(element, text); else (element as HTMLInputElement).value = text;
+    if (setter) setter.call(element, written); else (element as HTMLInputElement).value = written;
     element.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:text}));
     element.dispatchEvent(new Event('change', {bubbles:true}));
     return element;
