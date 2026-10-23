@@ -26,6 +26,7 @@ export type ReviewClaimKind =
   | "required_input_not_consumed"
   | "undeclared_input_read"
   | "demonstration_value_hardcoded"
+  | "insufficient_validation_cases"
   | "other";
 
 export type ReviewClaim = {
@@ -51,6 +52,7 @@ const CLAIM_KINDS = new Set<string>([
   "required_input_not_consumed",
   "undeclared_input_read",
   "demonstration_value_hardcoded",
+  "insufficient_validation_cases",
   "other",
 ]);
 
@@ -61,6 +63,7 @@ function normalizeClaimKind(value: string): ReviewClaimKind {
   if (/^required.?input.?not.?consumed$/iu.test(value)) return "required_input_not_consumed";
   if (/^un(?:de)?declared[ _-]?input[ _-]?read$/iu.test(value)) return "undeclared_input_read";
   if (/^demonstration.?value.?hardcoded$/iu.test(value)) return "demonstration_value_hardcoded";
+  if (/^insufficient.?validation.?cases?$/iu.test(value)) return "insufficient_validation_cases";
   return "other";
 }
 
@@ -153,6 +156,8 @@ export type ReviewClaimContext = {
   program: AdjudicationProgram;
   source: string;
   requiredInputs: string[];
+  /** How many independent validation cases the suite replayed. */
+  validationCaseCount?: number;
   demonstrationParameters?: Record<string, JsonValue>;
 };
 
@@ -198,10 +203,29 @@ export function verifyReviewClaims(claims: ReviewClaim[], context: ReviewClaimCo
         if (typeof demonstrated !== "string" || demonstrated.trim().length < 2) return false;
         return containsLiteral(stripJavaScriptComments(context.source), demonstrated.trim());
       }
+      case "insufficient_validation_cases": {
+        // Two cases are required only to prove that different values of a
+        // target input resolve to different objects — the rule the gate holds
+        // target-bound programs to. A program that binds no target (it picks a
+        // variant, fills a value, reads a page) is proven by one case; the
+        // prompt says so and the gate does not ask for more.
+        const targets = context.program.parameterRoles.some((role) => role.role === "target");
+        return targets && (context.validationCaseCount ?? 0) < 2;
+      }
       default:
         return false;
     }
   });
+}
+
+/**
+ * Whether the extracted claims overturn the rejection. Only when every claim
+ * is of a kind the checker can test and each one was disproven: a rejection
+ * with no extracted claims, or one that also says something the checker
+ * cannot test ("the output names the wrong product"), keeps its rejection.
+ */
+export function rejectionIsUnsubstantiated(claims: ReviewClaim[], verified: ReviewClaim[]) {
+  return claims.length > 0 && verified.length === 0 && claims.every((claim) => claim.kind !== "other");
 }
 
 export type AdjudicatedReviewDecision = {
@@ -223,6 +247,7 @@ export async function adjudicateReviewRejection(
     program: AdjudicationProgram;
     source: string;
     requiredInputs: string[];
+    validationCaseCount?: number;
     demonstrationParameters?: Record<string, JsonValue>;
     timeoutMs?: number;
   },
@@ -239,6 +264,7 @@ export async function adjudicateReviewRejection(
       payload: {
         reason: input.reason,
         requiredInputs: input.requiredInputs,
+        validationCaseCount: input.validationCaseCount,
         stages: input.program.stages.map((stage) => ({
           id: stage.id,
           readsInput: stage.io?.reads?.input || [],
@@ -256,9 +282,10 @@ export async function adjudicateReviewRejection(
       program: input.program,
       source: input.source,
       requiredInputs: input.requiredInputs,
+      validationCaseCount: input.validationCaseCount,
       demonstrationParameters: input.demonstrationParameters,
     });
-    if (verified.length > 0) {
+    if (!rejectionIsUnsubstantiated(claims, verified)) {
       return { ...keepRejection, adjudication: { claims: claims.length, verified: verified.length, unsubstantiated: false } };
     }
     return {

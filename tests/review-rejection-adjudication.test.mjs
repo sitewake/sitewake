@@ -31,6 +31,7 @@ const {
   parseReviewClaims,
   stageInputReads,
   verifyReviewClaims,
+  rejectionIsUnsubstantiated,
   REVIEW_REJECTION_UNSUBSTANTIATED,
 } = await import(BUNDLE_PATH);
 rmSync(BUNDLE_PATH);
@@ -183,6 +184,27 @@ test("an unverifiable kind never overturns a rejection", () => {
     lampCtx,
   );
   assert.deepEqual(verified, []);
+});
+
+test("one validation case does not verify a case-count claim when nothing is target bound", () => {
+  const claim = [{ kind: "insufficient_validation_cases" }];
+  // The lamp binds no target: finish is context, plugType is a value.
+  assert.deepEqual(verifyReviewClaims(claim, { ...lampCtx, validationCaseCount: 1 }), []);
+  const targetBound = { ...lampProgram, parameterRoles: [{ inputPath: "productName", role: "target" }] };
+  assert.equal(verifyReviewClaims(claim, { ...lampCtx, program: targetBound, validationCaseCount: 1 }).length, 1);
+  assert.deepEqual(verifyReviewClaims(claim, { ...lampCtx, program: targetBound, validationCaseCount: 2 }), []);
+});
+
+test("a rejection is overturned only when every claim is checkable and disproven", () => {
+  const io = { kind: "empty_reads_consumes_input", stage: "stage_8", input: "plugType" };
+  const other = { kind: "other", detail: "the output names the wrong product" };
+  assert.equal(rejectionIsUnsubstantiated([io], []), true);
+  // Something the checker cannot test keeps the rejection, even beside disproven claims.
+  assert.equal(rejectionIsUnsubstantiated([io, other], []), false);
+  assert.equal(rejectionIsUnsubstantiated([other], []), false);
+  // Nothing extracted is nothing disproven.
+  assert.equal(rejectionIsUnsubstantiated([], []), false);
+  assert.equal(rejectionIsUnsubstantiated([io], [io]), false);
 });
 
 test("the canonical unsubstantiated receipt names the overturn, not the program", () => {
