@@ -25,11 +25,12 @@ import {
   evaluatePreconditions,
   evaluateResult,
   evaluateResultDeterministic,
+  contractInProgramWritings,
   exploreCapability,
   validateContractInput,
   type CapabilityExplorationTraceEvent,
 } from "./browser-runtime";
-import { authorJavaScriptCapability } from "./javascript-author";
+import { addressOpenedInputs, authorJavaScriptCapability } from "./javascript-author";
 import { bootstrapAuthentication } from "./auth-bootstrap";
 import {
   projectStageReceipts,
@@ -735,16 +736,30 @@ export async function performC1Authoring(
     "Exploring",
     "exploration succeeded; writing the module",
   );
+  // The contract states each input in the writing the program consumes: the
+  // address writing only where the program opens the page by its address.
+  const explorationContract = explored.candidateSummary.contract;
+  const summary = {
+    ...explored.candidateSummary,
+    contract: contractInProgramWritings(
+      explorationContract,
+      addressOpenedInputs(explored.program, explorationContract, {
+        startUrl: spec.browser.startUrl,
+        demonstrationParameters: resolveCapabilityInputDefaults(explorationContract, explored.demonstrationParameters),
+      }),
+      explored.demonstrationParameters,
+    ),
+  };
   const authored = await authorJavaScriptCapability({
     explorationPage: page,
     workspace: helpers.workspace,
     startUrl: spec.browser.startUrl,
     goal: spec.goal || "完成用户目标",
     input: { ...spec.input, parameters: explored.demonstrationParameters },
-    contract: explored.candidateSummary.contract,
+    contract: summary.contract,
     explorationProgram: explored.program,
     groundingExamples: explored.groundingExamples,
-    summary: explored.candidateSummary,
+    summary,
     explorationPromptProvenance: explored.promptProvenance,
     createDraftContext: () =>
       isolatedValidationPage(page, spec, authoringBaselineStorageState),
@@ -754,13 +769,13 @@ export async function performC1Authoring(
       helpers.onEvent(event.phase, event.message, event.payload),
   });
   const draftQuality = inspectCapabilityQuality(
-    explored.candidateSummary.contract,
+    summary.contract,
     authored.program,
     {
       demonstrationParameters: explored.demonstrationParameters,
       validationCases: explored.groundingExamples,
       source: authored.bundle,
-      summary: explored.candidateSummary,
+      summary,
       entryUrl: spec.browser.startUrl,
     },
   );
@@ -816,8 +831,8 @@ export async function performC1Authoring(
       : {}),
   };
   const candidateSummary = {
-    ...explored.candidateSummary,
-    contract: projectCapabilityContract(explored.candidateSummary.contract),
+    ...summary,
+    contract: projectCapabilityContract(summary.contract),
   };
   const c1AuthoringOutput: C1AuthoringOutput = {
     generationTaskId: spec.taskId,

@@ -330,6 +330,35 @@ test("an authoring example that fails outright still goes back for repair", asyn
   );
 });
 
+test("when repairs end on a grounding example, the draft that passed the demonstration goes on to validation", async () => {
+  // A cart capability's grounding example asked for a lamp that cannot be
+  // added without a plug type the capability has no input for. The model
+  // "repaired" a correct program twice and authoring threw it away.
+  const turns = [
+    toolTurn(1, "write_file", { path: "capability.ts", content: source }),
+    toolTurn(2, "run_draft"),
+    toolTurn(3, "run_draft"),
+  ];
+  const { result, events } = await runAuthor({
+    turns,
+    groundingExamples: [{ query: "pillow" }],
+    stageRun: async (options) => (options.input.query === "pillow"
+      ? { page: successfulDraft().page, outcome: "Failed", reason: "plug type required", output: {}, state: {}, evidence: [], receipts: [] }
+      : successfulDraft()),
+  });
+  assert.equal(result.source, source);
+  const accepted = events.find((event) => /draft that passed the demonstration/.test(event.message));
+  assert.match(accepted?.payload?.reason || "", /draft_grounding_example_failed:example_1:Failed:plug type required/);
+});
+
+test("a draft that never passed its demonstration is not handed on", async () => {
+  const turns = [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft"), toolTurn(3, "run_draft")];
+  await assert.rejects(() => runAuthor({
+    turns,
+    stageRun: async () => ({ page: successfulDraft().page, outcome: "Failed", reason: "button missing", output: {}, state: {}, evidence: [], receipts: [] }),
+  }), /javascript_author_repeated_failure/);
+});
+
 test("edit_file changes one passage of the seeded source and leaves the rest as it was", async () => {
   // A repair used to be a whole-file rewrite; the seeded action stages are
   // proven by exploration and an edit leaves them untouched.
@@ -952,6 +981,46 @@ test("a declared writing is kept only where the page's address bears it", async 
   assert.deepEqual(runtime.addressWrittenInputs({ addressInputs: [{ path: "date", addressValue: "2026年9月20日" }] }, url, ["date"]), {});
   assert.deepEqual(runtime.addressWrittenInputs({ addressInputs: [{ path: "ghost", addressValue: "2026-09-20" }] }, url, ["date"]), {});
   assert.deepEqual(runtime.addressWrittenInputs({}, url, ["date"]), {});
+});
+
+test("the address writing is declared only for an input the program opens the page with", async () => {
+  // A cart capability recorded from the home page: Shop, the product card,
+  // the variant, Add to cart. The product page is /product/mira-pendant, so
+  // the contract declared "mira-pendant"; the program reaches it by clicking
+  // the card named "Mira Pendant", was self-tested with that, and every
+  // validation case written as the contract said failed.
+  const runtime = await import("../runner/capability-v2/browser-runtime.ts");
+  const contract = {
+    inputSchema: {
+      type: "object",
+      properties: {
+        productName: { type: "string", description: "The product to add. Write it the way the page address does, for example \"mira-pendant\".", examples: ["mira-pendant"] },
+        variantOption: { type: "string", description: "The finish. Write it the way the example is written, for example \"Smoke glass\".", examples: ["Smoke glass"] },
+      },
+      required: ["productName", "variantOption"],
+    },
+    outputSchema: { type: "object", properties: { targetTitle: { type: "string" } }, required: ["targetTitle"] },
+    successConditions: [{ type: "outputExists", path: "targetTitle" }],
+  };
+  const demonstrated = { productName: "Mira Pendant", variantOption: "Smoke glass" };
+  const trace = { entry: { url: "https://shop.example/" }, steps: [
+    { id: "shop", action: "click", target: { strategies: [{ kind: "role", role: "link", name: "Shop" }] } },
+    { id: "card", action: "click", target: { strategies: [{ kind: "role", role: "link", name: "Mira Pendant" }] } },
+  ] };
+  const opened = author.addressOpenedInputs(trace, contract, { startUrl: "https://shop.example/", demonstrationParameters: demonstrated });
+  assert.deepEqual(opened, []);
+  const aligned = runtime.contractInProgramWritings(contract, opened, demonstrated);
+  assert.deepEqual(aligned.inputSchema.properties.productName.examples, ["Mira Pendant"]);
+  assert.equal(aligned.inputSchema.properties.productName.description, "The product to add. Write it the way the example is written, for example \"Mira Pendant\".");
+  assert.deepEqual(aligned.inputSchema.properties.variantOption, contract.inputSchema.properties.variantOption);
+
+  // A program that opens /product/<productName> by address keeps the address writing.
+  const navigating = { entry: { url: "https://shop.example/" }, steps: [
+    { id: "open", action: "navigate", value: { source: "literal", value: "https://shop.example/product/mira-pendant" } },
+  ] };
+  const openedByAddress = author.addressOpenedInputs(navigating, contract, { startUrl: "https://shop.example/", demonstrationParameters: demonstrated });
+  assert.deepEqual(openedByAddress, ["productName"]);
+  assert.equal(runtime.contractInProgramWritings(contract, openedByAddress, demonstrated), contract);
 });
 
 test("a site-global capability is replayed from the site's own entry", async () => {

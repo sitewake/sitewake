@@ -1392,6 +1392,7 @@ export const zh = {
           "run_draft failed": "发现问题，正在结合失败现场修正",
           "tool call failed": "发现问题，正在结合失败现场修正",
           "same failure twice in a row; stopping repairs": "连续两次同样的失败，已停止修复",
+          "a grounding example failed; the draft that passed the demonstration goes on to validation": "测试样例未通过；沿用已通过原始演示的版本进入验证",
           "authoring budget exhausted; replaying the unreplayed draft once": "修复预算已用完，最后回放一次草稿",
           "quality gate passed": "质量检查通过",
           "quality gate rejected the candidate": "质量检查拒绝了这个候选能力",

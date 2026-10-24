@@ -264,6 +264,14 @@ function openingInputs(trace: CapabilityDslProgram, contract: CapabilityContract
   return pageSelectingInputs([options.startUrl], options.demonstrationParameters, declared, record(contract.inputSchema));
 }
 
+/** The inputs the program opens a page for by writing them into its address. */
+export function addressOpenedInputs(trace: CapabilityDslProgram, contract: CapabilityContract, options: AuthoringAddressOptions) {
+  return uniquePaths([
+    ...openingInputs(trace, contract, options),
+    ...trace.steps.flatMap((step) => navigateAddressInputs(step, contract, options)),
+  ]);
+}
+
 /**
  * The declared writing of each input, as the contract publishes it, over the
  * value the demonstration ran with. An address states its own form and the
@@ -733,6 +741,12 @@ export async function authorJavaScriptCapability(options: {
   const closeDebug = async () => { await debugContext?.context.close().catch(() => undefined); debugContext = undefined; };
 
   let source = ""; let successful: JavaScriptAuthorResult | undefined;
+  // The latest draft whose demonstration replay passed while a grounding
+  // example did not. Grounding examples are the pipeline's own guesses — one
+  // asked a cart capability for a lamp that cannot be added without a plug
+  // type the capability has no input for — so when repairs end, this draft is
+  // what authoring hands on, and independent validation decides the rest.
+  let demonstrated: JavaScriptAuthorResult | undefined;
   const messages: ToolCallingMessage[] = [
     { role: "system", content: JAVASCRIPT_AUTHOR_PROMPT.text },
     {
@@ -791,6 +805,26 @@ export async function authorJavaScriptCapability(options: {
   const budgetLeft = () => ({ toolCalls: Math.max(0, maxToolCalls - toolCallsUsed), draftRuns: Math.max(0, maxDraftRuns - draftRuns) });
 
   /** Build the current source and replay every authoring example; shared by the tool loop and the budget wrap-up. */
+  const acceptDraft = async (candidate: JavaScriptAuthorResult) => {
+    await workspace.write('dist/program.json', candidate.program);
+    await workspace.write('dist/contract.json', options.contract);
+    await workspace.write('dist/capability.js', candidate.bundle, true);
+    const {page: _page, ...receipt} = candidate.draft;
+    await workspace.write('reports/author-draft.json', receipt);
+    successful = candidate;
+  };
+  // Repairs are over without a draft that passed everything. One whose
+  // demonstration passed is the capability the visitor already showed working.
+  const acceptDemonstrated = async (reason: string) => {
+    if (!demonstrated) return undefined;
+    // The workspace's source is whatever the model wrote last; the accepted one is this.
+    source = demonstrated.source;
+    await workspace.revision(demonstrated.source);
+    await workspace.event('draft.accepted_on_demonstration', { reason });
+    await options.onEvent?.({ phase: "DraftReplay", message: "a grounding example failed; the draft that passed the demonstration goes on to validation", payload: { reason: reason.slice(0, 600) } });
+    await acceptDraft(demonstrated);
+    return successful;
+  };
   const runDraft = async (): Promise<Record<string, unknown>> => {
     draftRuns += 1;
     draftPending = false;
@@ -944,6 +978,7 @@ export async function authorJavaScriptCapability(options: {
         // the authoring loop accepts the source; otherwise a bad module
         // is materialized and only fails much later in the pipeline.
         await evaluateResult(draft.page, options.goal, options.contract, draft.output, options.input, undefined, draft.observedText);
+        const passedDemonstration: JavaScriptAuthorResult = { source, bundle, program, draft, provenance };
         // Replay every evidence-backed grounding example before accepting
         // a draft. This is private C1 execution (no model
         // call) and catches ordering bugs such as setting quantity after
@@ -988,17 +1023,13 @@ export async function authorJavaScriptCapability(options: {
             debugContext = isolatedExample;
             await workspace.event('replay.failure', {...lastCase, observation:lastDraftObservation, error:String(error)});
             const message = error instanceof Error ? error.message : String(error);
+            demonstrated = passedDemonstration;
             throw new Error(`draft_grounding_example_failed:example_${exampleIndex + 1}:${message}`);
           } finally {
             if (debugContext !== isolatedExample) await isolatedExample.context.close().catch(() => undefined);
           }
         }
-        await workspace.write('dist/program.json', program);
-        await workspace.write('dist/contract.json', options.contract);
-        await workspace.write('dist/capability.js', bundle, true);
-        const {page: _page, ...receipt} = draft;
-        await workspace.write('reports/author-draft.json', receipt);
-        successful = { source, bundle, program, draft, provenance };
+        await acceptDraft(passedDemonstration);
         draftResult = { ok: true, outcome: draft.outcome, output: draft.output, evidence: draft.evidence, receipts: draft.receipts };
         await options.onEvent?.({ phase: "DraftReplay", message: "draft replay succeeded" });
       } catch (error) {
@@ -1171,6 +1202,8 @@ export async function authorJavaScriptCapability(options: {
           if (repeatedDraftFailures >= (locatedFailure ? 1 : 2)) {
             await workspace.event('draft.repeated_failure', { draftRuns, signature, repeats: repeatedDraftFailures });
             await options.onEvent?.({ phase: "DraftReplay", message: "same failure twice in a row; stopping repairs", payload: { code, error: failure.message.slice(0, 600), draftRuns } });
+            const accepted = await acceptDemonstrated(failure.message);
+            if (accepted) return accepted;
             throw new JavaScriptAuthorRepeatedFailureError(failure, draftRuns);
           }
           previousDraftFailureSignature = signature;
@@ -1202,6 +1235,8 @@ export async function authorJavaScriptCapability(options: {
       await options.onEvent?.({ phase: "DraftReplay", message: "run_draft failed", payload: { tool: "run_draft", code: failureCode(failure), error: failure.message.slice(0, 1_000), repairable: false } });
     }
   }
+  const accepted = await acceptDemonstrated(lastDraftFailure?.message || "authoring budget exhausted");
+  if (accepted) return accepted;
   // Report the last draft failure, never a stale ENOENT from some read_file along the way.
   throw new JavaScriptAuthorToolBudgetError(
     lastDraftFailure

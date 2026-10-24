@@ -2271,6 +2271,43 @@ const SENSITIVE_PARAMETER = /pass|secret|token|credential|auth/i;
  * It states a form; it does not restrict one. A caller writing the same day
  * another way is answered by the site, not refused here.
  */
+const addressWritingNote = (sentence: string, written: string) => `${sentence}. Write it the way the page address does, for example "${written}".`;
+const exampleWritingNote = (sentence: string, ran: string) => `${sentence}. Write it the way the example is written, for example "${ran}".`;
+
+/**
+ * The contract with each input written the way the program consumes it.
+ *
+ * The address writing is a statement about a program that opens the page by
+ * its address. When the program reaches that page by clicking through — the
+ * product card, then the product — it matches the visible name, and only the
+ * demonstrated writing works. A cart capability declared "mira-pendant" from
+ * `/product/mira-pendant`, was authored and self-tested with "Mira Pendant",
+ * and every validation case, written as the contract said, failed.
+ */
+export function contractInProgramWritings(
+  contract: CapabilityContract,
+  addressOpened: readonly string[],
+  demonstrated: Record<string, JsonValue>,
+): CapabilityContract {
+  const schema = object(contract.inputSchema);
+  const properties = object(schema.properties);
+  let changed = false;
+  const next = Object.fromEntries(Object.entries(properties).map(([name, value]) => {
+    const property = object(value);
+    const examples = Array.isArray(property.examples) ? property.examples : [];
+    const written = typeof examples[0] === "string" ? examples[0] : "";
+    const shown = demonstrated[name];
+    const ran = !SENSITIVE_PARAMETER.test(name) && typeof shown === "string" && shown.trim() ? shown.trim() : "";
+    const description = String(property.description || "");
+    const sentence = description.slice(0, Math.max(0, description.lastIndexOf(". Write it the way the page address does")));
+    const declaresAddress = Boolean(written) && description === addressWritingNote(sentence, written);
+    if (!declaresAddress || !ran || ran === written || addressOpened.includes(name)) return [name, value];
+    changed = true;
+    return [name, { ...property, description: exampleWritingNote(sentence, ran), examples: [ran] }];
+  }));
+  return changed ? { ...contract, inputSchema: { ...schema, properties: next } as JsonObject } : contract;
+}
+
 function inputSchemaFor(plan: ParameterPlan, addressInputs: Record<string, string> = {}, demonstrated: Record<string, JsonValue> = {}): JsonObject {
   return {
     type: "object",
@@ -2283,9 +2320,9 @@ function inputSchemaFor(plan: ParameterPlan, addressInputs: Record<string, strin
       // recorded language as the description it follows (prompt-locale.ts).
       const sentence = String(parameter.description || "").replace(/[。.\s]+$/u, "");
       const description = written
-        ? `${sentence}. Write it the way the page address does, for example "${written}".`
+        ? addressWritingNote(sentence, written)
         : ran
-          ? `${sentence}. Write it the way the example is written, for example "${ran}".`
+          ? exampleWritingNote(sentence, ran)
           : parameter.description;
       const example = written || ran;
       return [parameter.name, {
