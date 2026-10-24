@@ -21,7 +21,7 @@ import { promptHash, type VersionedPrompt } from "./prompt";
 import { PUBLISH_REVIEW_PROMPT } from "./prompts/publish-review";
 import { inspectCapabilityQuality, qualityReportJson, demonstrationParametersOf } from "./quality";
 import { decodeC2CaseGenerationOutput } from "./case-generation";
-import { adjudicateReviewRejection } from "./review-adjudication";
+import { adjudicateReviewRejection, classifyValidationCase, hardcodedDemonstrationInputs, REVIEW_DEMONSTRATION_VALUE_LEAKED, validationCaseFloor, type ValidationCaseResult } from "./review-adjudication";
 
 /** Review is a read-only gate over the exact persisted C3 package. */
 function assertValidatedPackageForReview(validated: ValidatedCapabilityPackage) {
@@ -77,20 +77,27 @@ function reviewFactsFor(input: {
   requiredInputs: string[];
   program: Pick<CapabilityProgram, "targetBindings">;
   validationCaseCount: number;
-  results: Array<{ caseId: string; noResultReason?: string; failureReason?: string; outputDrift?: Array<{ key: string; expected: JsonValue; actual: JsonValue }> }>;
+  results: Array<ValidationCaseResult & { outputDrift?: Array<{ key: string; expected: JsonValue; actual: JsonValue }> }>;
+  demonstrationParameters?: Record<string, JsonValue>;
 }) {
   const { requiredInputs, program } = input;
   // What each case came to, named rather than inferred from which fields are
   // absent. A replay no longer ends at the first case that did not work, so
   // the review reads passed, no-result and failed side by side and decides
   // what they mean together.
-  const caseOutcomes = input.results.map((item) => ({
-    caseId: item.caseId,
-    outcome: item.noResultReason ? "NoResult" : item.failureReason ? "Failed" : "Passed",
-    ...(item.noResultReason ? { noResultReason: item.noResultReason } : {}),
-    ...(item.failureReason ? { failureReason: item.failureReason } : {}),
-    ...(item.outputDrift?.length ? { outputDrift: item.outputDrift } : {}),
-  }));
+  // InputNotOffered is decided here, not by the reviewer: a case whose input
+  // the page does not offer tested the case data, not the program.
+  const caseOutcomes = input.results.map((item) => {
+    const classified = classifyValidationCase(item, input.demonstrationParameters);
+    return {
+      caseId: item.caseId,
+      outcome: classified.outcome,
+      ...(item.noResultReason ? { noResultReason: item.noResultReason } : {}),
+      ...(item.failureReason ? { failureReason: item.failureReason } : {}),
+      ...(classified.offered ? { siteOffers: classified.offered } : {}),
+      ...(item.outputDrift?.length ? { outputDrift: item.outputDrift } : {}),
+    };
+  });
   return {
     deterministicQualityPassed: true,
     requiredInputs,
@@ -107,6 +114,18 @@ function reviewFactsFor(input: {
       ? "该能力作用于当前页面/会话中已经确定的业务状态，不需要虚构一个用户输入。"
       : undefined,
   };
+}
+
+/**
+ * The reviewer's decision as stated, its reason kept whatever its shape. A
+ * rejection whose wording falls short of parseReviewDecision's bar still goes
+ * to adjudication: it used to fail the review outright
+ * (ai_review_rejection_evidence_required) and strand a validated candidate.
+ */
+function statedReviewDecision(value: Record<string, unknown>) {
+  if (value.decision === "Approved") return parseReviewDecision(value);
+  if (value.decision !== "Rejected") throw new Error("ai_review_decision_invalid");
+  return { decision: "Rejected", reason: String(value.reason || "").trim() || "ai review rejected without a reason." } as const;
 }
 
 export function parseReviewDecision(value: Record<string, unknown>) {
@@ -174,11 +193,19 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
   await beginVersionReview(siteId, versionId, { promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
   try {
     const requiredInputs = requiredInputsOf(capability.contract);
+    const demonstrationParameters = demonstrationParametersOf(sourceTask);
+    const results = validation.result?.validationResults || [];
+    const floor = validationCaseFloor(results, demonstrationParameters);
+    if (floor) {
+      await appendTaskEvent(siteId, validation.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: "Rejected", ...floor, deterministic: true } });
+      return reviewVersion(siteId, versionId, { decision: "Rejected", reason: floor.reason, promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
+    }
     const reviewFacts = reviewFactsFor({
       requiredInputs,
       program: version.program,
       validationCaseCount: validationCases.length,
-      results: validation.result?.validationResults || [],
+      results,
+      demonstrationParameters,
     });
     const response = await requestStructuredModelJson(config, {
       system: prompt.text,
@@ -188,12 +215,12 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
       attempts: 3,
       disableThinking: true,
       jsonSchema: prompt.outputSchema,
-      validate: (value) => { parseReviewDecision(value); },
+      validate: (value) => { statedReviewDecision(value); },
       onAttempt: (attempt) => {
         if (attempt.error) console.warn("[capability-v2] AI review JSON attempt failed", { versionId, ...attempt });
       },
     });
-    const decision = parseReviewDecision(response);
+    const decision = statedReviewDecision(response);
     // A rejection is only as good as the facts it cites. Verify the claimed
     // violations against the program before letting one block publication; a
     // rejection whose claims do not check out is overturned here.
@@ -204,10 +231,11 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
         source: sourceTask?.result?.candidateSource || "",
         requiredInputs,
         validationCaseCount: validationCases.length,
-        demonstrationParameters: demonstrationParametersOf(sourceTask),
+        demonstrationParameters,
+        validationResults: results,
       })
       : { ...decision, adjudication: undefined };
-    await appendTaskEvent(siteId, validation.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: adjudicated.decision, reason: adjudicated.reason, ...(adjudicated.adjudication ? { adjudication: adjudicated.adjudication } : {}) } });
+    await appendTaskEvent(siteId, validation.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: adjudicated.decision, reason: adjudicated.reason, ...(adjudicated.adjudication ? { adjudication: adjudicated.adjudication } : {}), ...(adjudicated.adjudication?.unsubstantiated ? { advisory: decision.reason } : {}) } });
     return reviewVersion(siteId, versionId, { decision: adjudicated.decision, reason: adjudicated.reason, promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -298,7 +326,18 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
     const source = generation?.result?.candidateSource || "";
     const requiredInputs = requiredInputsOf(candidate.contract);
     const validationCaseCount = validated.artifact.validationSuite.cases.length;
-    const reviewFacts = reviewFactsFor({ requiredInputs, program: candidate.program, validationCaseCount, results: validated.validation.cases });
+    const demonstrationParameters = demonstrationParametersOf(generation);
+    const results = validated.validation.cases;
+    // The demonstration's own case passing is the floor no review can lower
+    // or raise; the AI review below may only add a defect it can show.
+    const hardcoded = hardcodedDemonstrationInputs(source, demonstrationParameters, requiredInputs);
+    const floor = validationCaseFloor(results, demonstrationParameters)
+      || (hardcoded.length ? { reason: REVIEW_DEMONSTRATION_VALUE_LEAKED, inputs: hardcoded } : undefined);
+    if (floor) {
+      await appendTaskEvent(siteId, task.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: "Rejected", ...floor, deterministic: true } }).catch(() => undefined);
+      return { outcome: "Rejected", reason: floor.reason };
+    }
+    const reviewFacts = reviewFactsFor({ requiredInputs, program: candidate.program, validationCaseCount, results, demonstrationParameters });
     const response = await requestStructuredModelJson(config, {
       system: prompt.text,
       payload: {
@@ -317,9 +356,9 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
       attempts: 3,
       disableThinking: true,
       jsonSchema: prompt.outputSchema,
-      validate: (value) => { parseReviewDecision(value); },
+      validate: (value) => { statedReviewDecision(value); },
     });
-    const reviewed = parseReviewDecision(response);
+    const reviewed = statedReviewDecision(response);
     // A rejection is only as good as the facts it cites; see review-adjudication.ts.
     const adjudicated = reviewed.decision === "Rejected"
       ? await adjudicateReviewRejection(config, {
@@ -328,11 +367,12 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
         source,
         requiredInputs,
         validationCaseCount,
-        demonstrationParameters: demonstrationParametersOf(generation),
+        demonstrationParameters,
+        validationResults: results,
       })
       : { ...reviewed, adjudication: undefined };
     const decision = { decision: adjudicated.decision, reason: adjudicated.reason } as ReturnType<typeof parseReviewDecision>;
-    await appendTaskEvent(siteId, task.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: decision.decision, reason: decision.reason, ai: true, ...(adjudicated.adjudication ? { adjudication: adjudicated.adjudication } : {}) } }).catch(() => undefined);
+    await appendTaskEvent(siteId, task.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: decision.decision, reason: decision.reason, ai: true, ...(adjudicated.adjudication ? { adjudication: adjudicated.adjudication } : {}), ...(adjudicated.adjudication?.unsubstantiated ? { advisory: reviewed.reason } : {}) } }).catch(() => undefined);
     if (decision.decision !== "Approved") return { outcome: "Rejected", reason: decision.reason };
     return {
       outcome: "Approved",

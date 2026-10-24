@@ -939,6 +939,39 @@ test("a multi-value case is grounded by one region, and never gives two inputs t
   assert.deepEqual(derived.cases.slice(1).map((item) => item.regionId), ["region_1", "region_2"]);
 });
 
+// The demonstration chose "Home office" from "Shop by room"; the product cards
+// above it are records, not rooms. Recorded on the demo store, where the cases
+// asked the room filter for "Lune Table Lamp" and "Arden Floor Lamp".
+test("an input's other cases come from the group of choices its demonstrated value was taken from", async () => {
+  const { input } = await setup();
+  // A filter value, like the recorded roomContext; a target is a record by definition.
+  input.candidate.program.parameterRoles = [{ inputPath: "query", role: "value" }];
+  input.demonstrationParameters = { query: "Home office" };
+  const discovery = regionsFor(input, [
+    { observedValues: ["Lune Table Lamp", "Table lamp · 2700K · Dimmable", "$129"] },
+    { observedValues: ["Arden Floor Lamp", "Floor lamp · 2700K · Dimmable", "$289"] },
+    { kind: "page-summary", observedValues: ["Shop by room", "Light for every room", "Living room", "Bedroom", "Home office", "Dining", "living", "office", "ROOM", "Home"] },
+    { kind: "page-summary", observedValues: ["Lune Table Lamp", "Arden Floor Lamp", "Shop by room", "Living room", "Bedroom", "Home office", "Dining", "Shop all lighting"] },
+  ]);
+  const derived = deriveCapabilityCases(input, discovery);
+  assert.deepEqual(derived.cases.map((item) => item.input.query), ["Home office", "Living room", "Bedroom"]);
+});
+
+test("a value written in a list takes the list's other items as its cases, one input changed at a time", async () => {
+  const { input } = await setup();
+  addCategoryParameter(input, { cases: [{ input: {} }, { input: {} }] });
+  input.demonstrationParameters = { query: "Brass", category: "US plug (Type A/B)" };
+  const discovery = regionsFor(input, [
+    { observedValues: ["Lune Table Lamp", "3 finishes: Brass, Matte black, Chalk white", "Brass", "Matte", "black", "Chalk", "white", "Dimmable"] },
+  ]);
+  const derived = deriveCapabilityCases(input, discovery);
+  assert.deepEqual(derived.cases.map((item) => item.input), [
+    { query: "Brass", category: "US plug (Type A/B)" },
+    { query: "Matte black", category: "US plug (Type A/B)" },
+    { query: "Chalk white", category: "US plug (Type A/B)" },
+  ]);
+});
+
 test("a defaulted optional input is left out by one case", async () => {
   const { input } = await setup();
   addOptionalLimit(input);

@@ -1806,6 +1806,132 @@ function evidenceKey(value: JsonValue) {
     : `j:${canonicalCapabilityCaseJson(value)}`;
 }
 
+/**
+ * How closely a value is written like the demonstration's: the same number of
+ * words, each starting in the same case, at a similar length. Among the values
+ * shown beside "Home office" this puts "Living room" ahead of the "Shop by
+ * room" heading and of the URL fragments the harvest also keeps.
+ */
+function kinship(witness: string, value: string) {
+  const words = (text: string) => text.normalize("NFKC").trim().split(/\s+/u).filter(Boolean);
+  const casing = (list: string[]) => list.map((word) => (/^\p{Lu}/u.test(word) ? "U" : /^\p{Ll}/u.test(word) ? "l" : "x")).join("");
+  const left = words(witness);
+  const right = words(value);
+  let score = 0;
+  if (left.length === right.length) score += 2;
+  if (casing(left) === casing(right)) score += 2;
+  else if (casing(left)[0] === casing(right)[0]) score += 1;
+  const ratio = Math.min(witness.length, value.length) / Math.max(witness.length, value.length, 1);
+  if (ratio >= 0.5) score += 1;
+  // A group's heading or blurb runs longer than its choices.
+  if (right.length > left.length) score -= 1;
+  return score;
+}
+
+/**
+ * The demonstration taught one value for each input; the values that stand
+ * beside it on the page are the other choices of the same kind. "Home office"
+ * sat in "Shop by room" with Living room, Bedroom and Dining, and the cases
+ * that took product names from the cards above it instead asked the room
+ * filter for a lamp. Per input, the other items of a list the value is
+ * written in, else the other values of the tightest group of choices that
+ * shows it, closest in writing first; none when neither exists.
+ */
+function demonstrationSiblings(
+  witness: JsonValue,
+  regions: CapabilityCaseDiscoveryRegion[],
+  pools: Map<string, Map<string, JsonValue[]>>,
+  path: string,
+  admits: (value: JsonValue) => boolean,
+) {
+  const shown = typeof witness === "string" ? witness.normalize("NFKC").trim().toLocaleLowerCase() : "";
+  // The tightest group that shows the value is the one it was chosen from: a
+  // page summary also shows it, beside every other text on the page.
+  const holding = regions
+    .filter((region) => regionValues(region).some((value) => evidenceValueEqual(value, witness)))
+    .sort((left, right) => regionValues(left).length - regionValues(right).length);
+  // Closest of all: the other items of a list the value is written in, as in
+  // "3 finishes: Brass, Matte black, Chalk white". The harvest splits that
+  // text at spaces, which gives "Matte" and "black" but not "Matte black".
+  if (shown) {
+    for (const region of holding) {
+      const listed = listSiblings(region, shown, admits);
+      if (listed.length) return listed;
+    }
+  }
+  // Otherwise the tightest group, when it is a group of choices: a business
+  // region is one record (a product card), whose other texts describe that
+  // record, and the next record is the next case, as derived below.
+  const tightest = holding[0];
+  if (!tightest || tightest.kind === "business-region") return [];
+  return siblingsIn(tightest, witness, shown, pools, path).filter(admits);
+}
+
+const LIST_SEPARATOR = /\s*(?:[,;，；、|•·/]|\s-\s)\s*/u;
+
+function listSiblings(
+  region: CapabilityCaseDiscoveryRegion,
+  shown: string,
+  admits: (value: JsonValue) => boolean,
+) {
+  const found: string[] = [];
+  const keys = new Set([`s:${shown}`]);
+  for (const text of regionValues(region)) {
+    if (typeof text !== "string") continue;
+    // A label before a colon names the list; the items follow it.
+    for (const part of text.split(/[:：]/u)) {
+      const items = part.split(LIST_SEPARATOR).map((item) => item.trim()).filter(Boolean);
+      if (items.length < 2) continue;
+      if (!items.some((item) => item.normalize("NFKC").toLocaleLowerCase() === shown)) continue;
+      for (const item of items) {
+        const key = evidenceKey(item);
+        if (keys.has(key)) continue;
+        keys.add(key);
+        if (admits(item)) found.push(item);
+      }
+    }
+  }
+  return found;
+}
+
+function siblingsIn(
+  region: CapabilityCaseDiscoveryRegion,
+  witness: JsonValue,
+  shown: string,
+  pools: Map<string, Map<string, JsonValue[]>>,
+  path: string,
+) {
+  const keys = new Set([evidenceKey(witness)]);
+  const found: JsonValue[] = [];
+  for (const value of pools.get(region.regionId)?.get(path) || []) {
+    const key = evidenceKey(value);
+    if (keys.has(key)) continue;
+    keys.add(key);
+    // A fragment of the demonstration ("office") or a text that quotes it is
+    // the same choice, not another one.
+    if (typeof value === "string" && shown) {
+      const written = value.normalize("NFKC").trim().toLocaleLowerCase();
+      if (shown.includes(written) || written.includes(shown)) continue;
+    }
+    found.push(value);
+  }
+  // The harvest also keeps each word of a longer text ("ROOM" of "Shop by
+  // room"); a word that only occurs inside another value is not a choice.
+  const wordsOfLonger = new Set(
+    found.flatMap((value) => typeof value === "string" && /\s/u.test(value.trim())
+      ? value.normalize("NFKC").toLocaleLowerCase().split(/\s+/u)
+      : []),
+  );
+  if (shown) for (const word of shown.split(/\s+/u)) wordsOfLonger.add(word);
+  const choices = found.filter((value) => typeof value !== "string" || /\s/u.test(value.trim())
+    || !wordsOfLonger.has(value.normalize("NFKC").trim().toLocaleLowerCase()));
+  if (typeof witness !== "string") return choices;
+  return choices
+    .map((value, order) => ({ value, order, score: typeof value === "string" ? kinship(witness, value) : 0 }))
+    .sort((left, right) => right.score - left.score || left.order - right.order)
+    .map(({ value }) => value);
+}
+
 function regionRank(kind: CapabilityCaseDiscoveryRegion["kind"]) {
   return kind === "business-region" ? 0 : kind === "control-group" ? 1 : 2;
 }
@@ -1885,26 +2011,29 @@ export function deriveCapabilityCases(
     declared.map((path) => [path, new Set<string>()]),
   );
   const pools = new Map<string, Map<string, JsonValue[]>>();
+  const admitsValue = (path: string, value: JsonValue) => {
+    if (value === null || typeof value === "object") return false;
+    const schema = record(properties[path]) as JsonObject;
+    if (!fieldAccepts(path, schema, value)) return false;
+    const writing = declaredValueShape(schema, witness[path]);
+    return !writing || (typeof value === "string" && writtenValueShape(value) === writing);
+  };
   for (const region of discovery.regions) {
     const perField = new Map<string, JsonValue[]>();
     for (const path of declared) {
       if (SENSITIVE_KEY.test(path)) continue;
       if (roles.get(path) === "target" && region.kind !== "business-region")
         continue;
-      const schema = record(properties[path]) as JsonObject;
       // The writing this input takes, as the contract states it. A page is
       // full of text that is not a value of this kind: on 热搜时光机 the words
       // 「热搜」 and 「日期」 passed a `{type:"string"}` date and the cases
       // built from them all asked for the same day. Narrowing the pool is not
       // a rule about dates and refuses no capability — an input whose page
       // offers nothing else keeps the demonstration as its one case.
-      const writing = declaredValueShape(schema, witness[path]);
       const seen = new Set<string>();
       const values: JsonValue[] = [];
       for (const value of regionValues(region)) {
-        if (value === null || typeof value === "object") continue;
-        if (!fieldAccepts(path, schema, value)) continue;
-        if (writing && (typeof value !== "string" || writtenValueShape(value) !== writing)) continue;
+        if (!admitsValue(path, value)) continue;
         const key = evidenceKey(value);
         if (seen.has(key)) continue;
         seen.add(key);
@@ -1966,8 +2095,49 @@ export function deriveCapabilityCases(
     } catch { /* a value the schema refuses is not a case */ }
   }
 
+  // When the demonstration supplied every required input and the page showed
+  // where some of them came from, the cases are the demonstration and, one
+  // input at a time, its neighbours there; the other inputs keep what the
+  // demonstration used, so each case differs from a known-good run in one
+  // place.
+  const siblings = new Map<string, JsonValue[]>();
+  if ([...required].every((path) => Object.hasOwn(demonstrationCase, path))) {
+    for (const path of Object.keys(demonstrationCase)) {
+      // Another input's demonstrated value is that input's, not a choice for this one.
+      const others = Object.entries(demonstrationCase).filter(([other]) => other !== path).map(([, value]) => value);
+      const found = demonstrationSiblings(demonstrationCase[path], orderedRegions, pools, path,
+        (value) => admitsValue(path, value) && !others.some((other) => evidenceValueEqual(other, value)));
+      if (found.length) siblings.set(path, found);
+    }
+  }
+  const siblingCases: CapabilityDerivedCase[] = [];
+  if (siblings.size) {
+    const alternativesFor = (input: JsonObject) => Object.fromEntries(
+      Object.keys(input).map((path) => [path, [demonstrationCase[path], ...(siblings.get(path) || [])].slice(0, CASE_ALTERNATIVES_MAX_VALUES)]),
+    );
+    siblingCases.push({ input: cloneJson(demonstrationCase) as JsonObject, expected: {}, regionId: discovery.regions[0]?.regionId || "", alternatives: alternativesFor(demonstrationCase) });
+    const varied = [...siblings.keys()];
+    for (let round = 0; siblingCases.length < CAPABILITY_CASE_DERIVATION_MAX_CASES; round += 1) {
+      let added = false;
+      for (const path of varied) {
+        const value = siblings.get(path)![round];
+        if (value === undefined) continue;
+        const input = { ...cloneJson(demonstrationCase), [path]: cloneJson(value) } as JsonObject;
+        siblingCases.push({
+          input,
+          expected: {},
+          regionId: orderedRegions.find((region) => regionValues(region).some((item) => evidenceValueEqual(item, value)))?.regionId || "",
+          alternatives: alternativesFor(input),
+        });
+        added = true;
+        if (siblingCases.length >= CAPABILITY_CASE_DERIVATION_MAX_CASES) break;
+      }
+      if (!added) break;
+    }
+  }
+
   const candidates: CapabilityDerivedCase[] = [];
-  for (let round = 0; round < CAPABILITY_CASE_DERIVATION_MAX_CASES; round += 1) {
+  for (let round = 0; !siblingCases.length && round < CAPABILITY_CASE_DERIVATION_MAX_CASES; round += 1) {
     for (const region of orderedRegions) {
       const perField = pools.get(region.regionId)!;
       const summary = region.kind === "page-summary";
@@ -2015,9 +2185,9 @@ export function deriveCapabilityCases(
     }
   }
 
-  const taken: CapabilityDerivedCase[] = [];
-  const seen = new Set<string>();
-  for (const item of candidates) {
+  const taken: CapabilityDerivedCase[] = [...siblingCases];
+  const seen = new Set<string>(siblingCases.map((item) => canonicalCapabilityCaseJson(item.input)));
+  for (const item of siblingCases.length ? [] : candidates) {
     const key = canonicalCapabilityCaseJson(item.input);
     if (seen.has(key)) continue;
     seen.add(key);
