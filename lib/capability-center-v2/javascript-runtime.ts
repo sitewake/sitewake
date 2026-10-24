@@ -386,7 +386,11 @@ export class ProvenanceResolver {
   private readonly visiting = new Set<string>();
 
   private readonly masked: string;
-  private readonly nodeStep = /^(?:\?\.|\.)\s*(?:querySelector|querySelectorAll|getElementById|getElementsByClassName|getElementsByTagName|closest|parentElement|parentNode|firstElementChild|lastElementChild|nextElementSibling|previousElementSibling|children|childNodes|item|at|filter|find|slice|map)\b|^\[/u;
+  // A select's `options`/`selectedOptions` and a table's `rows`/`cells` are
+  // elements too: the filter a capability just set is read back from
+  // `select.options[select.selectedIndex]`, and refusing it sent authoring
+  // round four drafts of a working shop filter.
+  private readonly nodeStep = /^(?:\?\.|\.)\s*(?:querySelector|querySelectorAll|getElementById|getElementsByClassName|getElementsByTagName|closest|parentElement|parentNode|firstElementChild|lastElementChild|nextElementSibling|previousElementSibling|children|childNodes|options|selectedOptions|labels|rows|cells|item|at|filter|find|slice|map)\b|^\[/u;
 
   constructor(private readonly source: string) {
     this.masked = maskLiterals(source);
@@ -454,6 +458,12 @@ export class ProvenanceResolver {
   /** An expression that evaluates to an element or a list of elements. */
   isNodes(raw: string): boolean {
     const expression = unwrap(raw.replace(/^await\s+/u, ""));
+    // `el.closest("label") || document.querySelector(\`label[for=…]\`)` is an
+    // element whichever side supplies it.
+    for (const operator of ["??", "||"]) {
+      const operands = splitTopLevel(expression, operator);
+      if (operands.length > 1) return operands.every((operand) => this.isNodes(operand));
+    }
     if (/^\[\s*\.\.\.[^]+\]$/u.test(expression)) return this.isNodes(expression.replace(/^\[\s*\.\.\./u, "").replace(/\]$/u, ""));
     if (/^Array\s*\.\s*from\s*\(/u.test(expression)) return this.isNodes(balancedParens(expression, expression.indexOf("("))?.inner || "");
     // A locator call is an element only when nothing but element steps follow
@@ -697,7 +707,11 @@ export class ProvenanceResolver {
 
   private resolveChain(head: string, rest: string, depth: number): Provenance {
     // Element property reads.
-    const property = /^\s*(?:\?\.|\.)\s*(textContent|innerText|innerHTML|href|src|value|title|alt|id|className|checked|selected|tagName|dataset(?:\s*(?:\.|\[)[^.\[\]]*\]?)?|getAttribute\s*\([^)]*\)|length|childElementCount)\b/u;
+    // `text` and `label` are what an <option> shows; `selectedIndex` is which one is chosen.
+    // The word boundary belongs to the names only: after `getAttribute("x")`
+    // or `dataset["x"]` there is none at the end of an expression, so a bare
+    // `el.getAttribute("aria-label")` was never recognised as a page read.
+    const property = /^\s*(?:\?\.|\.)\s*(?:(?:textContent|innerText|innerHTML|text|label|href|src|value|valueAsNumber|selectedIndex|title|alt|id|className|checked|selected|tagName|length|childElementCount)\b|getAttribute\s*\([^)]*\)|dataset\s*\[[^\]]*\]|dataset\s*\.\s*[A-Za-z_$][\w$]*|dataset\b)/u;
     const full = head + rest;
     const blobRoot = this.isBlobText(full) || /^dialog/iu.test(head) && /^\s*(?:\?\.|\.)\s*(?:innerText|textContent)\b/u.test(rest);
     if (blobRoot) return this.afterText(full, depth, "blob");

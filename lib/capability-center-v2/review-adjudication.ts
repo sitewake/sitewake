@@ -2,7 +2,7 @@ import type { ModelConfig } from "../model-config";
 import type { CapabilityProgram, JsonValue } from "./model";
 import { requestStructuredModelJson } from "./model-json";
 import { REVIEW_CLAIM_EXTRACTION_PROMPT } from "./prompts/review-claim-extraction";
-import { containsLiteral, stripJavaScriptComments } from "./quality";
+import { sourceHardcodesValue, stripJavaScriptComments } from "./quality";
 import { sourceConsumesInputPath } from "./javascript-runtime";
 
 /**
@@ -127,10 +127,8 @@ export function hardcodedDemonstrationInputs(
   requiredInputs: string[],
 ) {
   if (!source.trim()) return [];
-  const executable = stripJavaScriptComments(source);
   return Object.entries(demonstrationParameters || {})
-    .filter(([key, raw]) => requiredInputs.includes(key) && typeof raw === "string" && raw.trim().length >= 2
-      && containsLiteral(executable, raw.trim()))
+    .filter(([key, raw]) => requiredInputs.includes(key) && typeof raw === "string" && sourceHardcodesValue(source, raw))
     .map(([key]) => key);
 }
 
@@ -306,7 +304,7 @@ export function verifyReviewClaims(claims: ReviewClaim[], context: ReviewClaimCo
         if (!name) return false;
         const demonstrated = context.demonstrationParameters?.[name];
         if (typeof demonstrated !== "string" || demonstrated.trim().length < 2) return false;
-        return containsLiteral(stripJavaScriptComments(context.source), demonstrated.trim());
+        return sourceHardcodesValue(context.source, demonstrated);
       }
       case "insufficient_validation_cases": {
         // Two cases are required only to prove that different values of a
