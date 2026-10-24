@@ -28,6 +28,7 @@ export type WidgetLocale = "zh" | "en";
 export const WIDGET_LOCALES = ["zh", "en"] as const satisfies readonly WidgetLocale[];
 
 export const WIDGET_LOCALE_KEY = "sitewake:locale";
+const CONVERSATION_LOCALE_KEY = "sitewake:conversation-locale";
 
 // A visitor whose browser asks for neither of the two languages gets this one.
 const DEFAULT_LOCALE: WidgetLocale = "en";
@@ -75,7 +76,56 @@ export function savedWidgetLocale(): WidgetLocale | undefined {
  * the browser, and a visitor who picks a language in the widget still wins over both.
  */
 export function resolveReplyLocale(siteLanguage?: WidgetLocale): WidgetLocale {
-  return savedWidgetLocale() || (siteLanguage && isWidgetLocale(siteLanguage) ? siteLanguage : undefined) || resolveWidgetLocale();
+  return savedWidgetLocale() || conversationLocale() || (siteLanguage && isWidgetLocale(siteLanguage) ? siteLanguage : undefined) || resolveWidgetLocale();
+}
+
+/**
+ * The language a request is written in, when it plainly has one.
+ *
+ * Any run of Han characters makes it Chinese, because a Chinese request often
+ * names an English product; otherwise enough Latin letters make it English.
+ * Digits, punctuation and a stray letter decide nothing.
+ */
+export function requestLocale(text: string): WidgetLocale | undefined {
+  if (/\p{Script=Han}{2}/u.test(text)) return "zh";
+  if ((text.match(/[A-Za-z]/g) || []).length >= 4) return "en";
+  return undefined;
+}
+
+/** The language of the visitor's latest request in this tab's conversation. */
+export function conversationLocale(): WidgetLocale | undefined {
+  try {
+    const value = sessionStorage.getItem(CONVERSATION_LOCALE_KEY);
+    return isWidgetLocale(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Follow the language the visitor just wrote in, for this conversation.
+ *
+ * Someone who types English expects to read English back: the status lines,
+ * the failure notice and the answer, not a browser-locale shell around an
+ * English reply. Kept per tab (it must survive the page changes a task makes)
+ * and never saved as their choice; an explicit pick in the menu still wins.
+ */
+export function followRequestLocale(text: string): WidgetLocale | undefined {
+  const locale = requestLocale(text);
+  try {
+    if (locale) sessionStorage.setItem(CONVERSATION_LOCALE_KEY, locale);
+  } catch {
+    // Storage refused: the browser language stays in charge.
+  }
+  return locale;
+}
+
+export function forgetConversationLocale() {
+  try {
+    sessionStorage.removeItem(CONVERSATION_LOCALE_KEY);
+  } catch {
+    // Nothing was stored.
+  }
 }
 
 export function resolveWidgetLocale(): WidgetLocale {
@@ -85,6 +135,8 @@ export function resolveWidgetLocale(): WidgetLocale {
   } catch {
     // Private mode, blocked storage, sandboxed iframe: fall through to the browser.
   }
+  const followed = conversationLocale();
+  if (followed) return followed;
   const navigatorLanguages = typeof navigator === "undefined"
     ? []
     : navigator.languages?.length ? navigator.languages : [navigator.language];

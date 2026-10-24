@@ -270,6 +270,7 @@ async function installRoutes(context, plane) {
         return route.fulfill(json(await plane.model(body)));
       }
       if (path === "/api/site-agents/runtime-lab/episodes") { plane.episodes += 1; plane.episodeBodies.push(body); return route.fulfill(json({ release: plane.release, directive: { type: "none" } }, 202)); }
+      if (path === "/api/site-agents/runtime-lab/content") return route.fulfill(json({ pages: plane.contentPages || [], totalPagesWithHits: (plane.contentPages || []).length }));
       if (path.includes("/sessions")) {
         if (request.method() === "PATCH") plane.sessionPatches.push(body);
         return route.fulfill(json({ session: { id: body.id || "session", siteAgentId: "runtime-lab", status: body.status || "running", checkpoint: body.checkpoint } }));
@@ -570,6 +571,60 @@ labTest("informational-effect-words-stay-main-agent: how-to wording never mutate
       assert.equal(plane.episodes, 0, `${goal} must not create an adaptive episode`);
     });
   }
+});
+
+labTest("search-goal-answered-from-indexed-text: a find-and-compare request is settled by an answer from the site's page text", { timeout: 30_000 }, async () => {
+  await withLab("search-goal-answered-from-indexed-text", async ({ page, plane }) => {
+    const goal = "Find me an eye-friendly lamp for my desk. Compare suitable options using the product details on this site and explain your recommendation. Only search and show information. Do not add anything to the cart, place an order, or make a payment.";
+    plane.contentPages = [{ url: `${SITE_ORIGIN}/product/kesta`, matchedKeywords: ["reading lamp"], context: [{ text: "Kesta Reading Lamp: CRI 95, flicker-free, warm dimming." }], score: 3 }];
+    plane.mainPlan = [
+      { choices: [{ finish_reason: "tool_calls", message: { content: "", tool_calls: [{ id: "lamp_1", type: "function", function: { name: "search_site_knowledge", arguments: JSON.stringify({ keywords: ["desk lamp", "reading lamp", "eye care"] }) } }] } }] },
+      { choices: [{ message: { content: "I recommend the Kesta Reading Lamp: CRI 95 and flicker-free." } }] },
+    ];
+    await page.goto(`${SITE_ORIGIN}/`);
+    await page.waitForFunction(() => Boolean(window.SiteWake));
+    await page.evaluate((taskGoal) => window.SiteWake.run(taskGoal), goal).catch(() => undefined);
+    const run = await waitForTerminal(plane);
+    assert.equal(run.status, "completed");
+    assert.equal(plane.modelCalls.length, 2, "the answer from page text must not be sent back for a page receipt");
+    assert.equal(plane.checkpointWrites, 0, "a search answered from page text must not start PageAgent");
+    assert.match(run.conversation.at(-1)?.content || "", /Kesta Reading Lamp/);
+  });
+});
+
+labTest("search-goal-page-detour-declined-once: with page text back, the first reach for the live page is answered with the way back", { timeout: 30_000 }, async () => {
+  await withLab("search-goal-page-detour-declined-once", async ({ page, plane }) => {
+    plane.contentPages = [{ url: `${SITE_ORIGIN}/product/sela`, matchedKeywords: ["task lamp"], context: [{ text: "Sela Task Lamp: 4000K, 600 lumens, CRI 90+." }], score: 3 }];
+    plane.mainPlan = [
+      { choices: [{ finish_reason: "tool_calls", message: { content: "", tool_calls: [{ id: "lamp_1", type: "function", function: { name: "search_site_knowledge", arguments: JSON.stringify({ keywords: ["desk lamp"] }) } }] } }] },
+      { choices: [{ finish_reason: "tool_calls", message: { content: "", tool_calls: [{ id: "lamp_2", type: "function", function: { name: "operate_page", arguments: JSON.stringify({ objective: "Open the Kesta lamp page", effect: "read", entities: {}, completionCriteria: ["specs read"] }) } }] } }] },
+      { choices: [{ message: { content: "The Sela Task Lamp is the brightest option; the Kesta page is not indexed." } }] },
+    ];
+    await page.goto(`${SITE_ORIGIN}/`);
+    await page.waitForFunction(() => Boolean(window.SiteWake));
+    await page.evaluate(() => window.SiteWake.run("Find me a desk lamp and compare the options")).catch(() => undefined);
+    const run = await waitForTerminal(plane);
+    assert.equal(run.status, "completed");
+    assert.equal(plane.checkpointWrites, 0, "the declined detour must not start PageAgent");
+    const declined = plane.modelCalls[2]?.messages?.find?.((message) => message.role === "tool" && message.name === "operate_page");
+    assert.match(String(declined?.content || ""), /answer_from_indexed_text/);
+    assert.match(run.conversation.at(-1)?.content || "", /Sela Task Lamp/);
+  });
+});
+
+labTest("search-goal-without-page-text-takes-the-page-tool: replies without a receipt hand the task to the page tool instead of exhausting the turns", { timeout: 30_000 }, async () => {
+  await withLab("search-goal-without-page-text-takes-the-page-tool", async ({ page, plane }) => {
+    plane.mainPlan = [
+      { choices: [{ message: { content: "Here are some lamps." } }] },
+      { choices: [{ message: { content: "Here are some lamps." } }] },
+    ];
+    await page.goto(`${SITE_ORIGIN}/`);
+    await page.waitForFunction(() => Boolean(window.SiteWake));
+    await page.evaluate(() => window.SiteWake.run("Find me a desk lamp")).catch(() => undefined);
+    const run = await waitForTerminal(plane);
+    assert.notEqual(run.outcome?.code, "main_agent_routing_exhausted");
+    assert.ok(plane.checkpointWrites > 0, "the second reply without a receipt must start the page tool");
+  });
 });
 
 labTest("main-agent-turn-limit-failure: exhaustion exposes a safe reason and preserves the raw terminal evidence", { timeout: 30_000 }, async () => {
