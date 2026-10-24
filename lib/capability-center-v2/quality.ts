@@ -142,6 +142,38 @@ export function containsLiteral(value: unknown, needle: string): boolean {
   return false;
 }
 
+/**
+ * Whether the source uses `value` as data: a string literal that is the value,
+ * or one that holds it as a phrase of its own ("Finish: Brass", "type=Brass").
+ * Text the value is fused into is not that. A dropdown's accessible name runs
+ * its options together ("AnyTable lampFloor lampPendant"), and a locator
+ * copied from the recording carries it; the substring check read "Floor lamp"
+ * there as hardcoded, and authoring spent its whole budget "repairing" a
+ * program that read productType from its input all along.
+ */
+export function sourceHardcodesValue(source: string, value: string) {
+  const needle = value.trim().toLocaleLowerCase();
+  if (needle.length < 2) return false;
+  const executable = stripJavaScriptComments(source);
+  const literal = /(["'`])((?:\\.|(?!\1)[\s\S])*)\1/gu;
+  const word = /[\p{L}\p{N}]/u;
+  let match: RegExpExecArray | null;
+  while ((match = literal.exec(executable))) {
+    const text = match[2].toLocaleLowerCase();
+    let at = text.indexOf(needle);
+    while (at >= 0) {
+      const before = text[at - 1];
+      const after = text[at + needle.length];
+      // A value that itself starts or ends in punctuation is bounded by it.
+      const openStart = !word.test(needle[0]) || before === undefined || !word.test(before);
+      const openEnd = !word.test(needle[needle.length - 1]) || after === undefined || !word.test(after);
+      if (openStart && openEnd) return true;
+      at = text.indexOf(needle, at + 1);
+    }
+  }
+  return false;
+}
+
 // Demonstration examples frequently appear in model-authored explanatory
 // comments. Comments are not executable capability semantics, so they must
 // not make an otherwise parameterized module fail the leakage gate. Keep
@@ -317,10 +349,11 @@ export function inspectCapabilityQuality(
   // page" means — so a program that never navigates cannot serve it.
   const addresses = [options.entryUrl, program?.entry?.mode === "Navigate" ? program.entry.url : undefined];
   if (!stages.some((stage) => stage.navigation && stage.navigation !== "none")) {
-    for (const key of pageSelectingInputs(addresses, options.demonstrationParameters, requiredInputs, record(contract.inputSchema))) {
+    // Optional inputs too: a defaulted one still chooses the page.
+    for (const key of pageSelectingInputs(addresses, options.demonstrationParameters, Object.keys(record(record(contract.inputSchema).properties)), record(contract.inputSchema))) {
       issues.push({
         code: "page_selecting_input_not_navigated",
-        message: `Required input '${key}' selects the page — its demonstration value is part of the entry address — but no Stage navigates, so the program can only read the page it was demonstrated on.`,
+        message: `Input '${key}' selects the page — its demonstration value is part of the entry address — but no Stage navigates, so the program can only read the page it was demonstrated on.`,
         path: "program.stages",
       });
     }
@@ -361,7 +394,7 @@ export function inspectCapabilityQuality(
   for (const [key, raw] of Object.entries(options.demonstrationParameters || {})) {
     if (!requiredInputs.includes(key) || typeof raw !== "string" || raw.trim().length < 2) continue;
     const demonstration = raw.trim();
-    if (options.source && containsLiteral(stripJavaScriptComments(options.source), demonstration)) issues.push({ code: "demonstration_value_leaked", message: `Demonstration value for '${key}' was baked into executable JavaScript source.`, path: `source.${key}` });
+    if (options.source && sourceHardcodesValue(options.source, demonstration)) issues.push({ code: "demonstration_value_leaked", message: `Demonstration value for '${key}' was baked into executable JavaScript source.`, path: `source.${key}` });
     if (containsLiteral({ stages, intent: contract.intent, preconditions: contract.preconditions, successConditions: contract.successConditions }, demonstration)) issues.push({ code: "demonstration_value_leaked", message: `Demonstration value for '${key}' was baked into Program/Contract semantics.`, path: `program.${key}` });
     // Contract inputAliases are an explicit, parameterized site-language
     // mapping (for example 用户词“衣服” -> 站点词“Clothes”). They are data

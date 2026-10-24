@@ -47,5 +47,20 @@
     "requiredInputs": [
       "keyword"
     ]
+  },
+  "shop-filter-01-selected-option.js": {
+    "expected": "ok",
+    "about": "a shop filter that reads back the option its select shows (select.options[select.selectedIndex].text); refused as untraceable four times in a row until authoring ran out of budget",
+    "requiredInputs": [
+      "productType"
+    ]
+  },
+  "cart-variant-01-label-and-badge.js": {
+    "expected": "ok",
+    "about": "adds a chosen variant to the cart; reads the checked option's label via closest('label') || querySelector(label[for]) and the cart count from the cart link's aria-label — both refused as untraceable",
+    "requiredInputs": [
+      "productName",
+      "variantOption"
+    ]
   }
 }

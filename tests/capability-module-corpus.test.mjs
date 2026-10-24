@@ -88,6 +88,10 @@ test("a reading no specific rule has seen is accepted when it comes from an elem
     // by a loop over candidates. Refused as untraceable, it burned a whole
     // authoring budget on a module that was reading the page correctly.
     ["a null placeholder filled by a search loop", `let titleEl=null;const dialog=document.querySelector('[role="dialog"]');for(const el of dialog.querySelectorAll("h1,h2,h3")){const t=(el.innerText||"").trim();if(t&&t!=="Close"){titleEl=el;break}}if(!titleEl){return{outcome:"NoResult",reason:"no title"}}const title=(titleEl.textContent||titleEl.innerText||"").trim();return{outcome:"Success",output:{title}}`],
+    // The option a <select> shows is read back to report the filter applied.
+    ["a select's chosen option", `const select=document.querySelector("#type");const chosen=select?.options[select?.selectedIndex];return{outcome:"Success",output:{type:chosen?.text||"",picked:select.selectedOptions[0].label}}`],
+    ["an element from either of two lookups", `const radio=document.querySelector("input:checked");const labelEl=radio.closest("label")||document.querySelector("label[for=x]");return{outcome:"Success",output:{variant:labelEl.textContent.trim()}}`],
+    ["a bare attribute read, and a number parsed from it", `const link=document.querySelector("a.cart");const name=link.getAttribute("aria-label")||link.textContent;const m=name.match(/(\\d+)/);return{outcome:"Success",output:{label:link.getAttribute("aria-label"),count:m?parseInt(m[1],10):0,id:link.dataset["id"]}}`],
     ["a list built from elements", `const items=[...document.querySelectorAll("li.result")].map(li=>({title:li.querySelector("h3").textContent.trim(),href:li.querySelector("a").href}));return{outcome:"Success",output:{items}}`],
     ["a capture on the element's own text", `const cell=document.querySelector(".heat");const m=cell.innerText.match(/^(.+?)万$/);return{outcome:"Success",output:{heat:m?m[1]:null}}`],
     ["the page address and the input echoed", `return{outcome:"Success",output:{url:location.href,query:input.keyword}}`],

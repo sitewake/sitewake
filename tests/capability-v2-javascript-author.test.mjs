@@ -724,6 +724,24 @@ test("every program-path quality rule comes back to the model inside the loop, w
   }
 });
 
+// Recorded on the demo store: a room filter given a default was optional, got
+// no opening stage, and the program read whatever page it started on — it
+// passed authoring on /shop?room=dining and timed out on every validation case.
+test("an optional input that is part of the demonstrated address also gets an opening stage", () => {
+  const contract = {
+    inputSchema: { type: "object", properties: { room: { type: "string", examples: ["dining"], default: "dining" } }, required: [], additionalProperties: false },
+    outputSchema: { type: "object", properties: { totalCount: { type: "number" } }, required: ["totalCount"], additionalProperties: false },
+    preconditions: [],
+    successConditions: [{ type: "outputExists", path: "totalCount" }],
+  };
+  const trace = { schemaVersion: "1.0", entry: { mode: "CurrentPage" }, defaults: { timeoutMs: 1000, retryCount: 0 }, steps: [], result: {} };
+  const manifest = author.authoringManifest(trace, contract, { startUrl: "https://shop.example/shop?room=dining", demonstrationParameters: { room: "dining" } });
+  assert.deepEqual(manifest.stages.map((stage) => [stage.id, stage.navigation, stage.io.reads.input]), [
+    ["stage_open", "required", ["room"]],
+    ["stage_verify", "none", ["room"]],
+  ]);
+});
+
 test("an input that is part of the demonstrated address gets an opening stage in the manifest, seeded with that address as a template", () => {
   // The stage list is fixed by the exploration trace, so a model told to add
   // a navigating stage cannot. When the demonstration value is part of the
