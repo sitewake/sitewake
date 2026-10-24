@@ -192,6 +192,8 @@ function uniquePaths(values: string[]) {
  */
 export const ACTED_ON_STATE_PATH = "targets.__actedOn";
 const ACTED_ON_ACTIONS = ["click", "check", "press"];
+// Elements that change the chosen object rather than name it.
+const CONTROL_SELECTOR = "button, input, select, textarea, label, option, [role=button], [role=radio], [role=checkbox], [role=option], [role=switch], [role=tab], [role=menuitemradio], [role=spinbutton]";
 
 function stageIO(readsInput: string[], readsState: string[] = [], writesState: string[] = [], writesOutput: string[] = []): CapabilityStageIO {
   return {
@@ -509,6 +511,7 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
   const declared = Object.keys(record(record(contract.inputSchema).properties));
   const outputs = Object.keys(record(record(contract.outputSchema).properties));
   const io = (stage: CapabilityStageManifest) => JSON.stringify(stage.io);
+  const firstActedOnStep = trace.steps.find((step) => ACTED_ON_ACTIONS.includes(step.action));
   const stages = manifest.stages.map((stage, index) => {
     const header = `{ id: ${JSON.stringify(stage.id)}, io: ${io(stage)}, navigation: ${JSON.stringify(stage.navigation)},`;
     if (stage.id === "stage_resolve_target" || stage.id === "stage_select_target") {
@@ -589,6 +592,14 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
       } }`;
     }
     if (step.action === "click" || step.action === "check" || step.action === "press") {
+      // Only the first acted-on stage names the object unconditionally. A later
+      // control (a variant, a quantity, "Add to cart") acts on the object that
+      // is already chosen; letting it overwrite the identity made stage_verify
+      // compare the product heading with "Add to cart — $219" and reject its
+      // own correct result.
+      const namesObject = step === firstActedOnStep
+        ? "true"
+        : `!element.closest(${JSON.stringify(CONTROL_SELECTOR)})`;
       return `${header}
       async run({ input, waitForTarget, waitUntil, settle }) {
         void input;
@@ -596,7 +607,9 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
         // Read the identity of the object being acted on before the page changes;
         // stage_verify checks the result against this instead of re-deriving it
         // from whatever wording the result page happens to carry.
-        const actedOn = (element.innerText || element.textContent || "").replace(/\s+/gu, " ").trim().slice(0, 240);
+        const actedOn = (element.innerText || element.textContent || "").replace(/\\s+/gu, " ").trim().slice(0, 240);
+        // A link or card names the object; a control keeps the identity an earlier stage recorded.
+        const namesObject = ${namesObject};
         const hrefBefore = location.href; const textBefore = document.body.innerText;
         element.click();
         // A click either navigates (the host resumes on the new document) or changes the page in place.
@@ -604,7 +617,7 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
         // The document changes the moment a drawer or panel mounts; the next
         // stage must not read it while it is still painting.
         await settle();
-        return { outcome: "Continue", state: { targets: { __actedOn: actedOn } } };
+        return namesObject ? { outcome: "Continue", state: { targets: { __actedOn: actedOn } } } : { outcome: "Continue" };
       } }`;
     }
     if (step.action === "navigate") {

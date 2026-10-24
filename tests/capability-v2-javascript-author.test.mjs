@@ -83,6 +83,45 @@ test("the click stage records what it acted on, and the verification stage may r
   assert.equal(noClick.stages.find((stage) => stage.id === "stage_verify").io.reads.state.includes("targets.__actedOn"), false);
 });
 
+test("the acted-on identity is the record a link or card opened, not the control clicked after it", async () => {
+  // Recorded on a shop: open the listing, open a product card, choose a
+  // variant, add to cart. The last click used to overwrite the identity with
+  // "Add to cart — $219", and the program rejected its own correct result.
+  const elements = {
+    "#nav-shop": { innerText: "Shop", closest: () => null, click() {} },
+    "#card": { innerText: "Mira Pendant\nSmoke  glass · Dimmable $219", closest: () => null, click() {} },
+    "#variant": { innerText: "Opal glass", closest: (selector) => (selector.includes("label") ? {} : null), click() {} },
+    "#add": { innerText: "Add to cart — $219", closest: (selector) => (selector.includes("button") ? {} : null), click() {} },
+  };
+  const trace = { steps: Object.keys(elements).map((css, index) => ({ id: `click_${index}`, action: "click", target: { strategies: [{ kind: "css", value: css }] } })) };
+  const contract = {
+    inputSchema: { type: "object", properties: {} },
+    outputSchema: { type: "object", properties: { targetTitle: { type: "string" } }, required: ["targetTitle"] },
+    successConditions: [{ type: "outputExists", path: "targetTitle" }],
+  };
+  const seed = author.seedCapabilitySource(author.authoringManifest(trace, contract), trace, contract);
+  const { capability } = await import(`data:text/javascript;base64,${Buffer.from(seed).toString("base64")}`);
+  const previous = { location: globalThis.location, document: globalThis.document };
+  globalThis.location = { href: "https://shop.example/" };
+  globalThis.document = { body: { innerText: "" } };
+  try {
+    const state = {};
+    for (const stage of capability.stages.filter((item) => item.id !== "stage_verify")) {
+      const result = await stage.run({
+        input: {},
+        waitForTarget: async (locator) => elements[locator.strategies[0].value],
+        waitUntil: async () => true,
+        settle: async () => undefined,
+      });
+      if (result.state) Object.assign(state, result.state);
+    }
+    assert.equal(state.targets.__actedOn, "Mira Pendant Smoke glass · Dimmable $219", "the card names the object; whitespace collapses and every letter s survives");
+  } finally {
+    globalThis.location = previous.location;
+    globalThis.document = previous.document;
+  }
+});
+
 const originalModelEnvironment = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
