@@ -1310,6 +1310,7 @@ export const en: ConsoleCopy = {
           "run_draft failed": "Problem found — repairing with the failure evidence",
           "tool call failed": "Problem found — repairing with the failure evidence",
           "same failure twice in a row; stopping repairs": "The same failure twice in a row — repairs stopped",
+          "a grounding example failed; the draft that passed the demonstration goes on to validation": "A test example failed; the version that passed the original demonstration goes on to validation",
           "authoring budget exhausted; replaying the unreplayed draft once": "Repair budget spent — replaying the last draft once",
           "quality gate passed": "Quality checks passed",
           "quality gate rejected the candidate": "Quality checks rejected this candidate",
