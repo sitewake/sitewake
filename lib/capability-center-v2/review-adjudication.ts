@@ -11,9 +11,15 @@ import { sourceConsumesInputPath } from "./javascript-runtime";
  * declaration the way a lamp capability was rejected on the claim that stages
  * "declare empty io.reads" — stage_8 in that program declared plugType and
  * consumed it. This module extracts the rejection's checkable claims and
- * verifies each one against the program and its source before the rejection
- * is allowed to block publication. A rejection whose claims do not check out
- * is overturned; the deterministic quality gate and Validation stay the
+ * verifies each one against the program, its source and its validation
+ * results before the rejection is allowed to block publication.
+ *
+ * The demonstration already proved the capability works; the review exists to
+ * catch a defect that proof could hide (a hardcoded value, an input never
+ * consumed, a case that fails on an input the site offers). So a rejection
+ * blocks only when one of its claims is shown true. One that names nothing
+ * the checker can confirm is kept as an advisory note and the candidate
+ * publishes on the deterministic gate and Validation, which stay the
  * authority either way.
  */
 
@@ -21,20 +27,116 @@ import { sourceConsumesInputPath } from "./javascript-runtime";
 export const REVIEW_REJECTION_UNSUBSTANTIATED =
   "ai review approved; the rejection's claims do not match the program";
 
+/** Deterministic rejections, ahead of any model; details travel beside them on the event. */
+export const REVIEW_DEMONSTRATION_CASE_FAILED = "review rejected: the demonstrated input's case did not pass";
+export const REVIEW_NO_CASE_PASSED = "review rejected: no validation case passed";
+export const REVIEW_DEMONSTRATION_VALUE_LEAKED = "review rejected: a demonstrated value is written into the source";
+
 export type ReviewClaimKind =
   | "empty_reads_consumes_input"
   | "required_input_not_consumed"
   | "undeclared_input_read"
   | "demonstration_value_hardcoded"
   | "insufficient_validation_cases"
+  | "validation_case_failed"
   | "other";
 
 export type ReviewClaim = {
   kind: ReviewClaimKind;
   stage?: string;
   input?: string;
+  caseId?: string;
   detail?: string;
 };
+
+/**
+ * What one validation case came to. InputNotOffered: the program asked the
+ * page for the case's own input value and the page does not offer it (a
+ * dropdown without that option). The case's data was wrong for this site, not
+ * the program; a demonstrated value is never classified so, since the
+ * demonstration showed the site offering it.
+ */
+export type ValidationCaseOutcome = "Passed" | "NoResult" | "InputNotOffered" | "Failed";
+
+export type ValidationCaseResult = {
+  caseId: string;
+  resolvedInput?: Record<string, JsonValue>;
+  noResultReason?: string;
+  failureReason?: string;
+};
+
+const OPTION_MISSING = /capability_stage_select_option_missing:[^:]*:([^;\n]*);\s*options:\s*([^\n]*)/u;
+
+function sameText(left: JsonValue | undefined, right: string) {
+  return typeof left === "string" && left.normalize("NFKC").trim().toLocaleLowerCase() === right.normalize("NFKC").trim().toLocaleLowerCase();
+}
+
+export function classifyValidationCase(
+  result: ValidationCaseResult,
+  demonstrationParameters?: Record<string, JsonValue>,
+): { outcome: ValidationCaseOutcome; offered?: string[] } {
+  if (result.noResultReason) return { outcome: "NoResult" };
+  if (!result.failureReason) return { outcome: "Passed" };
+  const missing = OPTION_MISSING.exec(result.failureReason);
+  if (missing) {
+    const wanted = missing[1].trim();
+    const paths = Object.entries(result.resolvedInput || {}).filter(([, value]) => sameText(value, wanted)).map(([path]) => path);
+    const demonstrated = paths.some((path) => sameText(demonstrationParameters?.[path], wanted));
+    if (paths.length && !demonstrated) {
+      return { outcome: "InputNotOffered", offered: missing[2].split("|").map((item) => item.trim()).filter(Boolean) };
+    }
+  }
+  return { outcome: "Failed" };
+}
+
+/**
+ * The deterministic floor under any review: the demonstration's own case
+ * passed, or, without one among the cases, some case did. Undefined when it
+ * holds; otherwise the reason and the case it is about.
+ */
+export function validationCaseFloor(
+  results: ValidationCaseResult[],
+  demonstrationParameters?: Record<string, JsonValue>,
+): { reason: string; caseId?: string; failure?: string } | undefined {
+  const demonstration = demonstrationParameters && Object.keys(demonstrationParameters).length
+    ? results.find((item) => Object.entries(demonstrationParameters).every(([path, value]) => {
+      const resolved = item.resolvedInput?.[path];
+      return typeof value === "string" ? sameText(resolved, value) : JSON.stringify(resolved) === JSON.stringify(value);
+    }))
+    : undefined;
+  if (demonstration) {
+    const outcome = classifyValidationCase(demonstration, demonstrationParameters).outcome;
+    return outcome === "Passed" || outcome === "NoResult"
+      ? undefined
+      : { reason: REVIEW_DEMONSTRATION_CASE_FAILED, caseId: demonstration.caseId, failure: firstLine(demonstration.failureReason) };
+  }
+  return results.some((item) => classifyValidationCase(item, demonstrationParameters).outcome === "Passed")
+    ? undefined
+    : { reason: REVIEW_NO_CASE_PASSED };
+}
+
+/**
+ * Required inputs whose demonstrated value is written into the executable
+ * source: the quality gate's demonstration_value_leaked rule, applied where
+ * the 2.0 pipeline has the source. C2 runs that gate without it, so before
+ * this the reviewer was the only check, and a model is not a check.
+ */
+export function hardcodedDemonstrationInputs(
+  source: string,
+  demonstrationParameters: Record<string, JsonValue> | undefined,
+  requiredInputs: string[],
+) {
+  if (!source.trim()) return [];
+  const executable = stripJavaScriptComments(source);
+  return Object.entries(demonstrationParameters || {})
+    .filter(([key, raw]) => requiredInputs.includes(key) && typeof raw === "string" && raw.trim().length >= 2
+      && containsLiteral(executable, raw.trim()))
+    .map(([key]) => key);
+}
+
+function firstLine(text?: string) {
+  return String(text || "").split("\n")[0].slice(0, 300);
+}
 
 export type ReviewAdjudication = {
   /** Claims the extraction step produced. */
@@ -53,6 +155,7 @@ const CLAIM_KINDS = new Set<string>([
   "undeclared_input_read",
   "demonstration_value_hardcoded",
   "insufficient_validation_cases",
+  "validation_case_failed",
   "other",
 ]);
 
@@ -64,6 +167,7 @@ function normalizeClaimKind(value: string): ReviewClaimKind {
   if (/^un(?:de)?declared[ _-]?input[ _-]?read$/iu.test(value)) return "undeclared_input_read";
   if (/^demonstration.?value.?hardcoded$/iu.test(value)) return "demonstration_value_hardcoded";
   if (/^insufficient.?validation.?cases?$/iu.test(value)) return "insufficient_validation_cases";
+  if (/^validation.?case.?failed$/iu.test(value)) return "validation_case_failed";
   return "other";
 }
 
@@ -76,7 +180,8 @@ export function parseReviewClaims(value: Record<string, unknown>): ReviewClaim[]
     const stage = typeof claim.stage === "string" && claim.stage.trim() ? claim.stage.trim() : undefined;
     const input = typeof claim.input === "string" && claim.input.trim() ? claim.input.trim() : undefined;
     const detail = typeof claim.detail === "string" && claim.detail.trim() ? claim.detail.trim() : undefined;
-    return [{ kind, ...(stage ? { stage } : {}), ...(input ? { input } : {}), ...(detail ? { detail } : {}) }];
+    const caseId = typeof claim.caseId === "string" && claim.caseId.trim() ? claim.caseId.trim() : undefined;
+    return [{ kind, ...(stage ? { stage } : {}), ...(input ? { input } : {}), ...(caseId ? { caseId } : {}), ...(detail ? { detail } : {}) }];
   }).slice(0, 8);
 }
 
@@ -159,13 +264,13 @@ export type ReviewClaimContext = {
   /** How many independent validation cases the suite replayed. */
   validationCaseCount?: number;
   demonstrationParameters?: Record<string, JsonValue>;
+  validationResults?: ValidationCaseResult[];
 };
 
 /**
- * The subset of claims whose named facts hold against the program. A claim
- * that cannot be checked (unknown stage, missing input, "other") does not
- * verify; letting the rejection stand is the safe direction for anything the
- * checker cannot disprove.
+ * The subset of claims whose named facts hold against the program, its source
+ * and its validation results. A claim that cannot be checked (unknown stage,
+ * missing input, "other") does not verify.
  */
 export function verifyReviewClaims(claims: ReviewClaim[], context: ReviewClaimContext): ReviewClaim[] {
   const stagesById = new Map(context.program.stages.map((stage) => [stage.id, stage]));
@@ -212,6 +317,13 @@ export function verifyReviewClaims(claims: ReviewClaim[], context: ReviewClaimCo
         const targets = context.program.parameterRoles.some((role) => role.role === "target");
         return targets && (context.validationCaseCount ?? 0) < 2;
       }
+      case "validation_case_failed": {
+        // True only of a case that failed on an input the site offers; a case
+        // whose input the site does not have is bad test data.
+        const failed = (context.validationResults || [])
+          .filter((item) => classifyValidationCase(item, context.demonstrationParameters).outcome === "Failed");
+        return claim.caseId ? failed.some((item) => item.caseId === claim.caseId) : failed.length > 0;
+      }
       default:
         return false;
     }
@@ -219,13 +331,14 @@ export function verifyReviewClaims(claims: ReviewClaim[], context: ReviewClaimCo
 }
 
 /**
- * Whether the extracted claims overturn the rejection. Only when every claim
- * is of a kind the checker can test and each one was disproven: a rejection
- * with no extracted claims, or one that also says something the checker
- * cannot test ("the output names the wrong product"), keeps its rejection.
+ * Whether the rejection fails to block: none of its claims was shown true.
+ * A claim the checker cannot test ("the output names the wrong product",
+ * "it should handle invalid input gracefully") is an opinion about a program
+ * the demonstration and Validation have already run; it is recorded, and it
+ * does not undo that evidence.
  */
-export function rejectionIsUnsubstantiated(claims: ReviewClaim[], verified: ReviewClaim[]) {
-  return claims.length > 0 && verified.length === 0 && claims.every((claim) => claim.kind !== "other");
+export function rejectionIsUnsubstantiated(_claims: ReviewClaim[], verified: ReviewClaim[]) {
+  return verified.length === 0;
 }
 
 export type AdjudicatedReviewDecision = {
@@ -249,6 +362,7 @@ export async function adjudicateReviewRejection(
     requiredInputs: string[];
     validationCaseCount?: number;
     demonstrationParameters?: Record<string, JsonValue>;
+    validationResults?: ValidationCaseResult[];
     timeoutMs?: number;
   },
 ): Promise<AdjudicatedReviewDecision> {
@@ -265,6 +379,7 @@ export async function adjudicateReviewRejection(
         reason: input.reason,
         requiredInputs: input.requiredInputs,
         validationCaseCount: input.validationCaseCount,
+        caseIds: (input.validationResults || []).map((item) => item.caseId),
         stages: input.program.stages.map((stage) => ({
           id: stage.id,
           readsInput: stage.io?.reads?.input || [],
@@ -284,6 +399,7 @@ export async function adjudicateReviewRejection(
       requiredInputs: input.requiredInputs,
       validationCaseCount: input.validationCaseCount,
       demonstrationParameters: input.demonstrationParameters,
+      validationResults: input.validationResults,
     });
     if (!rejectionIsUnsubstantiated(claims, verified)) {
       return { ...keepRejection, adjudication: { claims: claims.length, verified: verified.length, unsubstantiated: false } };

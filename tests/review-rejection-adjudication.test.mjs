@@ -32,7 +32,12 @@ const {
   stageInputReads,
   verifyReviewClaims,
   rejectionIsUnsubstantiated,
+  classifyValidationCase,
+  validationCaseFloor,
+  hardcodedDemonstrationInputs,
   REVIEW_REJECTION_UNSUBSTANTIATED,
+  REVIEW_DEMONSTRATION_CASE_FAILED,
+  REVIEW_NO_CASE_PASSED,
 } = await import(BUNDLE_PATH);
 rmSync(BUNDLE_PATH);
 
@@ -64,6 +69,7 @@ test("parseReviewClaims keeps valid claims and normalizes a mistyped kind", () =
       { kind: "empty_reads_consumes_input", stage: "stage_8", input: "plugType" },
       { kind: "undedeclared_input_read", stage: "stage_3" },
       { kind: "unknown_kind", detail: "vague worry" },
+      { kind: "validation_case_failed", caseId: "case_2" },
       "not-an-object",
     ],
   });
@@ -71,6 +77,7 @@ test("parseReviewClaims keeps valid claims and normalizes a mistyped kind", () =
     { kind: "empty_reads_consumes_input", stage: "stage_8", input: "plugType" },
     { kind: "undeclared_input_read", stage: "stage_3" },
     { kind: "other", detail: "vague worry" },
+    { kind: "validation_case_failed", caseId: "case_2" },
   ]);
 });
 
@@ -178,7 +185,7 @@ test("a claim about a stage the program does not have does not verify", () => {
   assert.deepEqual(verified, []);
 });
 
-test("an unverifiable kind never overturns a rejection", () => {
+test("an unverifiable kind never verifies", () => {
   const verified = verifyReviewClaims(
     [{ kind: "other", detail: "the success condition feels loose" }],
     lampCtx,
@@ -195,19 +202,66 @@ test("one validation case does not verify a case-count claim when nothing is tar
   assert.deepEqual(verifyReviewClaims(claim, { ...lampCtx, program: targetBound, validationCaseCount: 2 }), []);
 });
 
-test("a rejection is overturned only when every claim is checkable and disproven", () => {
+test("a rejection blocks only when one of its claims is shown true", () => {
   const io = { kind: "empty_reads_consumes_input", stage: "stage_8", input: "plugType" };
   const other = { kind: "other", detail: "the output names the wrong product" };
   assert.equal(rejectionIsUnsubstantiated([io], []), true);
-  // Something the checker cannot test keeps the rejection, even beside disproven claims.
-  assert.equal(rejectionIsUnsubstantiated([io, other], []), false);
-  assert.equal(rejectionIsUnsubstantiated([other], []), false);
-  // Nothing extracted is nothing disproven.
-  assert.equal(rejectionIsUnsubstantiated([], []), false);
-  assert.equal(rejectionIsUnsubstantiated([io], [io]), false);
+  // An opinion the checker cannot test does not undo the demonstration and Validation.
+  assert.equal(rejectionIsUnsubstantiated([io, other], []), true);
+  assert.equal(rejectionIsUnsubstantiated([other], []), true);
+  assert.equal(rejectionIsUnsubstantiated([], []), true);
+  // One true claim is enough to block.
+  assert.equal(rejectionIsUnsubstantiated([io, other], [io]), false);
+});
+
+// Recorded on the demo store: the cases asked the room filter for product names.
+const OPTION_MISSING_FAILURE = "page.evaluate: Error: capability_stage_select_option_missing:stage_3:Lune Table Lamp; options: Any | Living room | Bedroom | Home office | Dining\n    at eval (eval at evaluate (:303:30), <anonymous>:1:5092)";
+const roomResults = [
+  { caseId: "case_1", resolvedInput: { roomContext: "Home office" } },
+  { caseId: "case_2", resolvedInput: { roomContext: "Lune Table Lamp" }, failureReason: OPTION_MISSING_FAILURE },
+];
+
+test("a case whose input the page does not offer is bad test data, not a failed program", () => {
+  const demonstration = { roomContext: "Home office" };
+  assert.deepEqual(classifyValidationCase(roomResults[1], demonstration), {
+    outcome: "InputNotOffered",
+    offered: ["Any", "Living room", "Bedroom", "Home office", "Dining"],
+  });
+  assert.equal(classifyValidationCase(roomResults[0], demonstration).outcome, "Passed");
+  // The demonstrated value missing is a real failure: the site offered it when it was taught.
+  assert.equal(classifyValidationCase(roomResults[1], { roomContext: "Lune Table Lamp" }).outcome, "Failed");
+  assert.equal(classifyValidationCase({ caseId: "x", resolvedInput: { roomContext: "Bedroom" }, failureReason: "TypeError: cannot read properties of null" }, demonstration).outcome, "Failed");
+});
+
+test("the demonstration's own case must pass; no review can lower that floor", () => {
+  const demonstration = { roomContext: "Home office" };
+  assert.equal(validationCaseFloor(roomResults, demonstration), undefined);
+  const broken = [{ ...roomResults[0], failureReason: "capability_stage_fill_target_missing:stage_2" }, roomResults[1]];
+  assert.deepEqual(validationCaseFloor(broken, demonstration), {
+    reason: REVIEW_DEMONSTRATION_CASE_FAILED, caseId: "case_1", failure: "capability_stage_fill_target_missing:stage_2",
+  });
+  assert.deepEqual(validationCaseFloor([roomResults[1]], undefined), { reason: REVIEW_NO_CASE_PASSED });
+});
+
+test("a claim that a case failed verifies only for a case that failed on an input the site offers", () => {
+  const ctx = { ...lampCtx, demonstrationParameters: { roomContext: "Home office" }, validationResults: roomResults };
+  assert.deepEqual(verifyReviewClaims([{ kind: "validation_case_failed", caseId: "case_2" }], ctx), []);
+  const genuine = [...roomResults, { caseId: "case_3", resolvedInput: { roomContext: "Bedroom" }, failureReason: "capability_stage_output_invalid:stage_9" }];
+  assert.equal(verifyReviewClaims([{ kind: "validation_case_failed", caseId: "case_3" }], { ...ctx, validationResults: genuine }).length, 1);
+  assert.equal(verifyReviewClaims([{ kind: "validation_case_failed" }], { ...ctx, validationResults: genuine }).length, 1);
 });
 
 test("the canonical unsubstantiated receipt names the overturn, not the program", () => {
   assert.match(REVIEW_REJECTION_UNSUBSTANTIATED, /^ai review approved/);
   assert.match(REVIEW_REJECTION_UNSUBSTANTIATED, /claims do not match the program$/);
+});
+
+test("a demonstrated value written into executable source is found without a model; one in a comment is not", () => {
+  const leaked = lampSource.replace('fill(element, input["plugType"]);', 'fill(element, "US plug (Type A/B)");');
+  assert.notEqual(leaked, lampSource);
+  const demonstration = { finish: "Brass", plugType: "US plug (Type A/B)" };
+  assert.deepEqual(hardcodedDemonstrationInputs(lampSource, demonstration, ["finish", "plugType"]), []);
+  assert.deepEqual(hardcodedDemonstrationInputs(leaked, demonstration, ["finish", "plugType"]), ["plugType"]);
+  const commented = lampSource.replace('fill(element, input["plugType"]);', '// demo used "US plug (Type A/B)"\n        fill(element, input["plugType"]);');
+  assert.deepEqual(hardcodedDemonstrationInputs(commented, demonstration, ["finish", "plugType"]), []);
 });
