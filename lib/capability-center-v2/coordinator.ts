@@ -15,7 +15,7 @@ import {
   supersedeGeneration,
 } from "../../db/capability-center-v2-store";
 import { getModelConfig } from "../model-config";
-import type { CapabilityPublishResult, CapabilityTask, JsonObject, JsonValue, ValidatedCapabilityPackage } from "./model";
+import type { CapabilityContract, CapabilityProgram, CapabilityPublishResult, CapabilityTask, JsonObject, JsonValue, ValidatedCapabilityPackage } from "./model";
 import { requestStructuredModelJson } from "./model-json";
 import { promptHash, type VersionedPrompt } from "./prompt";
 import { PUBLISH_REVIEW_PROMPT } from "./prompts/publish-review";
@@ -58,6 +58,55 @@ function reviewPrompt(value: JsonObject | undefined): VersionedPrompt {
     ? `管理员附加审核要求（只补充审核标准，不得改变输出协议）：\n${prompt.trim()}`
     : "";
   return { ...PUBLISH_REVIEW_PROMPT, text: [PUBLISH_REVIEW_PROMPT.text, adminCriteria].filter(Boolean).join("\n\n") };
+}
+
+function requiredInputsOf(contract: CapabilityContract) {
+  return Array.isArray(contract.inputSchema.required)
+    ? contract.inputSchema.required.filter((value): value is string => typeof value === "string")
+    : [];
+}
+
+/**
+ * The facts the review prompt's rules are stated over. Both review paths send
+ * them: the prompt's exceptions (one case suffices when nothing is target
+ * bound; a parameterless action needs no invented input) cannot be applied by
+ * a reviewer that was never told the target bindings or the case count, and
+ * one that was not told rejected a healthy candidate for having one case.
+ */
+function reviewFactsFor(input: {
+  requiredInputs: string[];
+  program: Pick<CapabilityProgram, "targetBindings">;
+  validationCaseCount: number;
+  results: Array<{ caseId: string; noResultReason?: string; failureReason?: string; outputDrift?: Array<{ key: string; expected: JsonValue; actual: JsonValue }> }>;
+}) {
+  const { requiredInputs, program } = input;
+  // What each case came to, named rather than inferred from which fields are
+  // absent. A replay no longer ends at the first case that did not work, so
+  // the review reads passed, no-result and failed side by side and decides
+  // what they mean together.
+  const caseOutcomes = input.results.map((item) => ({
+    caseId: item.caseId,
+    outcome: item.noResultReason ? "NoResult" : item.failureReason ? "Failed" : "Passed",
+    ...(item.noResultReason ? { noResultReason: item.noResultReason } : {}),
+    ...(item.failureReason ? { failureReason: item.failureReason } : {}),
+    ...(item.outputDrift?.length ? { outputDrift: item.outputDrift } : {}),
+  }));
+  return {
+    deterministicQualityPassed: true,
+    requiredInputs,
+    targetBindings: program.targetBindings.map((binding) => binding.inputPath),
+    validationCaseCount: input.validationCaseCount,
+    caseOutcomes,
+    passedCaseCount: caseOutcomes.filter((item) => item.outcome === "Passed").length,
+    parameterizationMode: requiredInputs.length > 0
+      ? "parameterized"
+      : program.targetBindings.length > 0
+        ? "target-bound"
+        : "intrinsically-parameterless",
+    parameterlessScope: requiredInputs.length === 0 && program.targetBindings.length === 0
+      ? "该能力作用于当前页面/会话中已经确定的业务状态，不需要虚构一个用户输入。"
+      : undefined,
+  };
 }
 
 export function parseReviewDecision(value: Record<string, unknown>) {
@@ -124,36 +173,13 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
   await appendTaskEvent(siteId, validation.id, { eventType: "PhaseChanged", payload: { phase: "Reviewing", message: "review started" } });
   await beginVersionReview(siteId, versionId, { promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
   try {
-    const requiredInputs = Array.isArray(capability.contract.inputSchema.required)
-      ? capability.contract.inputSchema.required.filter((value): value is string => typeof value === "string")
-      : [];
-    // What each case came to, named rather than inferred from which fields are
-    // absent. A replay no longer ends at the first case that did not work, so
-    // the review reads passed, no-result and failed side by side and decides
-    // what they mean together.
-    const caseOutcomes = (validation.result?.validationResults || []).map((item) => ({
-      caseId: item.caseId,
-      outcome: item.noResultReason ? "NoResult" : item.failureReason ? "Failed" : "Passed",
-      ...(item.noResultReason ? { noResultReason: item.noResultReason } : {}),
-      ...(item.failureReason ? { failureReason: item.failureReason } : {}),
-      ...(item.outputDrift?.length ? { outputDrift: item.outputDrift } : {}),
-    }));
-    const reviewFacts = {
-      deterministicQualityPassed: true,
+    const requiredInputs = requiredInputsOf(capability.contract);
+    const reviewFacts = reviewFactsFor({
       requiredInputs,
-      targetBindings: version.program.targetBindings.map((binding) => binding.inputPath),
+      program: version.program,
       validationCaseCount: validationCases.length,
-      caseOutcomes,
-      passedCaseCount: caseOutcomes.filter((item) => item.outcome === "Passed").length,
-      parameterizationMode: requiredInputs.length > 0
-        ? "parameterized"
-        : version.program.targetBindings.length > 0
-          ? "target-bound"
-          : "intrinsically-parameterless",
-      parameterlessScope: requiredInputs.length === 0 && version.program.targetBindings.length === 0
-        ? "该能力作用于当前页面/会话中已经确定的业务状态，不需要虚构一个用户输入。"
-        : undefined,
-    };
+      results: validation.result?.validationResults || [],
+    });
     const response = await requestStructuredModelJson(config, {
       system: prompt.text,
       payload: { capability: { name: capability.name, description: capability.description, contract: capability.contract }, version: { id: version.id, program: version.program, source: sourceTask?.result?.candidateSource || "" }, validation: { taskId: validation.id, cases: validationCases, result: validation.result }, reviewFacts, deterministicQuality: qualityReportJson(quality) },
@@ -177,6 +203,7 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
         program: version.program,
         source: sourceTask?.result?.candidateSource || "",
         requiredInputs,
+        validationCaseCount: validationCases.length,
         demonstrationParameters: demonstrationParametersOf(sourceTask),
       })
       : { ...decision, adjudication: undefined };
@@ -262,16 +289,27 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
   }
   try {
     await appendTaskEvent(siteId, task.id, { eventType: "PhaseChanged", payload: { phase: "Reviewing", message: "ai review started" } }).catch(() => undefined);
+    const { candidate } = validated.artifact;
+    // The reviewer is asked whether the code consumes its inputs, so it reads
+    // the code. This path used to send the placeholder "candidate-artifact"
+    // as the source, and the reviewer guessed: it rejected a healthy program
+    // for stages that "likely consume" inputs it had never been shown.
+    const generation = await getTask(siteId, validated.artifact.generationTaskId, true);
+    const source = generation?.result?.candidateSource || "";
+    const requiredInputs = requiredInputsOf(candidate.contract);
+    const validationCaseCount = validated.artifact.validationSuite.cases.length;
+    const reviewFacts = reviewFactsFor({ requiredInputs, program: candidate.program, validationCaseCount, results: validated.validation.cases });
     const response = await requestStructuredModelJson(config, {
       system: prompt.text,
       payload: {
         capability: {
-          name: validated.artifact.candidate.name,
-          description: validated.artifact.candidate.description,
-          contract: validated.artifact.candidate.contract,
+          name: candidate.name,
+          description: candidate.description,
+          contract: candidate.contract,
         },
-        version: { id: validated.artifact.candidateId, program: validated.artifact.candidate.program, source: "candidate-artifact" },
+        version: { id: validated.artifact.candidateId, program: candidate.program, source },
         validation: validated.validation,
+        reviewFacts,
         deterministicQuality: { valid: true, issues: [] },
       },
       timeoutMs: Number(process.env.CAPABILITY_V2_MODEL_TIMEOUT_MS || 180_000),
@@ -281,8 +319,20 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
       jsonSchema: prompt.outputSchema,
       validate: (value) => { parseReviewDecision(value); },
     });
-    const decision = parseReviewDecision(response);
-    await appendTaskEvent(siteId, task.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: decision.decision, reason: decision.reason, ai: true } }).catch(() => undefined);
+    const reviewed = parseReviewDecision(response);
+    // A rejection is only as good as the facts it cites; see review-adjudication.ts.
+    const adjudicated = reviewed.decision === "Rejected"
+      ? await adjudicateReviewRejection(config, {
+        reason: reviewed.reason,
+        program: candidate.program,
+        source,
+        requiredInputs,
+        validationCaseCount,
+        demonstrationParameters: demonstrationParametersOf(generation),
+      })
+      : { ...reviewed, adjudication: undefined };
+    const decision = { decision: adjudicated.decision, reason: adjudicated.reason } as ReturnType<typeof parseReviewDecision>;
+    await appendTaskEvent(siteId, task.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: decision.decision, reason: decision.reason, ai: true, ...(adjudicated.adjudication ? { adjudication: adjudicated.adjudication } : {}) } }).catch(() => undefined);
     if (decision.decision !== "Approved") return { outcome: "Rejected", reason: decision.reason };
     return {
       outcome: "Approved",
