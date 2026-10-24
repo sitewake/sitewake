@@ -76,7 +76,7 @@ import { startDomReplayRecorder } from "./user-agent-recorder";
 import { capabilityInputPathValue, capabilityTemplateInputPaths, capabilityUrlTemplateMatches, matchCapabilityIntentTemplate, renderCapabilityInputTemplate } from "../lib/capability-center-v2/input-template";
 import { assertCapabilityInput, assertCapabilityOutput } from "../lib/site-knowledge/capability-output";
 import { classifyGoal, isNavigationIntentGoal, transientNavigationToolCapability } from "../lib/site-knowledge/navigation-tools";
-import { executionCompletionCriteria, executionRequirementForGoal } from "../lib/site-knowledge/execution-requirement";
+import { executionCompletionCriteria, executionRequirementForGoal, knowledgeCanAnswerGoal } from "../lib/site-knowledge/execution-requirement";
 import { inferExecutionTargetEntity } from "../lib/site-knowledge/execution-evidence";
 import { sha256HexText } from "../lib/site-knowledge/sha256";
 import { capabilityGoalConflicts, choosePlan, exactCapabilityForGoal, rankPublishedCapabilities, searchKnowledgeIndex } from "../lib/site-knowledge/planner";
@@ -3660,6 +3660,12 @@ export class AgentPort {
       || scene.urlTemplates.some((template) => /(?:^|[/{-])\d*[-/]*[a-z0-9][a-z0-9-]*\.html(?:$|[?#/{])/i.test(template.pathnamePattern));
   }
 
+  /** The compiled tool name carries a fixed Chinese verb; the reader sees the destination in their own language. */
+  private navigationToolLabel(tool: { name: string; targetSceneId?: string }) {
+    const scene = tool.targetSceneId ? this.release.scenes.find((item) => item.id === tool.targetSceneId) : undefined;
+    return scene?.name ? this.say.enterScene(scene.name) : tool.name;
+  }
+
   private searchKnowledge(keywords: string[]) {
     // Delegate to the single authoritative knowledge index — readiness-ranked, with
     // PATH templates + required params + directEntry — so the main agent, adaptive
@@ -3669,7 +3675,7 @@ export class AgentPort {
     return [
       ...index.scenes.map((scene) => ({ kind: "scene", id: scene.id, name: scene.name, description: scene.description, urlTemplate: scene.urlTemplate, requiredParams: scene.requiredParams, directEntry: scene.directEntry, status: scene.evidenceStatus })),
       ...index.operations.map((operation) => ({ kind: "operation", id: operation.id, name: operation.name, description: operation.description, status: operation.status })),
-      ...(this.release.navigationTools || []).map((tool) => ({ kind: "navigation-tool", id: tool.id, name: tool.name, description: `${tool.description}；只负责到达页面`, status: tool.status })), // i18n-exempt: tool description read by the model, not the reader
+      ...(this.release.navigationTools || []).map((tool) => ({ kind: "navigation-tool", id: tool.id, name: this.navigationToolLabel(tool), description: `${tool.description}；只负责到达页面`, status: tool.status })), // i18n-exempt: tool description read by the model, not the reader
     ];
   }
 
@@ -3737,7 +3743,7 @@ export class AgentPort {
    * immediately; tool-call fragments are losslessly reassembled before the
    * Agent decides what to execute.
    */
-  private async completeMainAgentTurn(messages: Array<Record<string, unknown>>, tools: Array<Record<string, unknown>>, streamAnswer = true) {
+  private async completeMainAgentTurn(messages: Array<Record<string, unknown>>, tools: Array<Record<string, unknown>>, streamAnswer = true, toolChoice: "auto" | "none" = "auto") {
     let lastError: unknown;
     // The task's own controller, captured now: "stop" must cut this request and
     // its stream at once, not let the reply keep arriving (and the widget keep
@@ -3751,7 +3757,7 @@ export class AgentPort {
         nextRuntimeModelRequestAt = Date.now() + RUNTIME_MODEL_MIN_INTERVAL_MS;
         const response = await fetchWithTimeout(endpointUrl(this.options.endpoint, `/api/site-agents/${encodeURIComponent(this.options.siteAgentId)}/model/v2/chat/completions`), {
           method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${this.requireAgentRunToken()}`, "x-sitewake-ai-stage": "runtime-router" },
-          body: JSON.stringify({ messages, tools, tool_choice: "auto", parallel_tool_calls: false, temperature: 0.2, stream: true, stream_options: { include_usage: true } }),
+          body: JSON.stringify({ messages, tools, tool_choice: toolChoice, parallel_tool_calls: false, temperature: 0.2, stream: true, stream_options: { include_usage: true } }),
           signal,
         }, RUNTIME_MODEL_TIMEOUT_MS, runtimeModelFirstByteTimeoutMs(attempt));
         if (!response.ok) {
@@ -4664,6 +4670,7 @@ export class AgentPort {
         `调用 search_site_knowledge 时，${KEYWORD_EXPANSION_GUIDANCE} 正文足够时直接回答并引用 URL，正文不足可 read_page；需要动态信息时使用页面工具。`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
         ...(catalogUnavailable ? ["能力目录预取失败，不代表没有已发布能力。可调用 search_capabilities 重试，或选择其他适用工具。"] : []), // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
         ...(pageAgentRuntimeV2 ? [`执行权限上限：${JSON.stringify(executionRequirement)}。工具不能扩大用户授权。`] : []), // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+        ...(knowledgeCanAnswerGoal(session.goal) ? ["这是查找、比较类目标：search_site_knowledge/read_page 返回的索引正文就是可用的结果来源。正文足以覆盖用户要求时，直接据此回答并引用 URL，不必再操作页面；个别商品缺少某项细节不妨碍作答，在回答中说明缺少什么即可。"] : []), // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
         `当前页面：${typeof location !== "undefined" ? location.href : "unknown"}。这只是位置，不是任务完成证据。`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
         `网站摘要：${this.release.profile?.name || this.options.siteAgentId}；${this.release.profile?.description || ""}`, // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
         // Last, deliberately: as a standalone closing sentence this lands, where the
@@ -4689,6 +4696,13 @@ export class AgentPort {
 
     let lastSceneRoutingFailure: string | undefined;
     let entryOnly = Boolean(continuation);
+    // A pure search is settled by an answer drawn from indexed page text once
+    // that text has actually come back; see knowledgeCanAnswerGoal.
+    const knowledgeMaySettle = knowledgeCanAnswerGoal(session.goal);
+    let indexedTextReturned = false;
+    let unreceiptedReplies = 0;
+    let pageDetourDeclined = false;
+    const MAIN_AGENT_TURNS = 8;
     const continueWithPageAgent = async (rawBrief: Record<string, JsonValue> = {}) => {
       const brief = pageAgentRuntimeV2 ? pageExecutionBrief({
         goal: session.goal,
@@ -4717,19 +4731,29 @@ export class AgentPort {
       return this.runAdaptive(session, "adaptive", 0, undefined, true, brief, undefined, undefined, runtimeModeOverride);
     };
 
-    for (let turn = continuation?.nextTurn || 0; turn < 8; turn += 1) {
+    for (let turn = continuation?.nextTurn || 0; turn < MAIN_AGENT_TURNS; turn += 1) {
       this.assertTaskAlive(session.id);
       // Thinking is not a tool call. Keep it as lightweight state only; the
       // user-visible trace starts when a capability, knowledge lookup or page
       // tool is actually invoked.
       this.status("adaptive", turn ? this.say.continuingWithToolResults : this.say.understandingRequest, { presentation: "conversation-thinking" });
-      const payload = await this.measureRuntime("model.choose-tool", () => this.completeMainAgentTurn(messages, tools, !pageOperationRequired && !entryOnly));
+      const textSettles = !entryOnly && (!pageOperationRequired || (knowledgeMaySettle && indexedTextReturned));
+      // A search that has its page text back is answered on the last turn, not
+      // failed for having kept on looking; the model was gathering, not lost.
+      const answerNow = knowledgeMaySettle && indexedTextReturned && !entryOnly && turn === MAIN_AGENT_TURNS - 1;
+      if (answerNow) messages.push({ role: "system", content: "检索轮次已用完。现在只根据上面已取得的索引正文回答用户，不再调用工具；缺少的信息直接说明。" });  // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+      const payload = await this.measureRuntime("model.choose-tool", () => this.completeMainAgentTurn(messages, tools, textSettles, answerNow ? "none" : "auto"));
       const message = payload.choices?.[0]?.message;
       const calls = message?.tool_calls?.slice(0, 1) || [];
       if (!calls.length) {
         // An action goal needs a capability or page-execution receipt.
         // A model's text alone cannot prove the operation happened.
-        if (pageOperationRequired || entryOnly) {
+        if (!textSettles) {
+          // Asked once already and still answering without a receipt: the
+          // page tool is the path that produces one, so take it rather than
+          // spend the remaining turns on the same refusal.
+          unreceiptedReplies += 1;
+          if (unreceiptedReplies >= 2) return continueWithPageAgent();
           messages.push({ role: "assistant", content: message?.content || "" });
           messages.push({ role: "system", content: "尚无完成原始目标的执行回执。请调用适用的能力或页面工具完成目标，缺少信息用 ask_user；不能把入口导航或计划作为成功答复。" });  // i18n-exempt:给模型看的提示词正文，访客语言由 replyLanguageInstruction 单独告知
           continue;
@@ -4793,6 +4817,18 @@ export class AgentPort {
             this.activeSession = { ...session, input: capabilityInput };
             return await this.executeCapability(discovered, this.activeSession, capabilityInput);
           }
+          // A search whose page text is already back leaves for the live page
+          // only if the model insists: a detour to fill one missing detail
+          // turned a ten-second answer into minutes of browsing that never
+          // returned. The first request is answered with the way back.
+          if ((name === "navigate_scene" || name === "operate_page") && knowledgeMaySettle && indexedTextReturned && !pageDetourDeclined) {
+            pageDetourDeclined = true;
+            messages.push({ role: "tool", tool_call_id: call.id, name, content: JSON.stringify({
+              success: false, error: "answer_from_indexed_text",
+              instruction: "The indexed page text already returned is the result source for this search. Answer the user from it now, citing URLs, and say plainly which details the index does not contain. Call this tool again only if the indexed text cannot answer the request at all.",
+            }) });
+            continue;
+          }
           if (name === "navigate_scene") {
             // A Scene only proves arrival. Preserve the main Agent loop so
             // the next tool can complete the original objective.
@@ -4853,7 +4889,7 @@ export class AgentPort {
             // The Read step after a grep hit: full indexed text of one page (index-only).
             const url = typeof args.url === "string" ? args.url : "";
             const page = url ? await this.readPage(url) : null;
-            if (page?.text) { entryOnly = false; lastSceneRoutingFailure = undefined; }
+            if (page?.text) { entryOnly = false; lastSceneRoutingFailure = undefined; indexedTextReturned = true; }
             messages.push({ role: "tool", tool_call_id: call.id, name, content: JSON.stringify(page ? { success: true, url: page.url, text: page.text } : { success: false, error: "page_not_indexed" }) });
             continue;
           }
@@ -4913,6 +4949,7 @@ export class AgentPort {
               const structure = this.searchKnowledge(knowledgeKeywords);
               const content = await this.searchContentPassages(knowledgeKeywords);
               totalPagesWithHits = content.totalPagesWithHits;
+              if (content.items.length) indexedTextReturned = true;
               // Lead with content when a page body answers the question so the model
               // answers from that text directly, instead of latching onto a scene route
               // (which reads as "go navigate there"). No content hit → structure as before.

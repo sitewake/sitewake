@@ -8,7 +8,7 @@ import { userInvocableCapabilities } from "../lib/site-knowledge/site-knowledge"
 import { assertRuntimeTeachingAllowed } from "../lib/site-knowledge/runtime-policy";
 import { dispatchSiteWakeState } from "./user-agent-state";
 import { WIDGET_STYLESHEET_PATH } from "./user-agent-styles";
-import { localizedCapabilityName, resolveChromeCopy, resolveWidgetLocale, saveWidgetLocale, widgetCopy, WIDGET_LOCALE_LABELS, type WidgetCopy, type WidgetLocale } from "./user-agent-copy";
+import { followRequestLocale, forgetConversationLocale, localizedCapabilityName, resolveChromeCopy, resolveWidgetLocale, saveWidgetLocale, widgetCopy, WIDGET_LOCALE_LABELS, type WidgetCopy, type WidgetLocale } from "./user-agent-copy";
 
 type ChatMessage = {
   id: string;
@@ -794,6 +794,20 @@ if ((window.parent === window || !frameDenied) && !window.SiteWake) {
   const onLocaleEscape = (event: KeyboardEvent) => {
     if (event.key === "Escape") closeLocaleMenu();
   };
+
+  /** The visitor wrote in another language: answer them in it, with no fade and nothing saved. */
+  function followRequestLanguage(text: string) {
+    followRequestLocale(text);
+    const next = resolveWidgetLocale();
+    if (next === locale) return;
+    locale = next;
+    copy = widgetCopy(locale);
+    applyAgentConfig();
+    renderSuggestions();
+    renderMessages();
+    setMode(mode);
+    if (lastStatus) onStatus(lastStatus);
+  }
 
   function applyLocale(next: WidgetLocale) {
     if (next === locale) return;
@@ -1583,6 +1597,7 @@ if ((window.parent === window || !frameDenied) && !window.SiteWake) {
     trackEngagement("goal-submitted", { source: "composer" });
     // No name matching here: the Agent reads the request and chooses the
     // capability itself, asking for whatever it still needs.
+    followRequestLanguage(value);
     lastGoal = value; persistExperience(); panel.hidden = false; input.value = ""; resetToolActivity(); setMode("running"); addMessage(value, "user", { goal: value });
     const conversation = messages.filter((message) => message.kind === "user" || message.kind === "assistant").slice(-10).map((message) => ({ role: message.kind as "user" | "assistant", content: message.text, at: new Date().toISOString() }));
     try { await activePort.run(value, {}, conversation); }
@@ -1685,6 +1700,7 @@ if ((window.parent === window || !frameDenied) && !window.SiteWake) {
     // The questions belong to the empty conversation, so they come back with it.
     // They used to return only if a `ready` status happened to arrive after the
     // reset, which is why they were sometimes there and sometimes not.
+    forgetConversationLocale();
     messages = []; lastGoal = ""; resetToolActivity({ clearHistory: true }); renderMessages(); renderSuggestions(); setMode("idle"); persistExperience();
     try { await activePort.resetConversation(); }
     finally { resettingConversation = false; newChat.disabled = false; input.focus(); }

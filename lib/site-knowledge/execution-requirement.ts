@@ -60,6 +60,24 @@ export function executionRequirementForGoal(goal: string): ExecutionRequirement 
   return { kind: "not-required", effect: "read", evidence: "none", reasons: ["no-page-effect-requested"] };
 }
 
+/**
+ * Whether the site's indexed page text can itself settle this request.
+ *
+ * "Find me a desk lamp and compare the options" names a search, so it is
+ * classified as a page read. But what the visitor wants is the answer, and
+ * the indexed product pages hold it: an answer drawn from that text is the
+ * result, not a plan. Only a pure search qualifies. Sorting, filtering,
+ * opening a page or any write asks for a change the page has to show.
+ */
+export function knowledgeCanAnswerGoal(goal: string): boolean {
+  const value = goal.normalize("NFKC").trim();
+  const requirement = executionRequirementForGoal(value);
+  if (requirement.kind !== "required" || requirement.effect !== "read") return false;
+  if (isNavigationIntentGoal(value)) return false;
+  const positive = deriveGoalSemanticFrame(value).actions.filter((action) => action.polarity === "positive");
+  return positive.length > 0 && positive.every((action) => action.predicate === "search");
+}
+
 export function executionCompletionCriteria(goal: string, requirement: ExecutionRequirement) {
   const objective = goal.normalize("NFKC").trim();
   if (requirement.evidence === "business-receipt") {
