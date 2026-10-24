@@ -178,11 +178,6 @@ function isTargetIdentityPath(path: string) {
     && !/(?:quantity|count|amount|qty|number)/iu.test(path);
 }
 
-function isSelectionFacetPath(path: string) {
-  return isTargetIdentityPath(path)
-    || /(?:color|colour|size|brand|material|attribute|property|option|filter|facet|category|department|分类|属性|选项|颜色|尺码|品牌|材质|筛选)/iu.test(path);
-}
-
 function uniquePaths(values: string[]) {
   return [...new Set(values.filter(Boolean))].sort();
 }
@@ -260,9 +255,11 @@ export type AuthoringAddressOptions = {
  */
 function openingInputs(trace: CapabilityDslProgram, contract: CapabilityContract, options: AuthoringAddressOptions) {
   if (trace.steps.some((step) => step.action === "navigate")) return [] as string[];
-  const schema = record(contract.inputSchema);
-  const required = Array.isArray(schema.required) ? schema.required.filter((key): key is string => typeof key === "string") : [];
-  return pageSelectingInputs([options.startUrl], options.demonstrationParameters, required, record(contract.inputSchema));
+  // Every declared input, not only the required ones: a room filter given a
+  // default ("dining") still chooses the page, and as an optional input it got
+  // no opening stage — the program read whatever page it started on.
+  const declared = Object.keys(record(record(contract.inputSchema).properties));
+  return pageSelectingInputs([options.startUrl], options.demonstrationParameters, declared, record(contract.inputSchema));
 }
 
 /**
@@ -295,8 +292,7 @@ function navigateAddressInputs(step: ProgramStep, contract: CapabilityContract, 
   const url = step.value?.source === "literal" && typeof step.value.value === "string" ? step.value.value : "";
   if (!url) return [] as string[];
   const schema = record(contract.inputSchema);
-  const required = Array.isArray(schema.required) ? schema.required.filter((key): key is string => typeof key === "string") : [];
-  return pageSelectingInputs([url], addressWritings(contract, options), required, schema);
+  return pageSelectingInputs([url], addressWritings(contract, options), Object.keys(record(schema.properties)), schema);
 }
 
 export function authoringManifest(trace: CapabilityDslProgram, contract: CapabilityContract, options: AuthoringAddressOptions = {}) {
@@ -793,10 +789,13 @@ export async function authorJavaScriptCapability(options: {
       const validation = validateCapabilityJavaScriptSource(
         bundle,
         requiredInputPaths,
-        // Require every identity/facet input to be read in both the
-        // resolve and select stages.  This is an internal source gate;
-        // the public four-module envelopes remain unchanged.
-        requiredInputPaths.filter(isSelectionFacetPath),
+        // An input the program binds as a target must be read where the
+        // target is resolved and again where it is selected. Which inputs
+        // those are is the manifest's own target bindings, not a guess from
+        // the name: "variantOption" matched /option/, and a variant picked
+        // with one click on the product page was refused until authoring gave
+        // up, though the program declared it context.
+        manifest.targetBindings.map((binding) => binding.inputPath),
       );
       if (!validation.ok) {
         const repairHint = validation.code === "capability_module_target_first_candidate_forbidden"

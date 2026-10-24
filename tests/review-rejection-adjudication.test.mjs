@@ -265,3 +265,14 @@ test("a demonstrated value written into executable source is found without a mod
   const commented = lampSource.replace('fill(element, input["plugType"]);', '// demo used "US plug (Type A/B)"\n        fill(element, input["plugType"]);');
   assert.deepEqual(hardcodedDemonstrationInputs(commented, demonstration, ["finish", "plugType"]), []);
 });
+
+// Recorded on the demo store: the dropdown's accessible name runs its options
+// together, and the locator copied from the recording carries it. Read as a
+// leaked "Floor lamp", it cost a working shop filter its whole authoring budget.
+test("a value fused into a longer label is not hardcoded; a value used as data is", () => {
+  const locator = 'const element = await waitForTarget({strategies:[{type:"role",role:"combobox",name:"AnyTable lampFloor lampPendantWall light",match:"exact"}]});\nfill(element, input["productType"]);';
+  assert.deepEqual(hardcodedDemonstrationInputs(locator, { productType: "Floor lamp" }, ["productType"]), []);
+  assert.deepEqual(hardcodedDemonstrationInputs('fill(element, "Floor lamp");', { productType: "Floor lamp" }, ["productType"]), ["productType"]);
+  assert.deepEqual(hardcodedDemonstrationInputs('go(`/shop?type=Floor lamp`);', { productType: "Floor lamp" }, ["productType"]), ["productType"]);
+  assert.deepEqual(hardcodedDemonstrationInputs('const note = "Brassware";', { finish: "Brass" }, ["finish"]), []);
+});
