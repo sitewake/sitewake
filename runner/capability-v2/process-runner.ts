@@ -40,7 +40,6 @@ import {
   isJavaScriptModuleLoadFailure,
 } from "./javascript-stage-runner";
 import { inspectCapabilityQuality } from "../../lib/capability-center-v2/quality";
-import { validateCapabilityJavaScriptSource } from "../../lib/capability-center-v2/javascript-runtime";
 import {
   compareCapabilityExpectedOutput,
   describeExpectedOutputDrift,
@@ -737,39 +736,51 @@ type CompletedResult = {
   artifactRefs: UploadedArtifact[];
 };
 
+/** What exploration found, kept so a rerun can author again without exploring again. */
+export type C1Exploration = Pick<
+  Awaited<ReturnType<typeof exploreCapability>>,
+  "program" | "candidateSummary" | "demonstrationParameters" | "groundingExamples" | "promptProvenance"
+>;
+
 export async function performC1Authoring(
   page: Page,
   spec: RunSpec,
   observer: ((event: CapabilityExplorationTraceEvent) => void) | undefined,
   helpers: PerformHelpers,
   baselineStorageState?: Awaited<ReturnType<BrowserContext["storageState"]>>,
+  /** A prior run's exploration and the source it authored; the source becomes the first draft. */
+  resume?: { exploration: C1Exploration; source: string },
 ) {
   const authoringBaselineStorageState =
     baselineStorageState || (await page.context().storageState());
   if (!spec.browser.startUrl) throw new Error("exploration_start_url_required");
-  await helpers.onEvent(
-    "Specification",
-    "designing parameters and contract",
-  );
-  const configuredExplorationSteps = Number(
-    process.env.CAPABILITY_V2_EXPLORATION_MAX_STEPS || 24,
-  );
-  const explorationMaxSteps = Number.isFinite(configuredExplorationSteps)
-    ? Math.max(16, Math.min(100, configuredExplorationSteps))
-    : 24;
-  const explored = await exploreCapability(
-    page,
-    spec.goal || "完成用户目标",
-    spec.browser.startUrl,
-    spec.input,
-    explorationMaxSteps,
-    observer,
-    spec.guidance,
-  );
-  await helpers.onEvent(
-    "Exploring",
-    "exploration succeeded; writing the module",
-  );
+  const explore = async (): Promise<C1Exploration> => {
+    await helpers.onEvent(
+      "Specification",
+      "designing parameters and contract",
+    );
+    const configuredExplorationSteps = Number(
+      process.env.CAPABILITY_V2_EXPLORATION_MAX_STEPS || 24,
+    );
+    const explorationMaxSteps = Number.isFinite(configuredExplorationSteps)
+      ? Math.max(16, Math.min(100, configuredExplorationSteps))
+      : 24;
+    const found = await exploreCapability(
+      page,
+      spec.goal || "完成用户目标",
+      spec.browser.startUrl!,
+      spec.input,
+      explorationMaxSteps,
+      observer,
+      spec.guidance,
+    );
+    await helpers.onEvent(
+      "Exploring",
+      "exploration succeeded; writing the module",
+    );
+    return found;
+  };
+  const explored = resume?.exploration || await explore();
   // The contract states each input in the writing the program consumes: the
   // address writing only where the program opens the page by its address.
   const explorationContract = explored.candidateSummary.contract;
@@ -793,6 +804,7 @@ export async function performC1Authoring(
     contract: summary.contract,
     explorationProgram: explored.program,
     groundingExamples: explored.groundingExamples,
+    startingSource: resume?.source,
     summary,
     explorationPromptProvenance: explored.promptProvenance,
     createDraftContext: () =>
@@ -882,6 +894,13 @@ export async function performC1Authoring(
     candidateSource: authored.source,
     candidateBundle: authored.bundle,
     demonstrationParameters: explored.demonstrationParameters,
+    exploration: {
+      program: explored.program,
+      candidateSummary: explored.candidateSummary,
+      demonstrationParameters: explored.demonstrationParameters,
+      groundingExamples: explored.groundingExamples,
+      promptProvenance: explored.promptProvenance,
+    } satisfies C1Exploration,
     stageReceipts: authored.draft.receipts,
     targetEvidence: authored.draft.evidence,
     promptProvenance: authored.program.promptProvenance,
@@ -909,40 +928,25 @@ async function perform(
   if (explore) {
     if (!helpers) throw new Error("javascript_author_helpers_required");
     // A checkpoint holds the source that passed its self-test when it was
-    // written, which is not the same as the source that passes today's gates.
-    // Restoring it skips the authoring loop and every gate inside it, so an
-    // older program arrives at C2 unexamined — and a rejection there is
-    // terminal, while the same rejection inside the loop is handed to the
-    // model to repair. A rerun of a capability that failed was therefore
-    // guaranteed to fail again the moment a gate had moved. So the checkpoint
-    // is held to the gate before it is trusted, and dropped when it fails.
+    // written, under the checks of that day. Trusting it skipped every check
+    // added since — the static gates were re-applied here, but the checks that
+    // have to run the program (grounding replays, a count read against its
+    // list across runs) live inside the authoring loop, and a rerun never
+    // reached them: "Find floor lamps" was rerun after the count check shipped
+    // and came back with the same catalog-wide count. So the restored source
+    // does not skip the loop; it is the loop's first draft. It runs through
+    // every check before any model call, costs nothing more when it passes,
+    // and is repaired from the failure when it does not. A checkpoint without
+    // its exploration cannot be checked that way and is explored again.
     const restored = await helpers.loadAuthorCheckpoint?.();
-    // Both gates, because they refuse different things and a checkpoint has to
-    // clear whatever it will meet later. The quality gate reads the manifest;
-    // the source gate reads the code, and it is what the module store runs
-    // when the candidate is frozen — where a rejection is terminal and not
-    // even retryable. A checkpoint carrying an empty guard branch passed the
-    // manifest gate, was restored, skipped authoring and died there.
-    const restoredIssues = restored
-      ? inspectCapabilityQuality(restored.c1AuthoringOutput.contract, restored.c1AuthoringOutput.program, {
-        demonstrationParameters: restored.demonstrationParameters,
-        source: restored.candidateBundle,
-        entryUrl: spec.browser.startUrl,
-      }).issues
-      : [];
-    const restoredSource = restored ? validateCapabilityJavaScriptSource(restored.candidateBundle) : { ok: true as const };
-    const restoredRejections = [
-      ...restoredIssues.map((issue) => ({ code: issue.code, message: issue.message, ...(issue.path ? { path: issue.path } : {}) })),
-      ...(restoredSource.ok ? [] : [{ code: restoredSource.code, message: restoredSource.message }]),
-    ];
-    if (restored && restoredRejections.length) {
-      await helpers.onEvent("AuthoringRestoreRejected", "checkpoint rejected by the current gates; authoring again", {
-        issues: restoredRejections,
-      });
+    const resume = restored?.exploration && restored.candidateSource
+      ? { exploration: restored.exploration, source: restored.candidateSource }
+      : undefined;
+    if (restored && !resume) {
+      await helpers.onEvent("AuthoringRestoreRejected", "checkpoint holds no exploration to recheck it against; exploring again");
     }
-    const reusable = restoredRejections.length ? undefined : restored;
-    const authored = reusable || await performC1Authoring(page,spec,observer,helpers,baselineStorageState);
-    if (reusable) await helpers.onEvent("AuthoringRestored", "self-tested source restored");
+    if (resume) await helpers.onEvent("AuthoringRestored", "prior source restored; rechecking it as the first draft");
+    const authored = await performC1Authoring(page, spec, observer, helpers, baselineStorageState, resume);
     await helpers.workspace?.write('reports/c1-checkpoint.json',{authored});
     await helpers.checkpoint?.();
     await helpers.onEvent(
