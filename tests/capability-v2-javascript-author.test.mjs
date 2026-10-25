@@ -154,10 +154,9 @@ function toolTurn(index, name, args = {}) {
   };
 }
 
-async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [], draftPage }) {
+async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [], draftPage, startingSource, persisted = [] }) {
   const requests = [];
   const events = [];
-  const persisted = [];
   const originalFetch = globalThis.fetch;
   let stageCalls = 0;
   globalThis.fetch = async (_url, init) => {
@@ -196,6 +195,7 @@ async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraf
       },
       validationCases: [],
       groundingExamples,
+      startingSource,
       createDraftContext: async () => ({
         context: { close: async () => undefined },
         page: draftPage || { goto: async () => undefined, waitForTimeout: async () => undefined },
@@ -371,6 +371,47 @@ test("a count that never moved while its list did goes back to the model with wh
   // Repairs ran out on it; the draft that passed the demonstration still goes on.
   assert.equal(result.source, source);
   assert.ok(events.some((event) => /draft that passed the demonstration/.test(event.message)));
+});
+
+test("a rerun's source that passes every current check is handed on without a model call", async () => {
+  const lamps = (count) => Array.from({ length: count }, (_, index) => ({ name: `Lamp ${index + 1}` }));
+  const { result, requests } = await runAuthor({
+    turns: [],
+    maxToolCalls: 4,
+    startingSource: source,
+    groundingExamples: [{ query: "pillow" }],
+    draftPage: { ...successfulDraft().page, goto: async () => undefined },
+    stageRun: async (options) => {
+      const items = lamps(options.input.query === "pillow" ? 2 : 4);
+      return { ...successfulDraft(), output: { ok: true, items, totalCount: items.length } };
+    },
+  });
+  assert.equal(requests.length, 0);
+  assert.equal(result.source, source);
+});
+
+test("a rerun's source meets checks added after it was written, and the model repairs what they find", async () => {
+  // "Find floor lamps" was rerun after the count check shipped; its saved
+  // source skipped authoring and published the catalog-wide count again.
+  const stale = source.replace("const targetResolution", "const readsCatalogTotal=true;const targetResolution");
+  const lamps = (count) => Array.from({ length: count }, (_, index) => ({ name: `Lamp ${index + 1}` }));
+  const persisted = [];
+  const { result, requests } = await runAuthor({
+    persisted,
+    turns: [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")],
+    startingSource: stale,
+    groundingExamples: [{ query: "pillow" }],
+    draftPage: { ...successfulDraft().page, goto: async () => undefined },
+    stageRun: async (options) => {
+      const items = lamps(options.input.query === "pillow" ? 2 : 4);
+      const totalCount = persisted.at(-1).includes("readsCatalogTotal") ? 16 : items.length;
+      return { ...successfulDraft(), output: { ok: true, items, totalCount } };
+    },
+  });
+  const firstRequest = JSON.stringify(requests[0].messages);
+  assert.match(firstRequest, /totalCount was 16 in every run while items changed/, "the model starts from what the check found");
+  assert.ok(!persisted.some((bundle) => bundle.includes("stage_verify_not_authored")), "the exploration seed never replaced the saved source");
+  assert.equal(result.source, source);
 });
 
 test("a draft that never passed its demonstration is not handed on", async () => {

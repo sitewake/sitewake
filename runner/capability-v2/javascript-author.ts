@@ -685,6 +685,8 @@ export async function authorJavaScriptCapability(options: {
   contract: CapabilityContract;
   explorationProgram: CapabilityDslProgram;
   groundingExamples: Array<Record<string, JsonValue>>;
+  /** Source a prior run authored; it replaces the seed as the first draft and meets every check the seed does. */
+  startingSource?: string;
   /** The candidate's name, description and aliases, for the rules that read them. */
   summary?: { name?: string; description?: string; aliases?: string[] };
   explorationPromptProvenance?: CapabilityPromptProvenance[];
@@ -779,7 +781,7 @@ export async function authorJavaScriptCapability(options: {
   const workspace = options.workspace || await CapabilityWorkspace.create();
   // The first draft is generated from the successful exploration; the model
   // starts from proven action stages and only authors the verification stage.
-  const seed = seedCapabilitySource(manifest, options.explorationProgram, options.contract, addressOptions);
+  const seed = options.startingSource || seedCapabilitySource(manifest, options.explorationProgram, options.contract, addressOptions);
   await workspace.revision(seed);
   source = seed;
   await workspace.write('task/authoring-input.json', {goal:options.goal,startUrl:options.startUrl,input:options.input,contract:options.contract,explorationProgram:options.explorationProgram,groundingExamples});
@@ -1089,7 +1091,11 @@ export async function authorJavaScriptCapability(options: {
   draftPending = false;
   messages.push({
     role: "user",
-    content: JSON.stringify({
+    content: JSON.stringify(options.startingSource ? {
+      seededSource: "src/capability.ts",
+      seedCheck,
+      instruction: "src/capability.ts 是此前一次运行为同一目标写成的完整源码。seedCheck 是它在当前检查下的结果：按 seedCheck 指出的问题修改，其余部分保持原样。",
+    } : {
       seededSource: "src/capability.ts",
       seedCheck,
       instruction: "src/capability.ts 已按探索成功路径生成：动作阶段用 waitForTarget(探索目标) 定位、fill 写值、点击后等页面变化，它们已经在 seedCheck 里跑过一遍。只需补齐 stage_verify（读取结果页、按 outputSchema 返回 output 与 evidence），保留其余阶段原样；如果 seedCheck 在动作阶段就失败，按它给出的阶段和等待去修。",
