@@ -72,6 +72,7 @@ import {
 } from "../lib/capability-center-v2/experience";
 import { capabilityOptionNotOffered, capabilityVerificationOnlyFailure, explainCapabilityRuntimeFailure } from "../lib/capability-center-v2/runtime-failure";
 import { capabilityTextIncludes } from "../lib/capability-center-v2/text-match";
+import { VALIDATION_RESULT_KEY } from "../lib/capability-center-v2/validation-run";
 import { resolveCapabilityInputDefaults } from "../lib/capability-center-v2/input-template";
 import { startDomReplayRecorder } from "./user-agent-recorder";
 import { capabilityInputPathValue, capabilityTemplateInputPaths, capabilityUrlTemplateMatches, matchCapabilityIntentTemplate, renderCapabilityInputTemplate } from "../lib/capability-center-v2/input-template";
@@ -173,7 +174,7 @@ export type CapabilityV2Candidate = {
   scopeMatchReason?: string;
 };
 
-type CapabilityV2RuntimeDefinition = {
+export type CapabilityV2RuntimeDefinition = {
   capabilityId: string;
   versionId: string;
   executionGrantId: string;
@@ -838,6 +839,8 @@ type Checkpoint = {
   executionIntent?: "reconciliation" | "confirmed-continuation";
   toolContext?: CapabilityToolContext;
   directCall?: boolean;
+  /** A candidate run by validation before it is published: report the result, never repair or learn from it. */
+  validationRun?: boolean;
   // Set only by a direct verified-scene navigation from the main Agent. When the
   // destination document restores this checkpoint it finishes the task with this
   // text via completeConversation — no page-reading Agent, no extra model turn.
@@ -1277,6 +1280,8 @@ export class AgentPort {
   // The running Stage declares it may navigate: its own clicks and submits go
   // where the site sends them, and the armed continuation resumes the run.
   private capabilityStageNavigates = false;
+  // Validation is running an unpublished candidate through this executor.
+  private validationRun = false;
   private pendingCapabilityNavigation?: { rawUrl: string; target: string; openedWindow?: Window | null };
   private executionPin?: TaskLaunchExecutionPin;
   private readonly nativeWindowOpen = window.open.bind(window);
@@ -1355,6 +1360,11 @@ export class AgentPort {
     }
     if ((phase === "completed" || phase === "error") && this.activityTimeline.some((item) => item.state === "running")) {
       this.activityTimeline = this.activityTimeline.map((item) => item.state === "running" ? { ...item, state: phase === "error" ? "failed" as const : "completed" as const } : item);
+    }
+    if (this.validationRun && (phase === "completed" || phase === "error")) {
+      const taskResult = detail?.taskResult as TaskResult | undefined;
+      const record = { status: taskResult?.outcome?.status || (phase === "error" ? "error" : "completed"), code: taskResult?.outcome?.code || "", summary: message, output: taskResult?.output || {}, url: location.href, at: Date.now() };
+      try { sessionStorage.setItem(VALIDATION_RESULT_KEY, JSON.stringify(record)); } catch { /* the runner then times out and says so */ }
     }
     this.options.onStatus?.({ phase, message, detail: { ...detail, sessionId: detail?.sessionId || this.activeSession?.id, activityTimeline: this.activityTimeline } });
   }
@@ -2521,6 +2531,7 @@ export class AgentPort {
     }
     else if (checkpoint.v2Runtime) {
       this.activeAbort = new AbortController();
+      this.validationRun = checkpoint.validationRun === true;
       await this.executeCapabilityV2JavaScriptRuntime(checkpoint.v2Runtime, session, checkpoint.input, checkpoint.programStepIndex, checkpoint.output || {}, checkpoint.v2StageReceipts || [], checkpoint.v2StageEvidence || [], checkpoint.v2ModuleHash, checkpoint.v2ControlState, checkpoint.compiledRuntimeWindow);
     }
     else if (checkpoint.capability) {
@@ -3951,6 +3962,7 @@ export class AgentPort {
       programStepIndex,
       output: state,
       directCall: true,
+      ...(this.validationRun ? { validationRun: true } : {}),
       savedAt: Date.now(),
     });
     this.status("executing", this.say.callingCapability(runtime.name), { activity: { id: activityId, kind: "capability", state: "running", sessionId: session.id, capabilityId: runtime.capabilityId, capabilityName: runtime.name, input } });
@@ -4367,6 +4379,7 @@ export class AgentPort {
       const summary = explanation.summary;
       const outcome: TaskEpisode["outcome"] = { status: "execution-fault", code: explanation.code, summary, evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk", capabilityId: runtime.capabilityId, versionId: runtime.versionId, technicalError: message, repairSuggested: explanation.repairSuggested, stageEvidence, stageReceipts, ...(activeStage?.id ? { stepId: activeStage.id } : {}) } };
       let publishedDrift = this.release.runtimeFeatures?.pageAgentRuntimeV2 === true
+        && !this.validationRun
         && isCompiledCapabilityDrift(outcome.code);
       let driftBudget: PageExecutionBudget | undefined;
       if (publishedDrift) {
@@ -5483,6 +5496,40 @@ export class AgentPort {
 
   async call(capabilityId: string, input: Record<string, JsonValue> = {}) {
     return this.callCapability(capabilityId, input, false);
+  }
+
+  /**
+   * Run an unpublished candidate exactly as a visitor's run would go: this
+   * executor, a real AgentRun, real handoffs across documents. Validation used
+   * to prove a program only in its own Playwright host, which followed links
+   * the widget held back, filled defaults the widget left out and never
+   * resumed across a document; three published capabilities hung or looped
+   * for visitors. The terminal result is left under VALIDATION_RESULT_KEY for
+   * the runner, on whichever document the run ends. Nothing is learned from
+   * it: no drift repair, no episode.
+   */
+  async validateCandidate(runtime: CapabilityV2RuntimeDefinition, input: Record<string, JsonValue> = {}) {
+    if (this.taskInFlight) throw new Error("task_already_running");
+    await this.ready();
+    if (this.taskInFlight) throw new Error("task_already_running");
+    this.taskInFlight = true;
+    this.validationRun = true;
+    try { sessionStorage.removeItem(VALIDATION_RESULT_KEY); } catch { /* ignored */ }
+    const generation = ++this.taskGeneration;
+    this.activeAbort = new AbortController();
+    try {
+      const session = await this.createSession(runtime.name, input);
+      this.taskGenerations.set(session.id, generation);
+      if (!this.acquireLease(session.id)) throw new Error("task_active_in_another_page");
+      const runtimeWindow = establishCompiledRuntimeWindow();
+      assertCapabilityInput(runtime.contract.inputSchema as never, applyCapabilityV2InputAliases(runtime, input));
+      return await this.executeCapabilityV2JavaScriptRuntime(runtime, session, input, 0, {}, [], [], undefined, undefined, runtimeWindow);
+    } catch (error) {
+      this.status("error", error instanceof Error ? error.message : String(error));
+      throw error;
+    } finally {
+      if (generation === this.taskGeneration) this.taskInFlight = false;
+    }
   }
 
   /** Execute a V2 shortcut directly, without asking the model to rediscover it. */

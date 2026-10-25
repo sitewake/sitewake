@@ -1,7 +1,7 @@
 import { AgentStartupError } from './runtime-release-client';
 import { hasVisibleOperations, renderOperationTrace } from "./user-agent-trace";
 import { mergeResumedConversation, activitiesForTurn } from "./user-agent-conversation";
-import { AgentPort, callFromClaimedTaskLaunch, type PortStatus, type TaskLaunchExecutionPin, type TaskResult } from "./user-agent-port";
+import { AgentPort, callFromClaimedTaskLaunch, type CapabilityV2RuntimeDefinition, type PortStatus, type TaskLaunchExecutionPin, type TaskResult } from "./user-agent-port";
 import { defaultAgentConfig, normalizeAgentConfig, normalizeGoal, uid, type AgentConfig, type AgentRunActivity, type CapabilityDefinition, type JsonValue, type SiteAgentReleaseV2 } from "../lib/site-knowledge/protocol";
 import { matchCapability } from "../lib/site-knowledge/planner";
 import { userInvocableCapabilities } from "../lib/site-knowledge/site-knowledge";
@@ -59,12 +59,16 @@ type SiteWakeApi = {
   finishTeaching(): Promise<TaskResult>;
   cancel(): void;
   getRelease(): SiteAgentReleaseV2;
+  /** Present only on a page the validation runner marked before this script loaded. */
+  validateCandidate?(runtime: CapabilityV2RuntimeDefinition, input?: Record<string, JsonValue>): Promise<TaskResult | undefined>;
 };
 
 declare global {
   interface Window {
     SITEWAKE_CONFIG?: { siteAgentId?: string; endpoint?: string; open?: boolean; maxSteps?: number; runtimeMode?: "full" | "read-only"; allowedCapabilityIds?: string[] };
     SiteWake?: SiteWakeApi;
+    /** Set by the validation runner before the widget loads; never by a site. */
+    __sitewakeValidation?: boolean;
   }
 }
 
@@ -1648,6 +1652,9 @@ if ((window.parent === window || !frameDenied) && !window.SiteWake) {
     finishTeaching: () => publicApiCall(() => activePort.finishTeaching()),
     cancel: () => stopActiveRun(),
     getRelease: () => activePort.getRelease(),
+    ...(window.__sitewakeValidation === true
+      ? { validateCandidate: (runtime: CapabilityV2RuntimeDefinition, taskInput: Record<string, JsonValue> = {}) => publicApiCall(() => activePort.validateCandidate(runtime, taskInput)) }
+      : {}),
     mount: (siteAgentId, endpoint) => {
       if (siteAgentId !== config.siteAgentId || endpoint.replace(/\/$/, "") !== config.endpoint.replace(/\/$/, "")) return;
       if (!host.isConnected) document.documentElement.appendChild(host);
