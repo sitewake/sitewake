@@ -85,6 +85,7 @@ type AdaptiveOptions = {
     observationRefs?: PageObservationRef[];
     budgetEvidence?: PageExecutionBudget;
     runtimeMetrics?: PageRuntimeMetric[];
+    notes?: AgentPageNote[];
   };
   onTrace?: (trace: NonNullable<AdaptiveOptions["resumeTrace"]>) => void;
   onAskUser?: (question: string, options?: {
@@ -121,7 +122,103 @@ type AdaptiveOptions = {
 
 type ToolReceipt = NonNullable<NonNullable<TaskEpisode["experience"]>["toolReceipts"]>[number];
 
+/**
+ * What the agent itself concluded on one document: its latest memory and the
+ * next goal it had set. A full-page navigation starts a fresh model history, so
+ * without these the agent re-derives facts it already established (which
+ * product is cheapest, which entry it was about to open) and walks back to the
+ * page it learned them on — a loop that ends only at the step limit.
+ */
+export type AgentPageNote = { documentId: string; url: string; memory: string; nextGoal?: string };
+
+const AGENT_NOTE_LIMIT = 6;
+const AGENT_NOTE_TEXT_LIMIT = 1_200;
+
+export function recordAgentPageNote(notes: AgentPageNote[], note: AgentPageNote) {
+  const memory = note.memory.trim().slice(0, AGENT_NOTE_TEXT_LIMIT);
+  if (!memory) return notes;
+  const nextGoal = note.nextGoal?.trim().slice(0, AGENT_NOTE_TEXT_LIMIT) || undefined;
+  const others = notes.filter((item) => item.documentId !== note.documentId);
+  return [...others, { documentId: note.documentId, url: note.url, memory, ...(nextGoal ? { nextGoal } : {}) }].slice(-AGENT_NOTE_LIMIT);
+}
+
+type ScriptNavigateEvent = Event & {
+  cancelable: boolean;
+  userInitiated: boolean;
+  hashChange: boolean;
+  downloadRequest: string | null;
+  formData: FormData | null;
+  navigationType: "push" | "replace" | "reload" | "traverse";
+  destination: { url: string; sameDocument: boolean };
+};
+type ScriptNavigation = EventTarget & {
+  navigate: (url: string, options?: { history?: "push" | "replace" }) => unknown;
+};
+
+/** An arm older than this belongs to an action whose navigation never came. */
+export const NAVIGATION_ARM_GRACE_MS = 4_000;
+let stopActiveNavigationGuard: (() => void) | undefined;
+
+/**
+ * Hand the Run to the next document when a page script, not a link, leaves the
+ * page during an agent action.
+ *
+ * Links and native submit controls are prepared before they are clicked. A
+ * `type="button"` whose handler assigns `location` — the search button of many
+ * shops — was not: the destination saw no handoff, treated the load as a
+ * visitor reload and dropped the task, leaving "ready" where the answer should
+ * have been. Predicting which buttons navigate is guesswork, so the browser's
+ * own `navigate` event is used instead: the navigation is held, the Run is
+ * prepared exactly as for a submit control, and the same navigation is issued
+ * again. Navigations the visitor starts remain interruptions, POST bodies
+ * cannot be replayed and stay with the submit-control path, and browsers
+ * without the Navigation API keep the previous behaviour.
+ */
+export function guardScriptNavigation(hooks: { armedRecently: () => boolean; arm: () => Promise<void>; enabled: boolean }, target: { navigation?: ScriptNavigation; location: Location } = window as unknown as { navigation?: ScriptNavigation; location: Location }) {
+  stopActiveNavigationGuard?.();
+  const navigation = target.navigation;
+  if (!hooks.enabled || !navigation || typeof navigation.navigate !== "function") return () => undefined;
+  let replaying = "";
+  const listener = (raw: Event) => {
+    const event = raw as ScriptNavigateEvent;
+    const url = event.destination?.url || "";
+    if (replaying && url === replaying) { replaying = ""; return; }
+    if (!event.cancelable || event.userInitiated || event.hashChange || event.downloadRequest || event.formData) return;
+    if (event.destination.sameDocument || !["push", "replace"].includes(event.navigationType)) return;
+    let destination: URL;
+    try { destination = new URL(url); } catch { return; }
+    if (destination.origin !== new URL(target.location.href).origin) return;
+    if (destination.hash.includes("sitewake-run=") || hooks.armedRecently()) return;
+    event.preventDefault();
+    const history = event.navigationType === "replace" ? "replace" as const : "push" as const;
+    void hooks.arm()
+      .catch(() => undefined)
+      .finally(() => {
+        replaying = url;
+        // The old document is torn down mid-navigation; its result promises
+        // reject with an AbortError that nobody is waiting for.
+        const result = navigation.navigate(url, { history }) as { committed?: Promise<unknown>; finished?: Promise<unknown> } | undefined;
+        result?.committed?.catch(() => undefined);
+        result?.finished?.catch(() => undefined);
+      });
+  };
+  navigation.addEventListener("navigate", listener);
+  const stop = () => {
+    navigation.removeEventListener("navigate", listener);
+    if (stopActiveNavigationGuard === stop) stopActiveNavigationGuard = undefined;
+  };
+  stopActiveNavigationGuard = stop;
+  return stop;
+}
+
+/** Notes from documents other than this one; the current page's own memory is already in the model history. */
+export function priorPageNotes(notes: AgentPageNote[], currentDocumentId = documentId()) {
+  return notes.filter((note) => note.documentId !== currentDocumentId);
+}
+
 type RuntimeEvidence = {
+  /** The agent's own conclusions per document, carried across page handoffs. */
+  notes: AgentPageNote[];
   actionReceipts: ActionReceiptV2[];
   observationRefs: PageObservationRef[];
   observations: PageAgentObservation[];
@@ -1073,6 +1170,7 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
   const controller = new SiteAgentPageController({
     enableMask: receiptNeedsPageEvidence || !completionReceipt,
     viewportExpansion: 250,
+    fullPageMaxViewports: 15,
     interactiveBlacklist: [...agentHosts, ...humanInteractionBlacklist()],
     context: {
       siteAgentId: options.siteAgentId,
@@ -1122,6 +1220,7 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
     targets: [...targets.values()],
     actions,
     toolReceipts,
+    notes: runtime.notes,
     ...(options.evidenceV2 === false ? {} : {
       actionReceiptsV2: runtime.actionReceipts,
       observationRefs: runtime.observationRefs,
@@ -1129,7 +1228,7 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
       runtimeMetrics: runtime.runtimeMetrics,
     }),
   });
-  const emitCheckpoint = (reason: string, detail: Record<string, JsonValue> = {}) => {
+  const emitCheckpoint =(reason: string, detail: Record<string, JsonValue> = {}) => {
     const startedAt = Date.now();
     metric(runtime, Math.max(0, currentTurn), "checkpoint", startedAt, { reason, ...detail });
     options.onTrace?.(trace());
@@ -1184,6 +1283,30 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
     try { return controller.elementForTurn(turnIndex, index); }
     catch { return undefined; }
   };
+  /**
+   * Sign-in, verification and payment forms are the visitor's to fill. This
+   * used to throw, and a thrown tool error ends the whole task: a visitor who
+   * asked to log in got "working on the page had no effect". Answering the
+   * model instead lets it hand the form to the visitor and carry on.
+   */
+  const sensitiveTargetRefusal = (action: ActionReceiptV2["action"], index: number | undefined) => {
+    if (index === undefined || action === "scroll" || action === "focus") return undefined;
+    const element = elementAt(index);
+    if (!(element instanceof Element) || !isSensitiveElement(element)) return undefined;
+    return `Not performed: element [${index}] belongs to a sign-in, verification or payment form, and you must never type into, select in, click or submit such a form for the visitor. If the task needs it, call ask_user to ask the visitor to complete that form on the page themselves and tell you when they are done, then continue from the page you find. Otherwise finish with done and say what the visitor needs to do.`;
+  };
+  let navigationArmedAt = 0;
+  const armOpaqueNavigation = async (source: string) => {
+    navigationArmedAt = Date.now();
+    await drainEvidence();
+    emitCheckpoint("opaque-navigation-armed", { source });
+    await options.onBeforeNavigationAction?.();
+  };
+  const stopScriptNavigationGuard = guardScriptNavigation({
+    armedRecently: () => Date.now() - navigationArmedAt < NAVIGATION_ARM_GRACE_MS,
+    arm: () => armOpaqueNavigation("script"),
+    enabled: Boolean(options.onBeforeNavigationAction),
+  });
   const record = (action: ExperienceActionEvidence["action"], rawAction: string, index: number | undefined, input: Record<string, JsonValue>) => {
     const element = index === undefined ? undefined : elementAt(index);
     const page = capturePageSnapshot(actions.length + 1);
@@ -1365,9 +1488,7 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
     const recorded = actions.at(-1);
     const unrecord = () => { const at = actions.lastIndexOf(recorded!); if (at >= 0) actions.splice(at, 1); };
     if (element && shouldArmOpaqueNavigation(element)) {
-      await drainEvidence();
-      emitCheckpoint("opaque-navigation-armed", { source: "click" });
-      await options.onBeforeNavigationAction?.();
+      await armOpaqueNavigation("click");
     }
     let result: Awaited<ReturnType<typeof click>>;
     try { result = await click(index); }
@@ -1478,10 +1599,8 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
     const before = controller.observationForTurn(currentTurn);
     if (!before) throw new Error("page_agent_observation_missing");
     const targetBefore = index === undefined ? undefined : controller.targetForTurn(currentTurn, index);
-    if (index !== undefined) {
-      const liveTarget = controller.elementForTurn(currentTurn, index);
-      if (isSensitiveElement(liveTarget)) throw new Error("page_agent_sensitive_target_blocked");
-    }
+    const refusal = sensitiveTargetRefusal(action, index);
+    if (refusal) return refusal;
     if (isDuplicateUnchangedAction(runtime.actionReceipts, action, targetBefore, input)) {
       throw new Error("page_agent_duplicate_unchanged_action");
     }
@@ -1526,6 +1645,8 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
     operation: () => Promise<string>,
   ) => {
     if (options.runtimeV2 !== false) return actionResult(action, index, input, operation);
+    const refusal = sensitiveTargetRefusal(action, index);
+    if (refusal) return refusal;
     const output = await operation();
     controller.markActionBoundary();
     return output;
@@ -1679,9 +1800,7 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
           // used by submit_form_by_index so such a navigation can be claimed;
           // the short-lived intent is revoked automatically when the form is
           // handled in place.
-          await drainEvidence();
-          emitCheckpoint("opaque-navigation-armed", { source: "press-key" });
-          await options.onBeforeNavigationAction?.();
+          await armOpaqueNavigation("press-key");
         }
         const down = new KeyboardEvent("keydown", pageAgentKeyboardEventOptions(key));
         const proceed = element.dispatchEvent(down);
@@ -1702,9 +1821,7 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
           throw new Error("submit_form_invalid");
         }
         record("click", "submit_form_by_index", index, { index });
-        await drainEvidence();
-        emitCheckpoint("opaque-navigation-armed", { source: "submit" });
-        await options.onBeforeNavigationAction?.();
+        await armOpaqueNavigation("submit");
         form.requestSubmit();
         return `Submitted form for element ${index}.`;
       }),
@@ -1919,6 +2036,7 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
         options.runtimeMode === "read-only" ? "" : `可调用能力目录（id 必须原样使用）：${JSON.stringify(capabilities)}`, // i18n-exempt: model prompt body; the reply language is the closing instruction below
         toolReceipts.length ? `跨页面恢复的工具回执（这些动作已经发生，不要重复调用）：${JSON.stringify(toolReceipts)}` : "", // i18n-exempt: model prompt body; the reply language is the closing instruction below
         actions.length ? `跨页面恢复的已执行页面动作（已经发生，不得重做）：${JSON.stringify(actions.slice(-8).map((action) => ({ action: action.action, input: action.input, page: action.page, element: action.element ? { role: action.element.role, name: action.element.accessibleName } : undefined })))}` : "", // i18n-exempt: model prompt body; the reply language is the closing instruction below
+        priorPageNotes(runtime.notes).length ? `你在之前页面得出的结论和当时定下的下一步（你自己已经确认过的事实，直接沿用；不要为了重新确认而回到旧页面）：${JSON.stringify(priorPageNotes(runtime.notes).map((note) => ({ url: note.url, memory: note.memory, nextGoal: note.nextGoal })))}` : "", // i18n-exempt: model prompt body; the reply language is the closing instruction below
         options.session.conversation.length > 1 ? `最近对话（只用于理解指代和连续目标）：\n${options.session.conversation.slice(-8).map((item) => `${item.role}: ${item.content}`).join("\n")}` : "", // i18n-exempt: model prompt body; the reply language is the closing instruction below
         "页面知识只用于缩短路径，不代表目标已完成。结合当前页面选择最短、最直接的可见 UI 路径。", // i18n-exempt: model prompt body; the reply language is the closing instruction below
         // Last, and actually present: the summary this runtime writes on `done` is read
@@ -1952,6 +2070,15 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
     onAfterStep: async (_, history) => {
       for (const item of history.slice(handled)) {
         if (item.type !== "step") continue;
+        if (item.reflection?.memory) {
+          runtime.notes = recordAgentPageNote(runtime.notes, {
+            documentId: documentId(),
+            url: location.href,
+            memory: item.reflection.memory,
+            nextGoal: item.reflection.next_goal,
+          });
+          emitCheckpoint("agent-note");
+        }
         const compiled = compileStep(item, controller.stateForTurn(item.stepIndex), options.release, targets, options.input);
         if (compiled) {
           const previous = steps.at(-1);
@@ -2103,6 +2230,7 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
           await drainEvidenceRaw(signal);
         }),
         async () => {
+          stopScriptNavigationGuard();
           document.removeEventListener("visibilitychange", visibilityChanged);
           if (visibilityBudgetPaused) {
             resumeBudget(runtime);
@@ -2157,6 +2285,7 @@ async function runAdaptive(options: AdaptiveOptions) {
   const startedAt = options.resumeTrace?.startedAt || new Date().toISOString();
   const inheritedBudget = options.pageExecutionBudget || options.resumeTrace?.budgetEvidence;
   const runtime: RuntimeEvidence = {
+    notes: [...(options.resumeTrace?.notes || [])],
     actionReceipts: [...(options.resumeTrace?.actionReceiptsV2 || [])],
     observationRefs: [...(options.resumeTrace?.observationRefs || [])],
     observations: [],
@@ -2201,6 +2330,7 @@ async function runAdaptive(options: AdaptiveOptions) {
     targets: [...targets.values()],
     actions,
     toolReceipts,
+    notes: runtime.notes,
     ...(options.evidenceV2 === false ? {} : {
       actionReceiptsV2: runtime.actionReceipts,
       observationRefs: runtime.observationRefs,

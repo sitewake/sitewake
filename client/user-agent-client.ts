@@ -1409,6 +1409,7 @@ if ((window.parent === window || !frameDenied) && !window.SiteWake) {
       const parsed = Date.parse(String(next.detail.startedAt || ""));
       if (Number.isFinite(parsed)) teachingStartedAt = parsed;
     }
+    if (next.detail?.taskInterrupted && next.message) addMessage(next.message, "system");
     if (next.phase === "completed" || next.phase === "error") {
       const result = next.detail?.taskResult as TaskResult | undefined;
       if (result) {
