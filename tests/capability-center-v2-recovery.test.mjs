@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { prepareFormalPipeline, withModel, closeFixtureSite } from './capability-center-v2-module-io-harness.mjs';
 import { GET, POST } from '../app/api/admin/capability-v2/[...path]/route.ts';
-import { claimTask, submitTaskResult, resetCapabilityCenterV2ForTests } from '../db/capability-center-v2-store.ts';
+import { cancelTask, claimTask, submitTaskResult, resetCapabilityCenterV2ForTests } from '../db/capability-center-v2-store.ts';
 
 test('revalidation retains generation lineage; failed review can recover and publish exactly one version', async () => {
   process.env.SITEWAKE_LOCAL_DEV = '1';
@@ -40,6 +40,19 @@ test('revalidation retains generation lineage; failed review can recover and pub
     assert.equal(progress.state, 'Published');
     const versions = await call('GET', `capabilities/${progress.capabilityId}/versions`);
     assert.equal(versions.versions.length, 1);
+    // A version the 2.0 pipeline published is found from its generation, so a
+    // rebuild starts where that generation did and with its values.
+    const defaults = await call('GET', `capabilities/${progress.capabilityId}/maintenance-defaults`);
+    assert.equal(defaults.sourceTaskId, prepared.task.id);
+    assert.equal(typeof defaults.startUrl, 'string');
+    assert.deepEqual(defaults.parameters, prepared.task.input.parameters);
+    // Rerunning the generation now builds the next version of what it
+    // published; as a fresh generation it was set aside as a duplicate name.
+    // The fixture leaves the generation running; only an ended task is rerun.
+    await cancelTask(siteId, prepared.task.id);
+    const rebuild = await call('POST', `tasks/${prepared.task.id}/rerun`);
+    assert.equal(rebuild.task.rerunOfTaskId, prepared.task.id);
+    assert.equal(rebuild.task.input.trigger.baseVersionId, versions.versions[0].id);
   } finally { await closeFixtureSite(prepared.site); }
 });
 

@@ -2802,10 +2802,38 @@ export function reconcileOutputConditionsWithSchema(value: JsonValue[], outputSc
  */
 export function pinContractToBase(contract: CapabilityContract, base: CapabilityContract | undefined): CapabilityContract {
   if (!base) return contract;
-  return {
+  const pinned: CapabilityContract = {
     ...contract,
     inputSchema: base.inputSchema,
     outputSchema: base.outputSchema,
+  };
+  // The rest of the design was written against the designed schemas. What it
+  // names that the published ones do not declare cannot hold: every rebuild of
+  // three live capabilities failed as inconsistent before writing a line, on a
+  // condition that required an output the published schema calls by another
+  // name. Such parts are dropped; when no executable success condition is
+  // left, the published ones, written for these schemas, stand.
+  const issues = inspectContractConsistency(pinned);
+  const broken = new Set(issues.map((issue) => issue.path));
+  const keep = (group: "preconditions" | "successConditions") => (pinned[group] || []).filter((_, index) => !broken.has(`contract.${group}.${index}`));
+  const preconditions = keep("preconditions");
+  const designedSuccess = keep("successConditions");
+  const successConditions = inspectContractConsistency({ ...pinned, successConditions: designedSuccess }).some((issue) => issue.code === "deterministic_success_condition_required")
+    ? base.successConditions
+    : designedSuccess;
+  const inputs = Object.keys(object(object(base.inputSchema).properties));
+  const match = pinned.scope?.match;
+  const requiredInputPaths = match?.requiredInputPaths?.filter((path) => inputs.includes(path.split(".")[0]));
+  const scope = pinned.scope && match?.requiredInputPaths
+    ? { ...pinned.scope, match: { ...match, ...(requiredInputPaths?.length ? { requiredInputPaths } : { requiredInputPaths: undefined }) } }
+    : pinned.scope;
+  if (scope?.match && !scope.match.requiredInputPaths) delete scope.match.requiredInputPaths;
+  return {
+    ...pinned,
+    intent: broken.has("contract.intent") ? base.intent : pinned.intent,
+    preconditions,
+    successConditions,
+    ...(scope ? { scope } : {}),
   };
 }
 

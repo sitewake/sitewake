@@ -52,6 +52,7 @@ const {
   getRunnerRunSpec,
   outputsConstantAcrossCases,
   pinContractToBase,
+  inspectContractConsistency,
   getTask,
   getTaskMaintenance,
   groundExplorerAction,
@@ -5915,6 +5916,35 @@ test("a rebuild keeps the published contract's public shape", () => {
   assert.deepEqual(pinned.successConditions, designed.successConditions);
   // A fresh generation has no base and is left alone.
   assert.deepEqual(pinContractToBase(designed, undefined), designed);
+});
+
+test("a rebuild drops what its design names that the published shape does not declare", () => {
+  // Three rebuilds of live capabilities failed as inconsistent before writing
+  // a line: the design required outputs and inputs under names of its own.
+  const base = {
+    intent: "Find wall lamps in {{finish}}",
+    inputSchema: { type: "object", properties: { finish: { type: "string" } }, required: ["finish"] },
+    outputSchema: { type: "object", properties: { lamps: { type: "array" }, totalCount: { type: "integer" } }, required: ["lamps"] },
+    preconditions: [],
+    successConditions: [{ type: "outputExists", path: "lamps" }],
+  };
+  const designed = {
+    intent: "Find wall lamps in {{colour}}",
+    inputSchema: { type: "object", properties: { colour: { type: "string" } }, required: ["colour"] },
+    outputSchema: { type: "object", properties: { results: { type: "array" } }, required: ["results"] },
+    preconditions: [{ type: "inputExists", path: "colour" }],
+    successConditions: [{ type: "outputExists", path: "results" }, { type: "urlIncludes", value: "type=wall" }],
+    scope: { kind: "category-scoped", match: { requiredInputPaths: ["/shop", "finish"], urlPatterns: ["/shop\\?type=wall"] }, onMismatch: "no-match" },
+  };
+  const pinned = pinContractToBase(designed, base);
+  assert.deepEqual(inspectContractConsistency(pinned), []);
+  assert.equal(pinned.intent, base.intent);
+  assert.deepEqual(pinned.preconditions, []);
+  assert.deepEqual(pinned.successConditions, [{ type: "urlIncludes", value: "type=wall" }], "what still holds of the design is kept");
+  assert.deepEqual(pinned.scope.match.requiredInputPaths, ["finish"]);
+  // Nothing executable left of the design: the published conditions stand.
+  const bare = pinContractToBase({ ...designed, successConditions: [{ type: "outputExists", path: "results" }] }, base);
+  assert.deepEqual(bare.successConditions, base.successConditions);
 });
 
 test("a completed generation that froze its validation is advanced to it, not to a second one", async () => {
