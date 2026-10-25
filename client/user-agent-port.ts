@@ -70,7 +70,7 @@ import {
 import {
   capabilityHandoffForEpisode,
 } from "../lib/capability-center-v2/experience";
-import { capabilityVerificationOnlyFailure, explainCapabilityRuntimeFailure } from "../lib/capability-center-v2/runtime-failure";
+import { capabilityOptionNotOffered, capabilityVerificationOnlyFailure, explainCapabilityRuntimeFailure } from "../lib/capability-center-v2/runtime-failure";
 import { capabilityTextIncludes } from "../lib/capability-center-v2/text-match";
 import { resolveCapabilityInputDefaults } from "../lib/capability-center-v2/input-template";
 import { startDomReplayRecorder } from "./user-agent-recorder";
@@ -3959,7 +3959,13 @@ export class AgentPort {
       assertCapabilityInput(runtime.contract.inputSchema as never, executionInput);
       if (restoredModuleHash && restoredModuleHash !== runtime.program.module.contentHash) throw new Error("capability_checkpoint_module_mismatch");
       const pageText = () => (document.body?.innerText || "").replace(/\s+/g, " ");
-      if (startIndex === 0 && runtime.program.entry.mode === "Navigate" && runtime.program.entry.url) {
+      // A run is fresh until a Stage has started. A Stage that leaves the
+      // entry page resumes on the destination with the cursor still at that
+      // Stage, so the cursor alone cannot say so: the first Stage of "Find
+      // kids room lamps" went to /shop, the destination took itself for a new
+      // run, went back to the entry page and started over, forever.
+      const fresh = startIndex === 0 && !restoredReceipts.length;
+      if (fresh && runtime.program.entry.mode === "Navigate" && runtime.program.entry.url) {
         const entryUrl = new URL(runtime.program.entry.url, location.href);
         if (entryUrl.origin !== location.origin) throw new Error("capability_navigation_origin_invalid");
         if (entryUrl.href !== location.href) {
@@ -3968,7 +3974,7 @@ export class AgentPort {
         }
       }
 
-      if (startIndex === 0) {
+      if (fresh) {
         for (const raw of runtime.contract.preconditions || []) {
           if (typeof raw === "string" && !capabilityTextIncludes(pageText(), raw)) throw new Error(`precondition_text_missing:${raw}`);
           const condition = capabilityV2Object(raw);
@@ -4316,7 +4322,17 @@ export class AgentPort {
       this.pendingCapabilityNavigation = undefined;
       this.saveCheckpoint();
       const message = error instanceof Error ? error.message : String(error);
-      if (error instanceof CapabilityV2HandledOutcomeError) {
+      // A value the site does not offer is an answer for the visitor: say which
+      // options it does offer. Reported as an unrecognized fault, it read as a
+      // broken capability, in whatever language the explainer was written in.
+      const notOffered = capabilityOptionNotOffered(message);
+      const handledError = error instanceof CapabilityV2HandledOutcomeError
+        ? error
+        : notOffered
+          ? new CapabilityV2HandledOutcomeError("no-result", "capability_input_not_offered", this.say.inputNotOffered(runtime.name, notOffered.wanted, notOffered.offered.join(this.say.listSeparator)), { wanted: notOffered.wanted, offered: notOffered.offered })
+          : undefined;
+      if (handledError) {
+        const error = handledError;
         const outcome: TaskEpisode["outcome"] = { status: error.status, code: error.code, summary: error.summary, evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk", capabilityId: runtime.capabilityId, versionId: runtime.versionId, repairSuggested: false, ...error.detail } };
         let completedSession: TaskSession = { ...session, status: "completed", updatedAt: new Date().toISOString() };
         this.activeSession = completedSession;
@@ -4334,7 +4350,7 @@ export class AgentPort {
         inputLabel: capabilityV2FailureInputLabel(runtime, message),
         sideEffectStarted: state.__capabilityV2SideEffectStarted === true,
       };
-      let explanation = explainCapabilityRuntimeFailure(failureContext);
+      let explanation = explainCapabilityRuntimeFailure(failureContext, this.say.runtimeFailure);
       // An authored Stage may throw its own free-form message, which matches no
       // runtime rule and would be reported as an unrecognized fault the user can
       // only be warned about. When every action Stage completed and only the
@@ -4346,7 +4362,7 @@ export class AgentPort {
         receipts: stageReceipts,
         activeStageId: activeStage?.id,
       })) {
-        explanation = explainCapabilityRuntimeFailure({ ...failureContext, technicalError: `capability_result_unverified:${message}` });
+        explanation = explainCapabilityRuntimeFailure({ ...failureContext, technicalError: `capability_result_unverified:${message}` }, this.say.runtimeFailure);
       }
       const summary = explanation.summary;
       const outcome: TaskEpisode["outcome"] = { status: "execution-fault", code: explanation.code, summary, evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk", capabilityId: runtime.capabilityId, versionId: runtime.versionId, technicalError: message, repairSuggested: explanation.repairSuggested, stageEvidence, stageReceipts, ...(activeStage?.id ? { stepId: activeStage.id } : {}) } };

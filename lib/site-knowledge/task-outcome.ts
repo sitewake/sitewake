@@ -142,7 +142,8 @@ export function buildTaskJudgeEvidence(input: {
   };
 }
 
-export function parseTaskOutcomeDecision(value: unknown): TaskOutcomeDecision | undefined {
+/** `unconfirmed` is the visitor-language summary used when the judge gave none. */
+export function parseTaskOutcomeDecision(value: unknown, unconfirmed = ""): TaskOutcomeDecision | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const statuses = ["success", "no-result", "business-rejection", "needs-more-work", "unknown"] as const;
@@ -154,7 +155,7 @@ export function parseTaskOutcomeDecision(value: unknown): TaskOutcomeDecision | 
   return {
     status,
     code: String(record.code || defaultCode).slice(0, 100),
-    summary: String(record.summary || "还不能可靠确认任务结果。").slice(0, 800),
+    summary: String(record.summary || unconfirmed).slice(0, 800),
     confidence,
     evidence: list(record.evidence),
     missingEvidence: list(record.missingEvidence),

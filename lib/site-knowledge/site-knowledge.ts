@@ -12,7 +12,7 @@ function capabilityTaskInput(capability: CapabilityDefinition, id: string): Sugg
   const field = capability.inputs.properties?.[id];
   const type = field?.type === "number" || field?.type === "boolean" ? field.type : "string";
   const name = field?.description?.trim() || id;
-  return { id, name, type, prompt: `请提供${name}` };
+  return { id, name, type, prompt: `请提供${name}` }; // i18n-exempt: release data for the model; the widget never displays it
 }
 
 function available(capability: CapabilityDefinition) {

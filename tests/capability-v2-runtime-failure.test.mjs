@@ -1,42 +1,65 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { capabilityVerificationOnlyFailure, explainCapabilityRuntimeFailure } from "../lib/capability-center-v2/runtime-failure.ts";
+import { capabilityOptionNotOffered, capabilityVerificationOnlyFailure, explainCapabilityRuntimeFailure } from "../lib/capability-center-v2/runtime-failure.ts";
+import { WIDGET_LOCALES, widgetCopy } from "../client/user-agent-copy.ts";
 
-const base = { capabilityName: "提交订单", targetLabel: "确认提交", sideEffectStarted: false };
+const base = { capabilityName: "Submit order", targetLabel: "Confirm", sideEffectStarted: false };
+const RULES = [
+  ["locator_not_found:step_1", "locatorNotFound"],
+  ["target_ambiguous:step_1", "targetAmbiguous"],
+  ["wait_timeout:step_1", "waitTimeout"],
+  ["precondition_url_mismatch", "preconditionUrlMismatch"],
+  ["precondition_text_missing", "preconditionTextMissing"],
+  ["capability_input_required:orderId", "inputRequired"],
+  ["success_text_missing", "resultUnverified"],
+  ["capability_navigation_origin_invalid", "navigationOriginInvalid"],
+  ["fill_verification_failed:value", "fillVerificationFailed"],
+  ["target_not_checkbox:step_1", "targetNotCheckbox"],
+  ["upload_requires_user_interaction:step_1", "uploadRequiresUser"],
+  ["task_cancelled", "cancelled"],
+  ["unexpected_runtime_problem", "unrecognized"],
+];
 
-test("V2 runtime failures always produce user-facing explanations", () => {
-  const cases = [
-    ["locator_not_found:step_1", /没有找到.*确认提交.*尚未执行/],
-    ["target_ambiguous:step_1", /多个.*确认提交.*避免误操作/],
-    ["wait_timeout:step_1", /等待.*确认提交.*超时/],
-    ["precondition_url_mismatch", /不符合.*入口条件/],
-    ["precondition_text_missing", /缺少.*业务前置状态/],
-    ["capability_input_required:orderId", /缺少必要输入/],
-    ["success_text_missing", /没有观察到.*成功结果.*部分生效/],
-    ["capability_navigation_origin_invalid", /允许范围之外.*阻止/],
-    ["fill_verification_failed:value", /没有接受写入/],
-    ["target_not_checkbox:step_1", /不再是预期的勾选控件/],
-    ["upload_requires_user_interaction:step_1", /手动选择并上传文件/],
-    ["task_cancelled", /已停止.*尚未执行/],
-    ["unexpected_runtime_problem", /未能识别的运行问题/],
-  ];
-  for (const [technicalError, expected] of cases) {
-    const result = explainCapabilityRuntimeFailure({ ...base, technicalError });
-    assert.match(result.summary, expected, technicalError);
-    assert.equal(result.summary.includes(String(technicalError)), false, technicalError);
+test("every V2 runtime failure is explained in the visitor's language, without the executor code", () => {
+  for (const locale of WIDGET_LOCALES) {
+    const say = widgetCopy(locale).run.runtimeFailure;
+    const summaries = new Set();
+    for (const [technicalError] of RULES) {
+      const result = explainCapabilityRuntimeFailure({ ...base, technicalError }, say);
+      assert.ok(result.summary.includes(say.quote(base.capabilityName)), `${locale} ${technicalError}`);
+      assert.equal(result.summary.includes(String(technicalError).split(":")[0]), false, `${locale} ${technicalError}`);
+      summaries.add(result.summary);
+    }
+    assert.equal(summaries.size, RULES.length, `${locale}: each rule has its own explanation`);
   }
+  // The two catalogs explain the same failure differently: neither borrows the other's words.
+  const [zh, en] = ["zh", "en"].map((locale) => explainCapabilityRuntimeFailure({ ...base, technicalError: "unexpected_runtime_problem" }, widgetCopy(locale).run.runtimeFailure).summary);
+  assert.match(zh, /\p{Script=Han}/u);
+  assert.doesNotMatch(en, /\p{Script=Han}/u);
 });
 
 test("V2 failure explanation warns when an operation may be partially applied", () => {
-  const result = explainCapabilityRuntimeFailure({ ...base, technicalError: "locator_not_found:step_2", sideEffectStarted: true });
-  assert.match(result.summary, /可能已经部分生效.*不要直接重复执行/);
-  assert.equal(result.repairSuggested, true);
+  for (const locale of WIDGET_LOCALES) {
+    const say = widgetCopy(locale).run.runtimeFailure;
+    const result = explainCapabilityRuntimeFailure({ ...base, technicalError: "locator_not_found:step_2", sideEffectStarted: true }, say);
+    assert.ok(result.summary.includes(say.partialWarning), locale);
+    assert.equal(result.repairSuggested, true);
+  }
 });
 
 test("only the generic fallback is reported as unrecognized", () => {
-  assert.equal(explainCapabilityRuntimeFailure({ ...base, technicalError: "locator_not_found:step_1" }).recognized, true);
-  assert.equal(explainCapabilityRuntimeFailure({ ...base, technicalError: "capability_result_unverified" }).recognized, true);
-  assert.equal(explainCapabilityRuntimeFailure({ ...base, technicalError: "Cannot extract topic title from dialog" }).recognized, false);
+  const say = widgetCopy("en").run.runtimeFailure;
+  assert.equal(explainCapabilityRuntimeFailure({ ...base, technicalError: "locator_not_found:step_1" }, say).recognized, true);
+  assert.equal(explainCapabilityRuntimeFailure({ ...base, technicalError: "capability_result_unverified" }, say).recognized, true);
+  assert.equal(explainCapabilityRuntimeFailure({ ...base, technicalError: "Cannot extract topic title from dialog" }, say).recognized, false);
+});
+
+test("a value the page does not offer is read back with what it does offer", () => {
+  assert.deepEqual(
+    capabilityOptionNotOffered("capability_stage_select_option_missing:stage_5:1000; options: Any | Up to $100 | Up to $500"),
+    { wanted: "1000", offered: ["Any", "Up to $100", "Up to $500"] },
+  );
+  assert.equal(capabilityOptionNotOffered("locator_not_found:step_1"), undefined);
 });
 
 test("a throw from the terminal verification stage is a capability defect, not an unknown page fault", () => {
@@ -49,8 +72,8 @@ test("a throw from the terminal verification stage is a capability defect, not a
   ];
   assert.equal(capabilityVerificationOnlyFailure({ stages, receipts, activeStageId: "stage_verify" }), true);
   // Reported as such, the user hears what actually happened and a repair is offered.
-  const explanation = explainCapabilityRuntimeFailure({ ...base, technicalError: "capability_result_unverified:Cannot extract topic title from dialog" });
-  assert.match(explanation.summary, /已经执行页面操作，但没有观察到约定的成功结果/);
+  const explanation = explainCapabilityRuntimeFailure({ ...base, technicalError: "capability_result_unverified:Cannot extract topic title from dialog" }, widgetCopy("en").run.runtimeFailure);
+  assert.equal(explanation.summary, widgetCopy("en").run.runtimeFailure.resultUnverified(widgetCopy("en").run.runtimeFailure.quote(base.capabilityName)));
   assert.equal(explanation.repairSuggested, true);
   assert.equal(explanation.summary.includes("Cannot extract topic title"), false, "the raw message stays in evidence");
 });

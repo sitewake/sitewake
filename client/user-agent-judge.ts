@@ -1,5 +1,5 @@
 import { parseTaskOutcomeDecision, type TaskJudgeEvidence, type TaskOutcomeDecision } from "../lib/site-knowledge/task-outcome";
-import { replyLanguageInstruction, resolveWidgetLocale, type WidgetLocale } from "./user-agent-copy";
+import { replyLanguageInstruction, resolveWidgetLocale, widgetCopy, type WidgetLocale } from "./user-agent-copy";
 
 function endpointUrl(endpoint: string, path: string) {
   return endpoint ? `${endpoint.replace(/\/$/, "")}${path}` : path;
@@ -86,8 +86,9 @@ export async function judgeTaskOutcome(options: {
     if (!response.ok) return undefined;
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string; tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> } }> };
     const call = payload.choices?.[0]?.message?.tool_calls?.find((item) => item.function?.name === "report_outcome");
-    if (call?.function?.arguments) return parseTaskOutcomeDecision(JSON.parse(call.function.arguments));
-    return parseTaskOutcomeDecision(parseJsonObject(payload.choices?.[0]?.message?.content));
+    const unconfirmed = widgetCopy(options.replyLocale || resolveWidgetLocale()).run.outcomeUnconfirmed;
+    if (call?.function?.arguments) return parseTaskOutcomeDecision(JSON.parse(call.function.arguments), unconfirmed);
+    return parseTaskOutcomeDecision(parseJsonObject(payload.choices?.[0]?.message?.content), unconfirmed);
   } catch {
     return undefined;
   } finally {
