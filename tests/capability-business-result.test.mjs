@@ -128,3 +128,21 @@ test("text that was already on the page is not evidence that the capability did 
  // Without an entry page to compare against, nothing changes.
  assert.equal(alignSuccessConditionsToEvidence(designed,plan,'https://example.test/daily/2026-09-20',{date:'2026年09月20日'},result).length,3);
 });
+
+test('a list the capability returned is shown, one line per item, not only the count beside it',()=>{
+ // "Find floor lamps" returned four lamps and a count; the visitor read the count alone.
+ const listSchema={type:'object',properties:{
+   items:{type:'array',title:'Floor lamps',items:{type:'object',properties:{name:{type:'string'},price:{type:'string'},specs:{type:'string'}}}},
+   totalCount:{type:'integer',title:'Matches'}}};
+ const lamps=['Arden Floor Lamp','Sora Arc Lamp','Kai Tripod Lamp','Ivo Reading Lamp'].map((name,index)=>({name,price:`$${300+index}`,specs:'Floor lamp · 2700K'}));
+ const reply=capabilityCompletionText('Find floor lamps',{room:'living'},{items:lamps,totalCount:4},listSchema,asEn);
+ assert.ok(reply.includes(`Floor lamps${COMPLETION_COPY_EN.separator}`),reply);
+ for(const lamp of lamps) assert.ok(reply.includes(`- ${lamp.name} · ${lamp.price} · ${lamp.specs}`),reply);
+ assert.ok(reply.includes(`Matches${COMPLETION_COPY_EN.separator}4`),reply);
+ // A long list is cut, and says how much was left out.
+ const many=Array.from({length:11},(_,index)=>({name:`Lamp ${index+1}`,price:'$10'}));
+ const long=capabilityCompletionText('Find floor lamps',{},{items:many},listSchema,asZh);
+ assert.ok(long.includes('Lamp 8'),long);
+ assert.ok(!long.includes('Lamp 9'),long);
+ assert.ok(long.includes(zhFrame.moreItems.replace('{count}','3')),long);
+});

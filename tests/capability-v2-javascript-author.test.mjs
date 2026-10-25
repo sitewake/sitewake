@@ -154,7 +154,7 @@ function toolTurn(index, name, args = {}) {
   };
 }
 
-async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [] }) {
+async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [], draftPage }) {
   const requests = [];
   const events = [];
   const persisted = [];
@@ -198,7 +198,7 @@ async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraf
       groundingExamples,
       createDraftContext: async () => ({
         context: { close: async () => undefined },
-        page: { goto: async () => undefined, waitForTimeout: async () => undefined },
+        page: draftPage || { goto: async () => undefined, waitForTimeout: async () => undefined },
       }),
       persistModule: async (bundleSource) => {
         persisted.push(bundleSource);
@@ -349,6 +349,28 @@ test("when repairs end on a grounding example, the draft that passed the demonst
   assert.equal(result.source, source);
   const accepted = events.find((event) => /draft that passed the demonstration/.test(event.message));
   assert.match(accepted?.payload?.reason || "", /draft_grounding_example_failed:example_1:Failed:plug type required/);
+});
+
+test("a count that never moved while its list did goes back to the model with what each run returned", async () => {
+  // "Find floor lamps" read the 16 in "Showing 4 of 16 lamps" for every room.
+  const turns = [
+    toolTurn(1, "write_file", { path: "capability.ts", content: source }),
+    toolTurn(2, "run_draft"),
+    toolTurn(3, "run_draft"),
+  ];
+  const lamps = (count) => Array.from({ length: count }, (_, index) => ({ name: `Lamp ${index + 1}` }));
+  const { result, events, requests } = await runAuthor({
+    turns,
+    groundingExamples: [{ query: "pillow" }],
+    draftPage: { ...successfulDraft().page, goto: async () => undefined },
+    stageRun: async (options) => ({ ...successfulDraft(), output: { ok: true, items: lamps(options.input.query === "pillow" ? 2 : 4), totalCount: 16 } }),
+  });
+  const feedback = requests[2].messages.findLast((message) => message.role === "tool");
+  assert.match(feedback.content, /totalCount was 16 in every run while items changed/);
+  assert.match(feedback.content, /pillow\\"\} → items has 2/);
+  // Repairs ran out on it; the draft that passed the demonstration still goes on.
+  assert.equal(result.source, source);
+  assert.ok(events.some((event) => /draft that passed the demonstration/.test(event.message)));
 });
 
 test("a draft that never passed its demonstration is not handed on", async () => {

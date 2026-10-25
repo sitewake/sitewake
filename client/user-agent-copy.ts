@@ -519,6 +519,7 @@ const zh = {
     yes: "是",
     no: "否",
     viewDetails: "查看详情",
+    moreItems: "另有 {count} 项",
   },
   /**
    * Failure explanations. Each answers two things: what happened, and what you can do
@@ -927,6 +928,7 @@ const en: WidgetCopy = {
     yes: "Yes",
     no: "No",
     viewDetails: "View details",
+    moreItems: "and {count} more",
   },
   error: {
     inputRequired: "To finish this I need one more piece of information from you.",

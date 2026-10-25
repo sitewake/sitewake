@@ -1,3 +1,4 @@
+import { countsIgnoringTheirList, describeCountIgnoringList } from "../../lib/capability-center-v2/output-consistency";
 import { createAuthoringConnectors, type AuthoringConnectors } from "./connectors";
 import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
 import { DEFAULT_CAPABILITY_TOTAL_TIMEOUT_MS } from "../../lib/capability-center-v2/control-flow";
@@ -988,6 +989,8 @@ export async function authorJavaScriptCapability(options: {
         // is materialized and only fails much later in the pipeline.
         await evaluateResult(draft.page, options.goal, options.contract, draft.output, options.input, undefined, draft.observedText);
         const passedDemonstration: JavaScriptAuthorResult = { source, bundle, program, draft, provenance };
+        // What each run answered, to read together once all of them have.
+        const answers: Array<{ input: JsonObject; output: JsonObject }> = [{ input: options.input.parameters as JsonObject, output: draft.output as JsonObject }];
         // Replay every evidence-backed grounding example before accepting
         // a draft. This is private C1 execution (no model
         // call) and catches ordering bugs such as setting quantity after
@@ -1025,6 +1028,7 @@ export async function authorJavaScriptCapability(options: {
             }
             if (exampleReplay.outcome !== "Success") throw new Error(`${exampleReplay.outcome}:${exampleReplay.reason || ""}`);
             await evaluateResult(isolatedExample.page, options.goal, options.contract, exampleReplay.output, groundingInput, undefined, exampleReplay.observedText);
+            answers.push({ input: groundingInput.parameters as JsonObject, output: exampleReplay.output as JsonObject });
             await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example succeeded", payload: { example: exampleIndex + 1 } });
           } catch (error) {
             lastCase = {caseId:`example_${exampleIndex + 1}`,input:groundingInput.parameters,moduleHash:moduleRef.contentHash};
@@ -1037,6 +1041,17 @@ export async function authorJavaScriptCapability(options: {
           } finally {
             if (debugContext !== isolatedExample) await isolatedExample.context.close().catch(() => undefined);
           }
+        }
+        // Each run passed on its own; read together, a count that never moved
+        // while its list did is not counting the result. The model can fix
+        // that while it is still writing; when its repairs run out, the draft
+        // that passed the demonstration goes on as for any grounding example.
+        const stuck = countsIgnoringTheirList(answers.map((answer) => answer.output));
+        if (stuck.length) {
+          lastCase = {caseId:"answers_together",input:Object.fromEntries(answers.map((answer, index) => [`run_${index + 1}`, answer.input])),moduleHash:moduleRef.contentHash};
+          await workspace.event('replay.count_ignores_list', {findings:stuck,inputs:answers.map((answer) => answer.input)});
+          demonstrated = passedDemonstration;
+          throw new Error(`draft_grounding_example_failed:answers_together:${describeCountIgnoringList(stuck[0], answers.map((answer) => answer.input))}`);
         }
         await acceptDraft(passedDemonstration);
         draftResult = { ok: true, outcome: draft.outcome, output: draft.output, evidence: draft.evidence, receipts: draft.receipts };
