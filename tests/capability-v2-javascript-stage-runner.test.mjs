@@ -533,3 +533,73 @@ test("the last stage's answer is not turned into Continue", async () => {
     assert.ok(guard.lastIndexOf("hasNextStage") > guard.lastIndexOf("if ("), `${recovery} 必须由 hasNextStage 守着`);
   }
 });
+
+/**
+ * A Mira Pendant cart was validated with finishes of other lamps. The finish
+ * stage's positional fallback, recorded for the demonstrated option, clicked
+ * the first finish instead, the cart took the wrong item and the run said
+ * success. A target chosen by an input picks only the option that is that
+ * value; when the group is there without it, the page does not offer it.
+ */
+test("a target chosen by an input picks that option or says the page does not offer it", async () => {
+  const author = await import("../runner/capability-v2/javascript-author.ts");
+  const { classifyValidationCase } = await import("../lib/capability-center-v2/review-adjudication.ts");
+  const trace = {
+    schemaVersion: "1.0", entry: { mode: "Navigate", url: "https://target.test/start" }, defaults: { timeoutMs: 15000, retryCount: 1 },
+    steps: [
+      { id: "step_1", action: "click", target: { strategies: [{ type: "text", value: { source: "input", path: "finish" }, match: "exact" }, { type: "css", value: "fieldset > div > label:nth-of-type(1)" }] } },
+    ],
+    result: {},
+  };
+  const contract = {
+    inputSchema: { type: "object", properties: { finish: { type: "string" } }, required: ["finish"] },
+    outputSchema: { type: "object", properties: { selected: { type: "string" } }, required: ["selected"] },
+    preconditions: [], successConditions: [{ type: "textTemplate", template: "{{finish}}" }],
+  };
+  const seed = author.seedCapabilitySource(author.authoringManifest(trace, contract), trace, contract);
+  assert.match(seed, /label:nth-of-type\(1\)"\}\],choice:input\["finish"\]\}/);
+
+  const browser = await launchTestBrowser();
+  const context = await browser.newContext();
+  try {
+    const page = `<!doctype html><title>Mira Pendant</title><form><fieldset><legend>Finish</legend><div>
+      <label><input type="radio" name="finish" value="opal-glass">Opal glass</label>
+      <label><input type="radio" name="finish" value="smoke-glass">Smoke glass</label>
+    </div></fieldset></form>`;
+    const module = `export const capability={version:2,stages:[
+      {id:"stage_1",io:{reads:{input:["finish"],state:[]},writes:{state:[],output:[]}},navigation:"optional",async run({input,waitForTarget}){const element=await waitForTarget({strategies:[{type:"text",value:input["finish"],match:"exact"},{type:"css",value:"fieldset > div > label:nth-of-type(1)"}],choice:input["finish"]});element.click();return {outcome:"Continue"}}},
+      {id:"stage_verify",io:{reads:{input:[],state:[]},writes:{state:[],output:["selected"]}},navigation:"none",run(){return {outcome:"Success",output:{selected:document.querySelector("input:checked")?.value||""},evidence:[]}}}]}`;
+    await context.route("**/*", async (route) => {
+      const url = route.request().url();
+      if (url === "https://target.test/start") return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: page });
+      if (url === "https://public.test/module.js") return route.fulfill({ status: 200, headers: { "content-type": "text/javascript; charset=utf-8", "access-control-allow-origin": "*" }, body: module });
+      await route.abort("failed");
+    });
+    const stages = [
+      { id: "stage_1", title: "Finish", purpose: "Finish", effect: "write", resumePolicy: "reconcile-before-retry", io: { reads: { input: ["finish"], state: [] }, writes: { state: [], output: [] } }, navigation: "optional" },
+      { id: "stage_verify", title: "Verify", purpose: "Verify", effect: "read", resumePolicy: "skip-completed", io: { reads: { input: [], state: [] }, writes: { state: [], output: ["selected"] } }, navigation: "none" },
+    ];
+    const run = async (finish) => {
+      const tab = await context.newPage();
+      await tab.goto("https://target.test/start");
+      try {
+        return await stageRunner.runCapabilityJavaScriptStages({ page: tab, moduleUrl: "https://public.test/module.js", program: { ...program, stages }, input: { finish }, deadlineCapMs: 10_000 });
+      } finally { await tab.close(); }
+    };
+    // The second option, written loosely, is still that option.
+    assert.equal((await run("smoke Glass")).output.selected, "smoke-glass");
+    const started = Date.now();
+    await assert.rejects(() => run("Brass"), (error) => {
+      assert.match(error.message, /capability_stage_select_option_missing:stage_1:Brass; options: Opal glass \| Smoke glass/u);
+      assert.deepEqual(
+        classifyValidationCase({ caseId: "case_2", resolvedInput: { finish: "Brass" }, failureReason: error.message }, { finish: "Opal glass" }),
+        { outcome: "InputNotOffered", offered: ["Opal glass", "Smoke glass"] },
+      );
+      return true;
+    });
+    assert.ok(Date.now() - started < 5000, "an option the page does not offer is reported at once, not after the deadline");
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+});

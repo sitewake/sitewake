@@ -1450,6 +1450,22 @@ function evidenceValueEqual(left: unknown, right: unknown) {
   );
 }
 
+/** A case that supplies every demonstrated value the way it was demonstrated. */
+function isDemonstratedCase(
+  caseInput: JsonObject,
+  demonstrationParameters: Record<string, JsonValue> | undefined,
+) {
+  const demonstrated = Object.entries(demonstrationParameters || {});
+  return (
+    demonstrated.length > 0 &&
+    demonstrated.every(
+      ([path, value]) =>
+        !Object.hasOwn(caseInput, path) || evidenceValueEqual(caseInput[path], value),
+    ) &&
+    demonstrated.some(([path]) => Object.hasOwn(caseInput, path))
+  );
+}
+
 function suppliedInputPaths(
   value: JsonObject,
   prefix = "",
@@ -2341,12 +2357,21 @@ export function mergeCapabilityCaseEnrichment(
     expected: cloneJson(item.expected),
   }));
   const taken = new Set(cases.map((item) => canonicalCapabilityCaseJson(item.input)));
+  const demonstratedIndex = derivation.cases.findIndex((item) =>
+    isDemonstratedCase(item.input, input.demonstrationParameters),
+  );
   const reason = (error: unknown) =>
     error instanceof Error ? error.message : String(error);
   enrichment.cases.forEach((item, index) => {
     const derived = derivation.cases[index];
     if (item.input && Object.keys(item.input).length) {
       try {
+        // The demonstration's own case is the floor validation stands on. A
+        // model once moved all three cases of a Mira Pendant cart onto other
+        // lamps' finishes; the one value the page was known to offer never
+        // ran, and a program that had just worked was refused.
+        if (index === demonstratedIndex)
+          throw new Error("case_enrichment_demonstrated_case_kept");
         const next: JsonObject = cloneJson(derived.input);
         for (const [path, value] of Object.entries(item.input)) {
           if (!Object.hasOwn(derived.input, path))
