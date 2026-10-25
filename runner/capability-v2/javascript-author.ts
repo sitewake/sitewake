@@ -459,8 +459,16 @@ function locatorExpression(value: LocatorValue | ProgramValue | undefined): stri
   return undefined;
 }
 
-/** Render one exploration target as a `find()`-compatible object literal. */
+/**
+ * Render one exploration target as a `find()`-compatible object literal. A
+ * target named by an input also carries that input as its `choice`: the
+ * positional strategies beside it were recorded for the demonstrated option
+ * and may only locate the group, never stand in for another value.
+ */
 function targetExpression(target: ProgramStep["target"]): string {
+  const choice = (target?.strategies || [])
+    .flatMap((strategy) => [strategy.name, strategy.value])
+    .find((value) => value !== undefined && typeof value !== "string" && value.source === "input");
   const strategies = (target?.strategies || []).map((strategy) => {
     const fields: string[] = [`type:${JSON.stringify(strategy.type)}`];
     if (strategy.role) fields.push(`role:${JSON.stringify(strategy.role)}`);
@@ -469,7 +477,8 @@ function targetExpression(target: ProgramStep["target"]): string {
     if (strategy.match) fields.push(`match:${JSON.stringify(strategy.match)}`);
     return `{${fields.join(",")}}`;
   });
-  return `{strategies:[${strategies.join(",")}]}`;
+  const chosen = locatorExpression(choice);
+  return `{strategies:[${strategies.join(",")}]${chosen ? `,choice:${chosen}` : ""}}`;
 }
 
 /**

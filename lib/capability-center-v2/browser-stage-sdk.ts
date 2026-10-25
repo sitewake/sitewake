@@ -203,13 +203,48 @@ export async function executeBrowserCapabilityStage(payload: string | {
     const interactive = matching.find((element) => ['button', 'link', 'option', 'menuitem', 'tab', 'checkbox', 'radio'].includes(roleOf(element)) || element.matches('[tabindex],[contenteditable]'));
     return (interactive || matching.find((element) => !matching.some((other) => other !== element && element.contains(other))) || null) as HTMLElement | null;
   };
+  const firstFound = (strategies: Strategy[]): HTMLElement | null => {
+    for (const strategy of strategies) { try { const element = findOne(strategy); if (element) return element; } catch { /* an invalid selector in one strategy does not disqualify the others */ } }
+    return null;
+  };
+  const OPTION_ELEMENTS = 'label,option,[role=radio],[role=option],[role=checkbox],[role=menuitemradio],[role=tab],button,a';
+  const looseText = (value: unknown) => normalizeText(value).normalize('NFKC').toLocaleLowerCase();
+  /**
+   * A target chosen by an input value: { strategies, choice }. Only a strategy
+   * that names the value may pick the element; the others were recorded for
+   * the one option the demonstration took (`label:nth-of-type(1)`), so they
+   * can say where the choice is made but never which option. Used as a
+   * fallback they clicked the first finish for "Brass" on a page that offers
+   * no brass, the cart took the wrong item and the run reported success. When
+   * the group is there and none of its options is the value, the page does
+   * not offer it, and the stage says so with what it does offer.
+   */
+  const findChoice = (strategies: Strategy[], choice: string): HTMLElement | null => {
+    const named = strategies.filter((strategy) => looseText(strategy.type === 'role' ? strategy.name : strategy.value) === looseText(choice));
+    const element = firstFound(named);
+    if (element) return element;
+    const place = firstFound(strategies.filter((strategy) => !named.includes(strategy)));
+    if (!place) return null;
+    const group = place.closest('fieldset,[role=radiogroup],[role=listbox],[role=group],[role=tablist],[role=menu],select,ul,ol') || place.parentElement;
+    if (!group) return null;
+    const options = [...group.querySelectorAll(OPTION_ELEMENTS)].filter(visible)
+      .map((option) => ({ option, label: option instanceof HTMLLabelElement ? normalizeText(option.textContent) : accessibleName(option) }))
+      .filter((item) => item.label);
+    const same = options.filter((item) => looseText(item.label) === looseText(choice));
+    if (same.length) return same[0].option;
+    // Several options in one place and none of them is the value: not offered.
+    // A lone element is not a group; keep waiting for the page instead.
+    if (options.length > 1) throw new Error(`capability_stage_select_option_missing:${stageId}:${normalizeText(choice)}; options: ${[...new Set(options.map((item) => item.label))].join(' | ')}`);
+    return null;
+  };
   const find = (target: unknown): HTMLElement | null => {
     const strategies: Strategy[] = typeof target === 'string' ? [{ type: 'css', value: target }]
       : Array.isArray(target) ? target as Strategy[]
       : target && typeof target === 'object' && Array.isArray((target as { strategies?: unknown }).strategies) ? (target as { strategies: Strategy[] }).strategies
       : target && typeof target === 'object' ? [target as Strategy] : [];
-    for (const strategy of strategies) { try { const element = findOne(strategy); if (element) return element; } catch { /* an invalid selector in one strategy does not disqualify the others */ } }
-    return null;
+    const choice = target && typeof target === 'object' && !Array.isArray(target) ? (target as { choice?: unknown }).choice : undefined;
+    if ((typeof choice === 'string' || typeof choice === 'number') && normalizeText(choice)) return findChoice(strategies, String(choice));
+    return firstFound(strategies);
   };
   const waitForTarget = (target: unknown) => waitUntil(() => find(target), `find(${JSON.stringify(target).slice(0, 300)})`);
   /**

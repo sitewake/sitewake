@@ -1031,25 +1031,29 @@ test("enrichment may use any value the contract accepts, and nothing it says is 
   ]);
   const merged = mergeCapabilityCaseEnrichment(input, derived, {
     cases: [
+      // The demonstration's own case stays what was demonstrated.
+      { input: { query: "laptop" }, expected: {} },
       // A value the page showed, matched to the page's own writing of it.
       { input: { query: "spiral notebook" }, expected: { heading: "Notebook" } },
       // A value the page never showed: taken as given. A search box accepts
       // words that are nowhere on the page it stands on, and whether the
       // capability works for one is decided by running it.
       { input: { query: "laptop" }, expected: { heading: "Mug" } },
-      // An expectation outside the output schema: dropped for this case only.
-      { expected: { resultCount: 3 } },
     ],
   }, discovery);
   assert.deepEqual(merged.cases.map((item) => item.input), [
-    { query: "Spiral notebook" }, { query: "laptop" }, { query: "Mug" },
+    { query: "notebook" }, { query: "Spiral notebook" }, { query: "laptop" },
   ]);
-  assert.deepEqual(merged.cases[0].expected, { heading: "Notebook", query: "Spiral notebook" });
-  assert.deepEqual(merged.cases[1].expected, { heading: "Mug", query: "laptop" });
-  assert.deepEqual(merged.report.reselected, [0, 1]);
-  assert.deepEqual(merged.report.inputIgnored, []);
-  assert.equal(merged.report.expectedIgnored.length, 1);
-  assert.equal(merged.report.expectedIgnored[0].index, 2);
+  assert.deepEqual(merged.cases[1].expected, { heading: "Notebook", query: "Spiral notebook" });
+  assert.deepEqual(merged.cases[2].expected, { heading: "Mug", query: "laptop" });
+  assert.deepEqual(merged.report.reselected, [1, 2]);
+  assert.deepEqual(merged.report.inputIgnored, [{ index: 0, reason: "case_enrichment_demonstrated_case_kept" }]);
+  // An expectation outside the output schema: dropped for this case only.
+  const outside = mergeCapabilityCaseEnrichment(input, derived, {
+    cases: [{ expected: {} }, { expected: {} }, { expected: { resultCount: 3 } }],
+  }, discovery);
+  assert.equal(outside.report.expectedIgnored.length, 1);
+  assert.equal(outside.report.expectedIgnored[0].index, 2);
   // A value the schema refuses is still refused: that is the contract, not a
   // rule about where values come from.
   const refused = mergeCapabilityCaseEnrichment(input, derived, {
