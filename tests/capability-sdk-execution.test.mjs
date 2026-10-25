@@ -28,6 +28,7 @@ Object.assign(port,{
  status(phase,message,detail={}){if(detail.activity){const a=detail.activity;this.activityTimeline=this.activityTimeline.filter(i=>i.id!==a.id).concat(a);save('activities',this.activityTimeline);}window.lastStatus={phase,message};},
  finishRun:async(status,outcome,output,text)=>{const result={status,outcome,output,text,activities:read('activities'),projectionComplete:Boolean(window.projectionComplete),timings:port.runtimeTimings,clicks:Number(sessionStorage.getItem('clicks')||0)};save('result',result);await fetch(config.api+'/result',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(result)});window.result=result;},
 });
+if(config.observe){port.readRunPointer=()=>({resumeToken:'fixture-token',runId:'fixture-run'});port.nativeWindowOpen=window.open.bind(window);port.submitObservation=async()=>undefined;port.installObserver();}
 window.port=port;
 const cp=read('checkpoint');
 window.start=()=>port.runMainAgent(session);
@@ -38,9 +39,15 @@ const listen = s=>new Promise(resolve=>s.listen(0,'127.0.0.1',()=>resolve('http:
 const close = s=>new Promise(resolve=>{s.closeAllConnections();s.close(resolve)});
 
 function artifact(mode){
- const stages=[{id:'click',title:'打开条目',effect:'write',resumePolicy:'reconcile-before-retry',navigation:'optional',io:{reads:{input:['rank'],state:[]},writes:{state:[],output:[]}}},{id:'verify',title:'验证结果',effect:'read',resumePolicy:'skip-completed',navigation:'none',io:{reads:{input:['rank'],state:[]},writes:{state:[],output:['pageUrl','rank','targetTitle']}}}];
+ const stages=[{id:'click',title:'打开条目',effect:'write',resumePolicy:'reconcile-before-retry',navigation:'optional',io:{reads:{input:mode==='link'?['rank','via']:['rank'],state:[]},writes:{state:[],output:[]}}},{id:'verify',title:'验证结果',effect:'read',resumePolicy:'skip-completed',navigation:'none',io:{reads:{input:['rank'],state:[]},writes:{state:[],output:['pageUrl','rank','targetTitle']}}}];
  const source=`export const capability={version:2,stages:[{...${JSON.stringify(stages[0])},async run({input}){
  if(input.rank>3)return {outcome:'NoResult',reason:'排名不存在'};
+ ${mode==='link'?`
+ // A seeded Stage: click the link the explorer clicked, then wait for the page to change.
+ if(input.via!=='link')throw Error('default_input_missing:'+input.via);
+ const before=location.href;document.querySelector('#open').click();
+ await new Promise((resolve,reject)=>{const started=Date.now();const timer=setInterval(()=>{if(location.href!==before){clearInterval(timer);resolve();}else if(Date.now()-started>3000){clearInterval(timer);reject(Error('link_click_never_navigated'));}},25);});
+ return {outcome:'Continue'};`:''}
  document.querySelector('[data-rank="'+input.rank+'"]').click();
  ${mode==='failure'?"throw Error('fixture_execution_failed');":''}
 
@@ -57,9 +64,9 @@ function artifact(mode){
 test('published capability executes and terminates through the real SDK across browser states', {timeout:60000},async t=>{
  const bundled=await build({stdin:{contents:bootstrap,loader:'ts',resolveDir:process.cwd()},bundle:true,format:'iife',platform:'browser',write:false});
  const browser=await chromium.launch();
- try{for(const mode of ['plain','spa','hash','hard','native','entry-hash','slow-network','failure','no-result','integrity'])await t.test(mode,async()=>{
+ try{for(const mode of ['plain','spa','hash','hard','native','link','entry-hash','slow-network','failure','no-result','integrity'])await t.test(mode,async()=>{
   const module=artifact(mode);let modelCalls=0,results=[],moduleRequests=0;
-  const runtime={capabilityId:'rank',versionId:'v1',name:'按排名打开热搜',contract:{intent:'按排名打开热搜',inputSchema:{type:'object',properties:{rank:{type:'number'}},required:['rank']},outputSchema:{type:'object',properties:{pageUrl:{type:'string'},rank:{type:'number',title:'请求序号'},targetTitle:{type:'string',minLength:1}},required:['pageUrl','rank','targetTitle']},successConditions:[{type:'outputExists',path:'pageUrl'}]},program:{schemaVersion:'2.0',runtime:'BrowserJavaScriptStage',entry:{mode:'CurrentPage'},stages:module.stages,module:{contentHash:mode==='integrity'?'0'.repeat(64):module.hash,moduleUrl:'/module.js',exportName:'capability'}}};
+  const runtime={capabilityId:'rank',versionId:'v1',name:'按排名打开热搜',contract:{intent:'按排名打开热搜',inputSchema:{type:'object',properties:{rank:{type:'number'},...(mode==='link'?{via:{type:'string',default:'link'}}:{})},required:['rank']},outputSchema:{type:'object',properties:{pageUrl:{type:'string'},rank:{type:'number',title:'请求序号'},targetTitle:{type:'string',minLength:1}},required:['pageUrl','rank','targetTitle']},successConditions:[{type:'outputExists',path:'pageUrl'}]},program:{schemaVersion:'2.0',runtime:'BrowserJavaScriptStage',entry:{mode:'CurrentPage'},stages:module.stages,module:{contentHash:mode==='integrity'?'0'.repeat(64):module.hash,moduleUrl:'/module.js',exportName:'capability'}}};
   const cors={'access-control-allow-origin':'*','access-control-allow-headers':'content-type,authorization,x-sitewake-site-id,x-sitewake-site-agent-id,x-sitewake-site-id,x-sitewake-site-agent-id,x-sitewake-ai-stage,x-capability-input,x-capability-goal,x-capability-current-url','access-control-allow-methods':'GET,POST,OPTIONS'};
   const api=createServer(async(req,res)=>{if(mode==='slow-network')await new Promise(r=>setTimeout(r,80));res.writeHead(req.method==='OPTIONS'?204:200,{...cors,...(req.url==='/module.js'?{'cache-control':'public,max-age=31536000,immutable'}:{}),'content-type':req.url==='/module.js'?'text/javascript':'application/json'});if(req.method==='OPTIONS')return res.end();
    if(req.url==='/module.js'){moduleRequests++;return res.end(module.source)}
@@ -71,9 +78,11 @@ test('published capability executes and terminates through the real SDK across b
   });
   const apiOrigin=await listen(api);
   const site=createServer((req,res)=>{if(req.url==='/sdk-test.js'){res.setHeader('content-type','text/javascript');return res.end(bundled.outputFiles[0].text)}
-   res.setHeader('content-type','text/html; charset=utf-8');res.end(`<!doctype html><title>热搜时光机</title><main><button data-rank="3">第三个热搜</button><div id="detail"></div><h1 id="topic-title"></h1></main><script>
-   window.fixture={api:${JSON.stringify(apiOrigin)},slow:${mode==='slow-network'}};
+   res.setHeader('content-type','text/html; charset=utf-8');res.end(`<!doctype html><title>热搜时光机</title><main><button data-rank="3">第三个热搜</button><a id="open" href="/detail?rank=3">第三个热搜详情</a><div id="detail"></div><h1 id="topic-title"></h1></main><script>
+   window.fixture={api:${JSON.stringify(apiOrigin)},slow:${mode==='slow-network'},observe:${mode==='link'}};
    if(location.pathname==='/detail'){document.querySelector('#detail').textContent=new URL(location.href).searchParams.get('rank');document.querySelector('#topic-title').textContent='本次真实话题';}
+   // A client-side router link: the site handles the click itself.
+   document.querySelector('#open').onclick=(event)=>{event.preventDefault();sessionStorage.setItem('clicks',String(Number(sessionStorage.getItem('clicks')||0)+1));history.pushState({},'','/detail?rank=3');document.querySelector('#detail').textContent='3';document.querySelector('#topic-title').textContent='本次真实话题';};
    document.querySelector('button').onclick=()=>{sessionStorage.setItem('clicks',String(Number(sessionStorage.getItem('clicks')||0)+1));${mode==='native'?"setTimeout(()=>location.assign('/detail?rank=3'),300);return;":''}document.querySelector('#detail').textContent='3';document.querySelector('#topic-title').textContent='本次真实话题';${mode==='spa'?"history.pushState({},'', '?rank=3');":mode==='hash'?"location.hash='rank=3';":''}};
    </script><script src="/sdk-test.js"></script>`);
   });

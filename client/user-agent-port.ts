@@ -72,6 +72,7 @@ import {
 } from "../lib/capability-center-v2/experience";
 import { capabilityVerificationOnlyFailure, explainCapabilityRuntimeFailure } from "../lib/capability-center-v2/runtime-failure";
 import { capabilityTextIncludes } from "../lib/capability-center-v2/text-match";
+import { resolveCapabilityInputDefaults } from "../lib/capability-center-v2/input-template";
 import { startDomReplayRecorder } from "./user-agent-recorder";
 import { capabilityInputPathValue, capabilityTemplateInputPaths, capabilityUrlTemplateMatches, matchCapabilityIntentTemplate, renderCapabilityInputTemplate } from "../lib/capability-center-v2/input-template";
 import { assertCapabilityInput, assertCapabilityOutput } from "../lib/site-knowledge/capability-output";
@@ -1273,6 +1274,9 @@ export class AgentPort {
   private remoteNavigationStarted = false;
   private capabilityNavigationStarted = false;
   private capabilityNavigationDeferred = false;
+  // The running Stage declares it may navigate: its own clicks and submits go
+  // where the site sends them, and the armed continuation resumes the run.
+  private capabilityStageNavigates = false;
   private pendingCapabilityNavigation?: { rawUrl: string; target: string; openedWindow?: Window | null };
   private executionPin?: TaskLaunchExecutionPin;
   private readonly nativeWindowOpen = window.open.bind(window);
@@ -3914,7 +3918,11 @@ export class AgentPort {
     restoredRuntimeWindow?: CompiledRuntimeWindow,
   ): Promise<TaskResult | undefined> {
     const runtimeWindow = establishCompiledRuntimeWindow(undefined, restoredRuntimeWindow);
-    const executionInput = applyCapabilityV2InputAliases(runtime, input);
+    // Every default the Contract declares, the way validation resolves them.
+    // Only required inputs were defaulted here, so an optional one reached the
+    // program as undefined: 「maxPrice=undefined」 in a filter that had passed
+    // validation with its default of 300.
+    const executionInput = applyCapabilityV2InputAliases(runtime, resolveCapabilityInputDefaults(runtime.contract, input));
     const activityId = `capability-v2:${session.id}:${runtime.capabilityId}`;
     const start = capturePageSnapshot(this.sequence++);
     const domRecorder = this.options.domReplay
@@ -4099,6 +4107,7 @@ export class AgentPort {
         const startedReceipt: CapabilityV2StageReceipt = { stageId: stage.id, stageIndex: index, status: "Started", urlBefore: location.href, iteration: capabilityStageIteration(runtime.program, controlCursor, stage.id) };
         stageReceipts.push(startedReceipt);
         this.capabilityNavigationDeferred = true;
+        this.capabilityStageNavigates = stage.navigation !== "none";
         this.pendingCapabilityNavigation = undefined;
         this.capabilityNavigationStarted = false;
         // The continuation armed for the previous Stage is not revoked here:
@@ -4175,6 +4184,7 @@ export class AgentPort {
           assertCapabilityControlFlowBudget(runtime.program, controlCursor, Date.now());
         } finally {
           this.capabilityNavigationDeferred = false;
+          this.capabilityStageNavigates = false;
         }
         const result = normalizeCapabilityV2StageResult(rawResult, stage);
         // V2 authored Stages communicate navigation as data. A direct DOM
@@ -4301,6 +4311,7 @@ export class AgentPort {
       return result;
     } catch (error) {
       this.capabilityNavigationDeferred = false;
+      this.capabilityStageNavigates = false;
       this.pendingCapabilityNavigation?.openedWindow?.close();
       this.pendingCapabilityNavigation = undefined;
       this.saveCheckpoint();
@@ -5598,6 +5609,17 @@ export class AgentPort {
         this.status("executing", this.say.movedWithinPage, { navigating: false });
         return false;
       }
+      // A Stage that may navigate clicks links the way the explorer did, and
+      // validation runs it in a browser where those links simply go. Held
+      // back here, the click never navigated, the Stage waited for the page
+      // to change, and every published capability that opens a link sat at
+      // "running" for the visitor until its deadline. The continuation armed
+      // before the Stage resumes the run on the destination; an SPA route
+      // change stays in this document and the Stage sees it.
+      if (checkpoint.v2Runtime && this.capabilityNavigationDeferred && this.capabilityStageNavigates) {
+        this.capabilityNavigationStarted = true;
+        return false;
+      }
       const openedWindow = target === "_blank" ? nativeOpen("about:blank", "_blank") : undefined;
       if (checkpoint.v2Runtime && this.capabilityNavigationDeferred) {
         if (this.pendingCapabilityNavigation) {
@@ -5721,6 +5743,7 @@ export class AgentPort {
       }
       const checkpoint = this.readCheckpoint();
       if (!checkpoint || !explicitAction || method !== "get") return;
+      if (checkpoint.v2Runtime && this.capabilityNavigationDeferred && this.capabilityStageNavigates) return;
       const action = new URL(explicitAction, location.href).toString();
       event.preventDefault();
       event.stopImmediatePropagation();
