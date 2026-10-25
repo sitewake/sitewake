@@ -1888,6 +1888,47 @@ function remapParameterReferences(raw: Record<string, unknown>, aliases: Record<
   return { ...raw, siteTerms, groundingExamples };
 }
 
+/**
+ * The value an alias table resolves `value` to for input `name`, compared
+ * without case: "Living room" and "living" are one room when the table maps
+ * one to the other.
+ */
+function aliasMeaning(name: string, value: JsonValue | undefined, aliases: CapabilityInputAliases | undefined) {
+  if (typeof value !== "string") return JSON.stringify(value ?? null);
+  const table = aliases?.[name] || {};
+  const key = Object.keys(table).find((candidate) => comparableText(candidate) === comparableText(value));
+  return comparableText(key ? table[key] : value);
+}
+
+function sameExampleMeaning(left: Record<string, JsonValue>, right: Record<string, JsonValue>, aliases: CapabilityInputAliases | undefined) {
+  const names = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...names].every((name) => (left[name] === undefined) === (right[name] === undefined) && aliasMeaning(name, left[name], aliases) === aliasMeaning(name, right[name], aliases));
+}
+
+/**
+ * Write an example's values the way the demonstration wrote that input.
+ *
+ * The planner may write examples the page address's way ("bedroom") while the
+ * demonstration used the visible label ("Living room"), most often on a
+ * rebuild whose old contract asked for the address writing. In the other
+ * writing an example has no evidence on the page and is dropped, and one that
+ * survives may be the demonstrated value spelled differently — so the program
+ * was checked against one room twice. The plan's own alias table says which
+ * label each address value belongs to.
+ */
+function inDemonstrationWriting(example: Record<string, JsonValue>, demonstration: Record<string, JsonValue>, aliases: CapabilityInputAliases | undefined) {
+  return Object.fromEntries(Object.entries(example).map(([name, value]) => {
+    const table = aliases?.[name];
+    const shown = demonstration[name];
+    if (!table || typeof value !== "string" || typeof shown !== "string") return [name, value];
+    const labels = Object.keys(table);
+    const demonstrationIsLabel = labels.some((label) => comparableText(label) === comparableText(shown));
+    if (!demonstrationIsLabel || labels.includes(value)) return [name, value];
+    const label = labels.find((candidate) => comparableText(table[candidate]) === comparableText(value));
+    return [name, label ?? value];
+  })) as Record<string, JsonValue>;
+}
+
 export function cleanParameterPlan(raw: Record<string, unknown>, goal: string, input: CapabilityTaskInput, snapshot: Awaited<ReturnType<typeof inspectPage>>, candidateSummary?: CapabilityTaskInput["candidateSummary"], normalizedGoal?: string): ParameterPlan {
   // The planner is also used by deterministic unit/diagnostic callers that
   // only provide page evidence and no pre-supplied parameters. Treat the
@@ -1967,13 +2008,14 @@ export function cleanParameterPlan(raw: Record<string, unknown>, goal: string, i
   }
   const parameterNames = new Set(parameters.map((item) => item.name));
   const demonstration = Object.fromEntries(parameters.map((item) => [item.name, supplied[item.name] ?? item.exampleValue])) as Record<string, JsonValue>;
+  const inputAliases = normalizedInputAliases(canonicalRaw.siteTerms, parameters, snapshot, parametersBeforeDecomposition, input.experience);
   const rawExamples = Array.isArray(canonicalRaw.groundingExamples) ? canonicalRaw.groundingExamples : [];
-  const groundingExamples = [demonstration, ...rawExamples.map((value) => object(value) as Record<string, JsonValue>)]
+  const groundingExamples = [demonstration, ...rawExamples.map((value) => inDemonstrationWriting(object(value) as Record<string, JsonValue>, demonstration, inputAliases))]
     .map((value) => Object.fromEntries([...parameterNames].flatMap((name) => value[name] === undefined ? [] : [[name, value[name]]])) as Record<string, JsonValue>)
     .filter((value) => parameters.every((parameter) => !parameter.required || value[parameter.name] !== undefined))
     .filter((value) => parameters.every((parameter) => groundingValueHasEvidence(parameter, value[parameter.name], demonstration[parameter.name], evidenceText)))
     .filter((value) => JSON.stringify(value) === JSON.stringify(demonstration) || groundingExampleHasCoLocatedEvidence(value, parameters, snapshot))
-    .filter((value, index, values) => values.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(value)) === index);
+    .filter((value, index, values) => values.findIndex((candidate) => sameExampleMeaning(candidate, value, inputAliases)) === index);
   for (const parameter of parameters.filter((item) => item.defaultValue !== undefined)) {
     if (!groundingExamples.some((value) => value[parameter.name] === undefined)) {
       groundingExamples.push(Object.fromEntries(Object.entries(demonstration).filter(([name]) => name !== parameter.name)) as Record<string, JsonValue>);
@@ -1993,7 +2035,6 @@ export function cleanParameterPlan(raw: Record<string, unknown>, goal: string, i
   }
   const tokens = parameterTextTokens(parameters, supplied, canonicalRaw);
   const stableIntent = parameterizedGoal(goal, parameters, tokens);
-  const inputAliases = normalizedInputAliases(canonicalRaw.siteTerms, parameters, snapshot, parametersBeforeDecomposition, input.experience);
   const inferredGoal = inferGoalFacet(goal);
   if (inputAliases && goalTargetParameter && groundedGoalValue && inferredGoal) {
     inputAliases[goalTargetParameter.name] ||= {};

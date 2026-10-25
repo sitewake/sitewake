@@ -434,3 +434,55 @@ export async function waitFor(check: () => boolean, timeoutMs: number, label: st
   }
   throw new Error(`wait_timeout:${label}`);
 }
+
+/**
+ * How long one model turn may wait behind other visitors of the same site.
+ *
+ * The site allows one model call at a time across all its visitors. The server
+ * holds a waiting request for a while, but a single hold is far shorter than a
+ * queue of several visitors, and the browser used to treat the refusal that
+ * followed as a failed call: one retry, then the task ended with the provider's
+ * "Rate limit exceeded" text. Waiting for a turn is not a failure, so it does not
+ * spend the retry; it is bounded here instead.
+ */
+export const SITE_TURN_WAIT_LIMIT_MS = 120_000;
+const SITE_TURN_RECHECK_MS = 250;
+
+/** True when the server refused this call only because another visitor of the site is mid-call. */
+export async function waitsForSiteTurn(response: Response) {
+  if (response.status !== 429) return false;
+  try {
+    const body = await response.clone().json() as { error?: { waitTurn?: unknown } };
+    return body?.error?.waitTurn === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Send a model request, sending it again while the site is busy with other visitors. */
+export async function fetchInSiteTurn(send: () => Promise<Response>, options: {
+  signal?: AbortSignal | null;
+  limitMs?: number;
+  onQueued?: () => void;
+  onDequeued?: () => void;
+  sleep?: (ms: number) => Promise<void>;
+  clock?: () => number;
+} = {}) {
+  const clock = options.clock || Date.now;
+  const sleep = options.sleep || ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let response = await send();
+  const queuedAt = clock();
+  let queued = false;
+  try {
+    while (await waitsForSiteTurn(response)
+      && clock() - queuedAt < (options.limitMs ?? SITE_TURN_WAIT_LIMIT_MS)
+      && !options.signal?.aborted) {
+      if (!queued) { queued = true; options.onQueued?.(); }
+      await sleep(SITE_TURN_RECHECK_MS);
+      response = await send();
+    }
+  } finally {
+    if (queued) options.onDequeued?.();
+  }
+  return response;
+}

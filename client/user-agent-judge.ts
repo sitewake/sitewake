@@ -1,5 +1,6 @@
 import { parseTaskOutcomeDecision, type TaskJudgeEvidence, type TaskOutcomeDecision } from "../lib/site-knowledge/task-outcome";
 import { replyLanguageInstruction, resolveWidgetLocale, widgetCopy, type WidgetLocale } from "./user-agent-copy";
+import { fetchInSiteTurn } from "./user-agent-shared";
 
 function endpointUrl(endpoint: string, path: string) {
   return endpoint ? `${endpoint.replace(/\/$/, "")}${path}` : path;
@@ -48,9 +49,15 @@ export async function judgeTaskOutcome(options: {
   const controller = new AbortController();
   const forwardAbort = () => controller.abort();
   options.signal?.addEventListener("abort", forwardAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 20_000);
+  // The 20s bound is for the judge's own call; time spent behind other visitors
+  // of the site restarts it rather than using it up.
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const armTimeout = () => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => controller.abort(), 20_000);
+  };
   try {
-    const response = await fetch(endpointUrl(options.endpoint, `/api/site-agents/${encodeURIComponent(options.siteAgentId)}/model/v2/chat/completions`), {
+    const response = await fetchInSiteTurn(() => (armTimeout(), fetch(endpointUrl(options.endpoint, `/api/site-agents/${encodeURIComponent(options.siteAgentId)}/model/v2/chat/completions`), {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${options.agentRunToken}`, ...(options.telemetry?.learningJobId ? { "x-sitewake-learning-job-id": options.telemetry.learningJobId } : {}), "x-sitewake-ai-stage": options.telemetry?.stage || "outcome-judge" },
       body: JSON.stringify({
@@ -82,7 +89,7 @@ export async function judgeTaskOutcome(options: {
         tool_choice: { type: "function", function: { name: "report_outcome" } },
       }),
       signal: controller.signal,
-    });
+    })), { signal: controller.signal });
     if (!response.ok) return undefined;
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string; tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> } }> };
     const call = payload.choices?.[0]?.message?.tool_calls?.find((item) => item.function?.name === "report_outcome");
@@ -92,7 +99,7 @@ export async function judgeTaskOutcome(options: {
   } catch {
     return undefined;
   } finally {
-    clearTimeout(timeout);
+    if (timeout) clearTimeout(timeout);
     options.signal?.removeEventListener("abort", forwardAbort);
   }
 }

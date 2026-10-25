@@ -154,6 +154,10 @@ export function acquireRuntimeModelBudget(input: {
  * is mid-call, not that this request is over budget, so it waits its turn.
  */
 const SHARED_SITE_LIMITS = new Set(["site_concurrency", "request_spacing"]);
+/** The refusal only means "another visitor of this site is mid-call": the caller should wait its turn, not fail. */
+export function isSiteTurnRefusal(reason: string) {
+  return SHARED_SITE_LIMITS.has(reason);
+}
 /** Kept under the browser's 20s first-byte deadline for a model turn. */
 export const RUNTIME_MODEL_SLOT_WAIT_MS = 15_000;
 
@@ -180,7 +184,7 @@ export async function waitForRuntimeModelBudget(input: Parameters<typeof acquire
     const attempt = acquireRuntimeModelBudget({ ...input, now: input.now === undefined ? undefined : clock() });
     if (attempt.allowed) return attempt;
     const remaining = deadline - clock();
-    if (!SHARED_SITE_LIMITS.has(attempt.reason) || remaining <= 0 || input.signal?.aborted) return attempt;
+    if (!isSiteTurnRefusal(attempt.reason) || remaining <= 0 || input.signal?.aborted) return attempt;
     await sleep(Math.min(remaining, Math.max(100, Math.min(500, attempt.retryAfterSeconds * 1_000))));
   }
 }

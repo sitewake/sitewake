@@ -29,7 +29,7 @@ import { searchKnowledgeIndex } from "../lib/site-knowledge/planner";
 import { assessPageExecutionEvidence } from "../lib/site-knowledge/execution-evidence";
 import { deriveGoalSemanticFrame, semanticActionSummary } from "../lib/site-knowledge/goal-semantics";
 import { isReadOnlyNavigationClick } from "../lib/site-knowledge/runtime-policy";
-import { awaitPageHandoff, browserSessionId, capturePageSnapshot, documentId, evidenceFromElement, humanInteractionBlacklist, isSensitiveElement, targetFromEvidence, uid } from "./user-agent-shared";
+import { awaitPageHandoff, browserSessionId, capturePageSnapshot, documentId, evidenceFromElement, fetchInSiteTurn, humanInteractionBlacklist, isSensitiveElement, targetFromEvidence, uid } from "./user-agent-shared";
 import { SiteAgentPageController, type SiteAgentPageControllerSeed } from "./user-agent-page-controller";
 import { replyLanguageInstruction, resolveReplyLocale, resolveWidgetLocale, widgetCopy } from "./user-agent-copy";
 import { profileLanguage } from "../lib/site-knowledge/protocol";
@@ -434,11 +434,29 @@ export function technicalFaultSummary(technicalError: string | undefined) {
       return say().faultRoundUnsettled;
     case "runtime_read_only_not_authorized":
       return say().faultReadOnlyNotAuthorized;
+    case "page_agent_model_busy":
+      return say().faultModelBusy;
+    case "page_agent_model_failed":
+      return say().faultModelFailed;
     default:
       return code
         ? say().faultWithCode(code)
         : say().faultGeneric;
   }
+}
+
+/**
+ * When PageAgent ends a task because a model call kept failing, it reports the
+ * error's own text ("InvokeError: Rate limit exceeded: ") as the task result,
+ * and that text used to be shown to the visitor as the answer. It is a fault,
+ * not an answer: return its code so it is presented like any other fault.
+ */
+export function pageAgentFrameworkFault(history: ReadonlyArray<{ type: string; rawResponse?: unknown }>) {
+  const last = history.at(-1);
+  if (last?.type !== "error") return undefined;
+  const error = last.rawResponse as { name?: unknown; type?: unknown } | undefined;
+  if (error?.name !== "InvokeError") return undefined;
+  return error.type === "rate_limit" ? "page_agent_model_busy" : `page_agent_model_failed:${String(error.type || "unknown")}`;
 }
 
 /** The in-page agent's visitor-facing copy, in the reader's language. */
@@ -1976,7 +1994,13 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
       try {
         const headers = new Headers(init?.headers);
         headers.set("x-sitewake-ai-stage", "runtime-page-agent");
-        const response = await fetch(input, { ...init, headers });
+        // Time spent behind other visitors of the site is not this task's
+        // working time, so it does not count against the active-time budget.
+        const response = await fetchInSiteTurn(() => fetch(input, { ...init, headers }), {
+          signal: init?.signal,
+          onQueued: () => pauseBudget(runtime),
+          onDequeued: () => resumeBudget(runtime),
+        });
         if (response.status === 429) await new Promise((resolve) => setTimeout(resolve, providerRetryAfterMs(response)));
         return response;
       } finally {
@@ -2196,7 +2220,8 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
       output?: Record<string, JsonValue>;
       completionEvidence?: Array<{ criterion: string; evidence: string }>;
     } : undefined;
-    round = {
+    const frameworkFault = completed ? undefined : pageAgentFrameworkFault(result.history);
+    round = frameworkFault ? { reportedSuccess: false, text: "", technicalError: frameworkFault, actionFailure: actionFailure || undefined } : {
       reportedSuccess: Boolean(result.success),
       text: typeof result.data === "string" ? result.data : JSON.stringify(result.data ?? ""),
       outcome: doneInput?.outcome,
