@@ -2036,19 +2036,31 @@ function schemaProperties(contract: CapabilityContract) {
   return object(contract.inputSchema.properties);
 }
 
+/**
+ * The generation a version came from. A version the 2.0 pipeline published
+ * carries an id derived from its generation task, not the task's own version
+ * id, so the lookup by version id found nothing for any of them: a rebuild then
+ * started with no start page and no parameters and failed before exploring.
+ */
 async function successfulSourceTask(siteId: string, versionId: string) {
-  return (
+  const succeeded = (task: CapabilityTask) =>
+    (task.type === "Discovery" || task.type === "Repair") &&
+    task.status === "Succeeded" &&
+    task.result?.outcome === "Success";
+  const byVersion = (
     await listTasks(siteId, {
       versionId,
       includeDeleted: true,
       includeArchived: true,
     })
-  ).tasks.find(
-    (task) =>
-      (task.type === "Discovery" || task.type === "Repair") &&
-      task.status === "Succeeded" &&
-      task.result?.outcome === "Success",
-  );
+  ).tasks.find(succeeded);
+  if (byVersion) return byVersion;
+  // The derived id is itself the proof: only the generation that published
+  // this version derives it.
+  for (const task of (await listTasks(siteId, { includeDeleted: true, includeArchived: true })).tasks) {
+    if ((task.type === "Discovery" || task.type === "Repair") && await deterministicPublishId("version", siteId, task.id) === versionId) return task;
+  }
+  return undefined;
 }
 
 async function activeMaintenanceTask(siteId: string, capabilityId: string) {

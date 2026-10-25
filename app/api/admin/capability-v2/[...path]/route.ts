@@ -12,6 +12,7 @@ import {
   createDraftVersion,
   deleteSetting,
   deleteTask,
+  getCapability,
   getCapabilityDetail,
   getCapabilityCandidateArtifact,
   getCapabilityMaintenanceDefaults,
@@ -208,7 +209,16 @@ export async function POST(request: Request, context: Context) {
     if (path[0] === "tasks" && path[1] && path[2] === "rerun") {
       const original = await getTask(siteId, path[1], true); if (!original) return capabilityJson({ error: "task_not_found" }, 404);
       if (["Pending", "Running", "WaitingInput", "Deleted"].includes(original.status)) return capabilityJson({ error: "task_not_retryable_in_current_state" }, 409);
-      const maintenance = getTaskMaintenance(original);
+      // A generation whose capability is live is rerun as a new version of
+      // that capability. Rerun as a fresh generation, its result carried a
+      // name already taken and was set aside as a duplicate however much
+      // better it was: "Find floor lamps" was rebuilt to count its own
+      // matches, passed validation, and the visitors kept the old count.
+      const published = !getTaskMaintenance(original) && original.type === "Discovery"
+        ? await getGenerationPublication(siteId, original.id)
+        : undefined;
+      const live = published && await getCapability(siteId, published.capability.id);
+      const maintenance = getTaskMaintenance(original) || (live ? { capabilityId: live.id, mode: "Rebuild" as const } : undefined);
       const candidateArtifact = original.type === "Validation"
         ? original.result?.candidateArtifact || await getCapabilityCandidateArtifact(siteId, original.versionId)
         : undefined;
