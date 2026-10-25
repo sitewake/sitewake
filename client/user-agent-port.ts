@@ -341,6 +341,16 @@ function capabilityV2RenderTemplate(template: unknown, input: Record<string, Jso
   return renderCapabilityInputTemplate(template, input);
 }
 
+/**
+ * What a capability run as one step of a larger request is judged against:
+ * its own intent with this run's values, never the visitor's whole request,
+ * which a step by definition does not finish.
+ */
+function capabilityStepGoal(runtime: CapabilityV2RuntimeDefinition, input: Record<string, JsonValue>) {
+  const intent = typeof runtime.contract.intent === "string" ? capabilityV2RenderTemplate(runtime.contract.intent, input) : "";
+  return (typeof intent === "string" && intent.trim()) || runtime.name;
+}
+
 function capabilityV2TemplateInputPaths(template: unknown) {
   return capabilityTemplateInputPaths(template);
 }
@@ -801,6 +811,16 @@ type MainAgentContinuation = {
   messages: Array<Record<string, unknown>>;
   nextTurn: number;
   destination: string;
+  /** Set when a capability the Agent called as a tool has ended; closes the task with that capability's own result. */
+  capabilityResult?: () => Promise<TaskResult>;
+};
+
+/** A capability the main Agent called as one tool: its result goes back to the Agent, not to the visitor. */
+type CapabilityAgentStep = {
+  messages: Array<Record<string, unknown>>;
+  nextTurn: number;
+  toolCallId: string;
+  toolName: string;
 };
 
 
@@ -847,6 +867,7 @@ type Checkpoint = {
   // The navigation IS the answer, so the knowledge-base entry closes the loop itself.
   directAnswer?: string;
   mainAgent?: MainAgentContinuation;
+  v2AgentStep?: CapabilityAgentStep;
   activityTimeline?: AgentRunActivity[];
   savedAt: number;
 };
@@ -2532,7 +2553,7 @@ export class AgentPort {
     else if (checkpoint.v2Runtime) {
       this.activeAbort = new AbortController();
       this.validationRun = checkpoint.validationRun === true;
-      await this.executeCapabilityV2JavaScriptRuntime(checkpoint.v2Runtime, session, checkpoint.input, checkpoint.programStepIndex, checkpoint.output || {}, checkpoint.v2StageReceipts || [], checkpoint.v2StageEvidence || [], checkpoint.v2ModuleHash, checkpoint.v2ControlState, checkpoint.compiledRuntimeWindow);
+      await this.executeCapabilityV2JavaScriptRuntime(checkpoint.v2Runtime, session, checkpoint.input, checkpoint.programStepIndex, checkpoint.output || {}, checkpoint.v2StageReceipts || [], checkpoint.v2StageEvidence || [], checkpoint.v2ModuleHash, checkpoint.v2ControlState, checkpoint.compiledRuntimeWindow, checkpoint.v2AgentStep);
     }
     else if (checkpoint.capability) {
       const result = await this.executeCapability(checkpoint.capability, session, checkpoint.input, checkpoint.mode === "adaptive" ? "repair" : checkpoint.mode, checkpoint.operationIndex, checkpoint.programStepIndex, checkpoint.candidate, checkpoint.output, checkpoint.toolContext, checkpoint.directCall, checkpoint.compiledRuntimeWindow);
@@ -3927,6 +3948,7 @@ export class AgentPort {
     restoredModuleHash?: string,
     restoredControlState?: CapabilityExecutionCursorV2,
     restoredRuntimeWindow?: CompiledRuntimeWindow,
+    agentStep?: CapabilityAgentStep,
   ): Promise<TaskResult | undefined> {
     const runtimeWindow = establishCompiledRuntimeWindow(undefined, restoredRuntimeWindow);
     // Every default the Contract declares, the way validation resolves them.
@@ -3963,9 +3985,31 @@ export class AgentPort {
       output: state,
       directCall: true,
       ...(this.validationRun ? { validationRun: true } : {}),
+      ...(agentStep ? { v2AgentStep: agentStep } : {}),
       savedAt: Date.now(),
     });
     this.status("executing", this.say.callingCapability(runtime.name), { activity: { id: activityId, kind: "capability", state: "running", sessionId: session.id, capabilityId: runtime.capabilityId, capabilityName: runtime.name, input } });
+    // Every way this run can end goes through here. When the main Agent called
+    // the capability as one tool, a handled ending is that tool's receipt and
+    // the Agent decides what comes next; only otherwise does it close the task.
+    // Three endings each closed the task on their own, and the one for "no
+    // result" kept doing so after the other two had learned to hand back.
+    const conclude = async (outcome: TaskEpisode["outcome"], output: Record<string, JsonValue>) => {
+      const handled = ["success", "no-result", "business-rejection"].includes(outcome.status);
+      const settle = async () => {
+        const sessionStatus = handled ? "completed" : "failed";
+        const completedSession: TaskSession = { ...session, status: sessionStatus, updatedAt: new Date().toISOString() };
+        this.activeSession = completedSession;
+        void this.patchSession(session.id, { status: sessionStatus }).catch(() => undefined);
+        const result: TaskResult = { success: handled, mode: "compiled", interaction: "capability", text: outcome.summary, output, outcome, session: completedSession, release: this.release };
+        this.status(handled ? "completed" : "error", outcome.summary, { taskResult: result, activity: { id: activityId, kind: "capability", state: handled ? "completed" : "failed", sessionId: session.id, capabilityId: runtime.capabilityId, capabilityName: runtime.name, input, output, summary: outcome.summary } });
+        await this.finishRun(handled ? "completed" : "failed", outcome, output, outcome.summary, session.id).catch(() => undefined);
+        this.releaseLease(session.id);
+        return result;
+      };
+      if (agentStep && handled) return this.continueAgentAfterCapability(session, agentStep, runtime, { status: outcome.status, summary: outcome.summary, output }, activityId, input, settle);
+      return settle();
+    };
     try {
       if (compiledRuntimeRemainingMs(runtimeWindow) <= 0) throw compiledRuntimeDeadlineError();
       assertCapabilityInput(runtime.contract.inputSchema as never, executionInput);
@@ -4266,15 +4310,8 @@ export class AgentPort {
             : "capability_no_result";
         const summary = terminalResult.reason?.trim() || this.say.capabilityNoUsableResult(runtime.name);
         const outcome: TaskEpisode["outcome"] = { status, code, summary, evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk", capabilityId: runtime.capabilityId, versionId: runtime.versionId, ...(activeStage?.id ? { stageId: activeStage.id } : {}), stageOutcome: terminalResult.outcome, stageEvidence, stageReceipts } };
-        let completedSession: TaskSession = { ...session, status: "completed", updatedAt: new Date().toISOString() };
-        this.activeSession = completedSession;
-        void this.patchSession(session.id, { status: "completed" }).catch(() => undefined);
-        const result: TaskResult = { success: true, mode: "compiled", interaction: "capability", text: summary, output: terminalResult.output || {}, outcome, session: completedSession, release: this.release };
         this.saveCheckpoint();
-        this.status("completed", summary, { taskResult: result, activity: { id: activityId, kind: "capability", state: "completed", sessionId: session.id, capabilityId: runtime.capabilityId, capabilityName: runtime.name, input, output: result.output, summary } });
-        await this.finishRun("completed", outcome, result.output, summary, session.id).catch(() => undefined);
-        this.releaseLease(session.id);
-        return result;
+        return conclude(outcome, terminalResult.output || {});
       }
 
       state.__pageUrl = location.href;
@@ -4312,21 +4349,12 @@ export class AgentPort {
       if (needsModelJudge) {
         const end = capturePageSnapshot(this.sequence++);
         await this.assertCompiledModelRequestAvailable(session.id, runtimeWindow);
-        const decision = await this.compiledAwait(runtimeWindow, (signal) => judgeTaskOutcome({ endpoint: this.options.endpoint, siteAgentId: this.options.siteAgentId, agentRunToken: this.requireAgentRunToken(session.id), evidence: buildTaskJudgeEvidence({ goal: session.goal, values: input, actorSuccess: true, actorText: outcome.summary, start, end, steps: [] }), replyLocale: this.replyLocale(), signal }));
+        const decision = await this.compiledAwait(runtimeWindow, (signal) => judgeTaskOutcome({ endpoint: this.options.endpoint, siteAgentId: this.options.siteAgentId, agentRunToken: this.requireAgentRunToken(session.id), evidence: buildTaskJudgeEvidence({ goal: agentStep ? capabilityStepGoal(runtime, executionInput) : session.goal, values: input, actorSuccess: true, actorText: outcome.summary, start, end, steps: [] }), replyLocale: this.replyLocale(), signal }));
         if (!decision || decision.status === "needs-more-work" || decision.status === "unknown" || decision.confidence < .65) throw new Error("capability_result_unverified");
         outcome = { status: decision.status, code: decision.code, summary: decision.summary, evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk-judge", capabilityId: runtime.capabilityId, versionId: runtime.versionId, output, confidence: decision.confidence, stageEvidence, stageReceipts } };
       }
       this.saveCheckpoint();
-      const handled = ["success", "no-result", "business-rejection"].includes(outcome.status);
-      const sessionStatus = handled ? "completed" : "failed";
-      let completedSession: TaskSession = { ...session, status: sessionStatus, updatedAt: new Date().toISOString() };
-      this.activeSession = completedSession;
-      void this.patchSession(session.id, { status: sessionStatus }).catch(() => undefined);
-      const result: TaskResult = { success: handled, mode: "compiled", interaction: "capability", text: outcome.summary, output, outcome, session: completedSession, release: this.release };
-      this.status(handled ? "completed" : "error", outcome.summary, { taskResult: result, activity: { id: activityId, kind: "capability", state: handled ? "completed" : "failed", sessionId: session.id, capabilityId: runtime.capabilityId, capabilityName: runtime.name, input, output } });
-      await this.finishRun(handled ? "completed" : "failed", outcome, output, outcome.summary, session.id).catch(() => undefined);
-      this.releaseLease(session.id);
-      return result;
+      return conclude(outcome, output);
     } catch (error) {
       this.capabilityNavigationDeferred = false;
       this.capabilityStageNavigates = false;
@@ -4346,14 +4374,7 @@ export class AgentPort {
       if (handledError) {
         const error = handledError;
         const outcome: TaskEpisode["outcome"] = { status: error.status, code: error.code, summary: error.summary, evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk", capabilityId: runtime.capabilityId, versionId: runtime.versionId, repairSuggested: false, ...error.detail } };
-        let completedSession: TaskSession = { ...session, status: "completed", updatedAt: new Date().toISOString() };
-        this.activeSession = completedSession;
-        void this.patchSession(session.id, { status: "completed" }).catch(() => undefined);
-        const result: TaskResult = { success: true, mode: "compiled", interaction: "capability", text: outcome.summary, output: {}, outcome, session: completedSession, release: this.release };
-        this.status("completed", outcome.summary, { taskResult: result, activity: { id: activityId, kind: "capability", state: "completed", sessionId: session.id, capabilityId: runtime.capabilityId, capabilityName: runtime.name, input, summary: outcome.summary } });
-        await this.finishRun("completed", outcome, {}, outcome.summary, session.id).catch(() => undefined);
-        this.releaseLease(session.id);
-        return result;
+        return conclude(outcome, {});
       }
       const failureContext = {
         technicalError: message,
@@ -4444,13 +4465,46 @@ export class AgentPort {
     }
   }
 
-  private async executeCapabilityV2ById(session: TaskSession, capabilityId: string, input: Record<string, JsonValue>) {
+  private async executeCapabilityV2ById(session: TaskSession, capabilityId: string, input: Record<string, JsonValue>, agentStep?: CapabilityAgentStep) {
     this.assertCapabilityAllowed(capabilityId);
     const runtimeWindow = establishCompiledRuntimeWindow();
     const runtime = await this.getCapabilityV2Runtime(capabilityId, input, runtimeWindow);
     // Invalid tool arguments are recoverable before any browser action starts.
     assertCapabilityInput(runtime.contract.inputSchema as never, applyCapabilityV2InputAliases(runtime, input));
-    return this.executeCapabilityV2JavaScriptRuntime(runtime, session, input, 0, {}, [], [], undefined, undefined, runtimeWindow);
+    return this.executeCapabilityV2JavaScriptRuntime(runtime, session, input, 0, {}, [], [], undefined, undefined, runtimeWindow, agentStep);
+  }
+
+  /**
+   * A capability the main Agent chose is one step of the visitor's request,
+   * not the whole of it. It used to end the task: "Add the cheapest table lamp
+   * to my cart" ran a filter, and the visitor was told the task was complete
+   * with nothing in the cart. Its result now goes back to the Agent as the
+   * tool's receipt. When the Agent needs nothing more, the capability's own
+   * result closes the task exactly as before; otherwise the Agent goes on.
+   */
+  private async continueAgentAfterCapability(
+    session: TaskSession,
+    step: CapabilityAgentStep,
+    runtime: CapabilityV2RuntimeDefinition,
+    receipt: { status: string; summary: string; output: Record<string, JsonValue> },
+    activityId: string,
+    input: Record<string, JsonValue>,
+    settle: () => Promise<TaskResult>,
+  ) {
+    this.saveCheckpoint();
+    this.status("adaptive", receipt.summary, { presentation: "tool", activity: { id: activityId, kind: "capability", state: "completed", sessionId: session.id, capabilityId: runtime.capabilityId, capabilityName: runtime.name, input, output: receipt.output } });
+    const messages = [...step.messages, { role: "tool", tool_call_id: step.toolCallId, name: step.toolName, content: JSON.stringify({
+      success: true, capability: runtime.name, status: receipt.status, summary: receipt.summary, output: receipt.output, url: location.href,
+    }) }];
+    try {
+      return await this.runMainAgent(session, { messages, nextTurn: step.nextTurn, destination: location.href, capabilityResult: settle });
+    } catch (error) {
+      // The capability has acted. Rethrown, a failure to go on would reach the
+      // loop that called it as a tool error, and that loop could run the same
+      // capability again — a second item in the cart. What it did stands.
+      if (this.activeAbort?.signal.aborted || this.handoffCommitted) throw error;
+      return settle();
+    }
   }
 
   /** Everything this run did to the page, oldest first, bounded for the payload. */
@@ -4678,7 +4732,7 @@ export class AgentPort {
     }
     const toolbox = this.capabilityToolbox(session.goal);
     const toolByName = new Map(toolbox.map((item) => [item.tool.function.name, item.capability]));
-    const v2Toolbox = initialV2.slice(0, 8).map((candidate, index) => ({ candidate, tool: { type: "function", function: { name: `capability_v2_${index + 1}`, description: `Execute on the live website: ${candidate.name}. ${candidate.description}. This is an executable browser program, not stored knowledge or a cached result; it reads the current page and performs the contracted operation with the supplied inputs. Contract: ${JSON.stringify({ intent: candidate.contract.intent, successConditions: candidate.contract.successConditions, scope: candidate.contract.scope, outputSchema: candidate.contract.outputSchema })}`.slice(0, 1800), parameters: candidate.contract.inputSchema || { type: "object", additionalProperties: true } } } }));
+    const v2Toolbox = initialV2.slice(0, 8).map((candidate, index) => ({ candidate, tool: { type: "function", function: { name: `capability_v2_${index + 1}`, description: `Execute on the live website: ${candidate.name}. ${candidate.description}. This is an executable browser program, not stored knowledge or a cached result; it reads the current page and performs the contracted operation with the supplied inputs. Its result comes back to you; when the request needs more than this operation, continue with the next step. Contract: ${JSON.stringify({ intent: candidate.contract.intent, successConditions: candidate.contract.successConditions, scope: candidate.contract.scope, outputSchema: candidate.contract.outputSchema })}`.slice(0, 1800), parameters: candidate.contract.inputSchema || { type: "object", additionalProperties: true } } } }));
     const v2ToolByName = new Map(v2Toolbox.map((item) => [item.tool.function.name, item.candidate]));
     const tools = [
       { type: "function", function: { name: "ask_user", description: "Ask a concise question when necessary user input is missing or ambiguous. Do not guess required values.", parameters: { type: "object", properties: { question: { type: "string" } }, required: ["question"], additionalProperties: false } } },
@@ -4731,11 +4785,15 @@ export class AgentPort {
       this.activityTimeline = this.activityTimeline.map(item => item.sessionId === session.id && item.kind === "navigation" && item.state === "running"
         ? { ...item, state: arrived ? "completed" : "failed", detail: arrived ? this.say.enteredSceneCarryOn : this.say.arrivedElsewhere } : item);
       messages.splice(1, messages.length - 1, ...continuation.messages.filter((message) => message.role !== "system"));
-      messages.push({ role: "system", content: `导航已结束，实际当前位置：${location.href}；预期入口：${continuation.destination}。继续原始任务：${session.goal}。导航仅完成中间步骤，不得直接报告整体成功。` });  // i18n-exempt:给模型看的提示词正文，访客语言由 replyLanguageInstruction 单独告知
+      messages.push(continuation.capabilityResult
+        ? { role: "system", content: `能力已执行完毕，结果见上一条工具回执；当前位置：${location.href}。原始任务：${session.goal}。回执已覆盖原始任务的全部要求时，不要再调用工具，也不要复述结果；还差步骤时（例如筛选后还要加入购物车），继续调用相应工具完成。` }  // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
+        : { role: "system", content: `导航已结束，实际当前位置：${location.href}；预期入口：${continuation.destination}。继续原始任务：${session.goal}。导航仅完成中间步骤，不得直接报告整体成功。` });  // i18n-exempt:给模型看的提示词正文，访客语言由 replyLanguageInstruction 单独告知
     }
 
     let lastSceneRoutingFailure: string | undefined;
-    let entryOnly = Boolean(continuation);
+    // A capability's receipt is not an entry: the Agent may close on it.
+    const capabilityResult = continuation?.capabilityResult;
+    let entryOnly = Boolean(continuation) && !capabilityResult;
     // A pure search is settled by an answer drawn from indexed page text once
     // that text has actually come back; see knowledgeCanAnswerGoal.
     const knowledgeMaySettle = knowledgeCanAnswerGoal(session.goal);
@@ -4782,9 +4840,12 @@ export class AgentPort {
       // failed for having kept on looking; the model was gathering, not lost.
       const answerNow = knowledgeMaySettle && indexedTextReturned && !entryOnly && turn === MAIN_AGENT_TURNS - 1;
       if (answerNow) messages.push({ role: "system", content: "检索轮次已用完。现在只根据上面已取得的索引正文回答用户，不再调用工具；缺少的信息直接说明。" });  // i18n-exempt: model prompt body; the reader's language is set by replyLanguageInstruction
-      const payload = await this.measureRuntime("model.choose-tool", () => this.completeMainAgentTurn(messages, tools, textSettles, answerNow ? "none" : "auto"));
+      // After a capability step the visitor sees that capability's own result,
+      // so the Agent's words are not streamed: they only decide whether to go on.
+      const payload = await this.measureRuntime("model.choose-tool", () => this.completeMainAgentTurn(messages, tools, textSettles && !capabilityResult, answerNow ? "none" : "auto"));
       const message = payload.choices?.[0]?.message;
       const calls = message?.tool_calls?.slice(0, 1) || [];
+      if (!calls.length && capabilityResult) return capabilityResult();
       if (!calls.length) {
         // An action goal needs a capability or page-execution receipt.
         // A model's text alone cannot prove the operation happened.
@@ -4833,7 +4894,7 @@ export class AgentPort {
             const input = applyCapabilityV2InputAliases(v2Capability, args);
             assertCapabilityInput(v2Capability.contract.inputSchema as never, input);
             this.activeSession = { ...session, input };
-            return await this.executeCapabilityV2ById(this.activeSession, v2Capability.capabilityId, input);
+            return await this.executeCapabilityV2ById(this.activeSession, v2Capability.capabilityId, input, { messages, nextTurn: turn + 1, toolCallId: call.id || name, toolName: name });
           }
           const capability = toolByName.get(name);
           if (capability) {
@@ -4849,7 +4910,7 @@ export class AgentPort {
               const input = applyCapabilityV2InputAliases(discoveredV2, capabilityInput);
               assertCapabilityInput(discoveredV2.contract.inputSchema as never, input);
               this.activeSession = { ...session, input };
-              return await this.executeCapabilityV2ById(this.activeSession, capabilityId, input);
+              return await this.executeCapabilityV2ById(this.activeSession, capabilityId, input, { messages, nextTurn: turn + 1, toolCallId: call.id || name, toolName: name });
             }
             const discovered = invocable.find((item) => item.id === capabilityId);
             if (!discovered) throw new Error("capability_not_available");
@@ -5090,6 +5151,7 @@ export class AgentPort {
         }
       }
     }
+    if (capabilityResult) return capabilityResult();
     if (lastSceneRoutingFailure) throw new Error(`main_agent_scene_route_failed:${lastSceneRoutingFailure}`);
     throw new Error("main_agent_turn_limit");
   }

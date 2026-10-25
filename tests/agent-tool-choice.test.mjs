@@ -11,6 +11,8 @@ const bundle = await build({ entryPoints: [fileURLToPath(new URL("../client/user
 // because the constructor asked for it, which is the point: the fixture now
 // fails loudly on a new requirement instead of silently skipping it.
 globalThis.window = { open: () => null, addEventListener() {}, removeEventListener() {}, location: { href: "https://shop.example/" } };
+// A capability step reports the page it ended on, as a browser global.
+globalThis.location ||= globalThis.window.location;
 globalThis.document ||= { visibilityState: "visible", addEventListener() {}, removeEventListener() {}, documentElement: { lang: "zh" } };
 globalThis.localStorage ||= { getItem: () => null, setItem() {}, removeItem() {} };
 const temporary = await mkdtemp(join(tmpdir(), "sitewake-agent-loop-"));
@@ -75,6 +77,75 @@ test("navigation can discover a capability through search and bind another rank"
     return call("call_capability", { capabilityId: candidate.capabilityId, input: { rank: 10 } });
   });
   assert.deepEqual(await run(), { id: "rank-detail", input: { rank: 10 } });
+});
+
+/**
+ * A port whose published capabilities "run" by handing back the result the
+ * way the real runtime does when the Agent called it as a tool, so what is
+ * under test is only what the Agent loop does with a capability's result.
+ */
+function stepFixture(goal, candidates, decide) {
+  const settled = [];
+  const port = buildPort({
+    release: { capabilities: [], scenes: [], navigationTools: [] }, options: { siteAgentId: "hotsearch", runtimeMode: "full" },
+    directNavigationCapability: () => undefined, verifiedSceneForNavigation: () => undefined,
+    capabilityAllowed: () => true, capabilityToolbox: () => [], searchCapabilitiesV2: async () => candidates,
+    status: () => {}, saveCheckpoint: () => {}, completeMainAgentTurn: decide,
+    completeConversation: async (_, text) => ({ conversation: text }),
+    runAdaptive: async () => ({ page: true }),
+    async executeCapabilityV2ById(session, id, input, step) {
+      const capability = candidates.find((item) => item.capabilityId === id);
+      const result = { capability: id, input };
+      const settle = async () => { settled.push(id); return result; };
+      if (!step) return settle();
+      return this.continueAgentAfterCapability(session, step, { capabilityId: id, name: capability.name }, { status: "success", summary: `${capability.name} done`, output: { input } }, `activity:${id}`, input, settle);
+    },
+  });
+  return { settled, run: () => port.runMainAgent({ id: "run", goal, input: {}, conversation: [] }) };
+}
+
+const filterLamps = { capabilityId: "filter", name: "Filter products", description: "Filter the catalogue", contract: { inputSchema: { type: "object", properties: { productType: { type: "string" } }, required: ["productType"] } } };
+const addToCart = { capabilityId: "cart", name: "Add lamp to cart", description: "Add one lamp to the cart", contract: { inputSchema: { type: "object", properties: { product: { type: "string" } }, required: ["product"] } } };
+
+test("a capability the Agent called is one step: its result comes back and the Agent goes on", async () => {
+  // Production: "Add the cheapest table lamp to my cart" ran a filter and the
+  // visitor was told the task was complete with nothing in the cart.
+  let turns = 0;
+  const { run, settled } = stepFixture("Add the cheapest table lamp to my cart", [filterLamps, addToCart], async (messages) => {
+    turns += 1;
+    if (turns === 1) return call("capability_v2_1", { productType: "table" });
+    if (turns === 2) {
+      const receipt = JSON.parse(messages.findLast((message) => message.role === "tool").content);
+      assert.equal(receipt.capability, "Filter products");
+      assert.equal(receipt.status, "success");
+      return call("capability_v2_2", { product: "Nell Cordless Lamp" });
+    }
+    return { choices: [{ message: { content: "Added." } }] };
+  });
+  assert.deepEqual(await run(), { capability: "cart", input: { product: "Nell Cordless Lamp" } });
+  assert.deepEqual(settled, ["cart"], "only the step that finished the request closes the task");
+  assert.equal(turns, 3);
+});
+
+test("when the Agent needs nothing more, the capability's own result closes the task", async () => {
+  let turns = 0;
+  const { run, settled } = stepFixture("Show me table lamps", [filterLamps], async (messages) => {
+    if (++turns === 1) return call("capability_v2_1", { productType: "table" });
+    return { choices: [{ message: { content: "Here are the table lamps." } }] };
+  });
+  assert.deepEqual(await run(), { capability: "filter", input: { productType: "table" } });
+  assert.deepEqual(settled, ["filter"]);
+});
+
+test("a capability that acted is never run again because the Agent could not go on", async () => {
+  let turns = 0, runs = 0;
+  const { run, settled } = stepFixture("Add the Nell lamp to my cart", [addToCart], async () => {
+    if (++turns === 1) { runs += 1; return call("capability_v2_1", { product: "Nell Cordless Lamp" }); }
+    throw new Error("model_unavailable");
+  });
+  assert.deepEqual(await run(), { capability: "cart", input: { product: "Nell Cordless Lamp" } });
+  assert.equal(runs, 1);
+  assert.deepEqual(settled, ["cart"]);
 });
 
 test("one fuzzy candidate with no required inputs does not force execution", async () => {

@@ -65,14 +65,19 @@ test('published capability executes and terminates through the real SDK across b
  const bundled=await build({stdin:{contents:bootstrap,loader:'ts',resolveDir:process.cwd()},bundle:true,format:'iife',platform:'browser',write:false});
  const browser=await chromium.launch();
  try{for(const mode of ['plain','spa','hash','hard','entry-hard','native','link','entry-hash','slow-network','failure','no-result','integrity'])await t.test(mode,async()=>{
-  const module=artifact(mode);let modelCalls=0,results=[],moduleRequests=0;
+  const module=artifact(mode);let modelCalls=0,results=[],receipts=[],moduleRequests=0;
   const runtime={capabilityId:'rank',versionId:'v1',name:'按排名打开热搜',contract:{intent:'按排名打开热搜',inputSchema:{type:'object',properties:{rank:{type:'number'},...(mode==='link'?{via:{type:'string',default:'link'}}:{})},required:['rank']},outputSchema:{type:'object',properties:{pageUrl:{type:'string'},rank:{type:'number',title:'请求序号'},targetTitle:{type:'string',minLength:1}},required:['pageUrl','rank','targetTitle']},successConditions:[{type:'outputExists',path:'pageUrl'}]},program:{schemaVersion:'2.0',runtime:'BrowserJavaScriptStage',entry:{mode:'CurrentPage'},stages:module.stages,module:{contentHash:mode==='integrity'?'0'.repeat(64):module.hash,moduleUrl:'/module.js',exportName:'capability'}}};
   const cors={'access-control-allow-origin':'*','access-control-allow-headers':'content-type,authorization,x-sitewake-site-id,x-sitewake-site-agent-id,x-sitewake-site-id,x-sitewake-site-agent-id,x-sitewake-ai-stage,x-capability-input,x-capability-goal,x-capability-current-url','access-control-allow-methods':'GET,POST,OPTIONS'};
   const api=createServer(async(req,res)=>{if(mode==='slow-network')await new Promise(r=>setTimeout(r,80));res.writeHead(req.method==='OPTIONS'?204:200,{...cors,...(req.url==='/module.js'?{'cache-control':'public,max-age=31536000,immutable'}:{}),'content-type':req.url==='/module.js'?'text/javascript':'application/json'});if(req.method==='OPTIONS')return res.end();
    if(req.url==='/module.js'){moduleRequests++;return res.end(module.source)}
    if(req.url.includes('/search'))return res.end(JSON.stringify({items:[{...runtime,description:'操作实时网页'}]}));
    if(req.url.includes('/runtime?'))return res.end(JSON.stringify(runtime));
-   if(req.url.includes('/chat/completions')){modelCalls++;return res.end(JSON.stringify({choices:[{message:{tool_calls:[{id:'call',type:'function',function:{name:'capability_v2_1',arguments:JSON.stringify({rank:mode==='no-result'?9:3})}}]}}]}))}
+   if(req.url.includes('/chat/completions')){modelCalls++;let body='';for await(const c of req)body+=c;
+    // The capability is one step of the Agent's task: its receipt comes back,
+    // and an Agent that needs nothing more answers without another tool.
+    const receipt=(JSON.parse(body||'{}').messages||[]).find(m=>m.role==='tool'&&m.name==='capability_v2_1');
+    if(receipt){receipts.push(JSON.parse(receipt.content));return res.end(JSON.stringify({choices:[{message:{content:'done'}}]}))}
+    return res.end(JSON.stringify({choices:[{message:{tool_calls:[{id:'call',type:'function',function:{name:'capability_v2_1',arguments:JSON.stringify({rank:mode==='no-result'?9:3})}}]}}]}))}
    if(req.url==='/result'){let text='';for await(const c of req)text+=c;results.push(JSON.parse(text));return res.end('{}')}
    res.end('{}');
   });
@@ -94,7 +99,11 @@ test('published capability executes and terminates through the real SDK across b
    await page.evaluate(()=>{window.start().catch(e=>window.fatal=String(e))});
    await page.waitForFunction(()=>Boolean(window.result||window.fatal),null,{timeout:8000});
    const observed=await page.evaluate(()=>({result:window.result,fatal:window.fatal,checkpoint:sessionStorage.getItem('checkpoint')}));
-   assert.equal(observed.fatal,undefined);assert.ok(observed.result);assert.equal(modelCalls,1);assert.ok(moduleRequests>=1);
+   assert.equal(observed.fatal,undefined);assert.ok(observed.result);
+   // A fault ends the task; a handled result goes back to the Agent once, on whichever document the run ended.
+   const faulted=['failure','integrity'].includes(mode);
+   assert.equal(modelCalls,faulted?1:2);assert.equal(receipts.length,faulted?0:1);
+   if(!faulted)assert.equal(receipts[0].status,mode==='no-result'?'no-result':'success');assert.ok(moduleRequests>=1);
    assert.ok(observed.result.timings.some(span=>span.name==='module.fetch'));
    assert.ok(observed.result.timings.some(span=>span.name==='model.choose-tool'));
    assert.equal(await page.evaluate(()=>Number(sessionStorage.getItem('handoffs')||0)),mode==='hard'||mode==='entry-hard'?1:0);
