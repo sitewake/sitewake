@@ -440,3 +440,51 @@ test("runtime proxy sends complete Qwen payloads for router, PageAgent, judge, a
     }
   }
 });
+
+test("a second visitor of the same site waits for the model slot instead of failing", async () => {
+  budget.resetRuntimeModelBudgetForTests();
+  const shared = { maxRequestsPerRunMinute: 100, maxRequestsPerSiteDay: 10_000, maxConcurrentPerRun: 1, maxConcurrentPerSite: 1, minRequestIntervalMs: 1_500 };
+  let now = 10_000;
+  const clock = () => now;
+  const first = budget.acquireRuntimeModelBudget({ siteAgentId: "busy-site", runId: "visitor-a", now, limits: shared });
+  assert.equal(first.allowed, true);
+  // The first visitor's call takes six seconds; the browser's own retry after
+  // one second used to meet the same refusal and end the task.
+  const waited = [];
+  const second = await budget.waitForRuntimeModelBudget({
+    siteAgentId: "busy-site", runId: "visitor-b", now, limits: shared, clock,
+    sleep: async (ms) => { waited.push(ms); now += ms; if (now >= 16_000 && first.allowed) first.release(); },
+  });
+  assert.equal(second.allowed, true, "the second visitor is served once the slot frees");
+  assert.ok(waited.length > 1 && waited.every((ms) => ms > 0 && ms <= 500), "it polls in short steps rather than one long sleep");
+  second.release();
+});
+
+test("waiting is bounded, limited to limits shared with other visitors, and stops when the request goes away", async () => {
+  budget.resetRuntimeModelBudgetForTests();
+  const shared = { maxRequestsPerRunMinute: 1, maxRequestsPerSiteDay: 10_000, maxConcurrentPerRun: 1, maxConcurrentPerSite: 1, minRequestIntervalMs: 0 };
+  let now = 50_000;
+  const clock = () => now;
+  const sleep = async (ms) => { now += ms; };
+  const holder = budget.acquireRuntimeModelBudget({ siteAgentId: "s", runId: "a", now, limits: shared });
+  const refused = await budget.waitForRuntimeModelBudget({ siteAgentId: "s", runId: "b", now, limits: shared, clock, sleep, maxWaitMs: 15_000 });
+  assert.equal(refused.allowed, false);
+  assert.equal(refused.reason, "site_concurrency");
+  assert.ok(now - 50_000 >= 15_000 && now - 50_000 < 16_000, "a stuck slot is given up on at the bound");
+  holder.release();
+
+  const own = budget.acquireRuntimeModelBudget({ siteAgentId: "t", runId: "c", now, limits: shared });
+  own.release();
+  const before = now;
+  const overRun = await budget.waitForRuntimeModelBudget({ siteAgentId: "t", runId: "c", now, limits: shared, clock, sleep });
+  assert.equal(overRun.allowed, false);
+  assert.equal(overRun.reason, "run_minute", "a run's own budget is not another visitor's turn; it is refused at once");
+  assert.equal(now, before);
+
+  const blocker = budget.acquireRuntimeModelBudget({ siteAgentId: "u", runId: "d", now, limits: shared });
+  const aborted = new AbortController();
+  aborted.abort();
+  const gone = await budget.waitForRuntimeModelBudget({ siteAgentId: "u", runId: "e", now, limits: shared, clock, sleep, signal: aborted.signal });
+  assert.equal(gone.allowed, false, "a visitor who left is not kept in the queue");
+  blocker.release();
+});

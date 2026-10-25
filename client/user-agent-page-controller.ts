@@ -46,7 +46,28 @@ type Options = ConstructorParameters<typeof PageController>[0] & {
     startedAt: number,
     detail?: NonNullable<PageRuntimeMetric["detail"]>,
   ) => void;
+  /**
+   * Observe the whole document while it is at most this many viewports tall.
+   * See observationViewportExpansion.
+   */
+  fullPageMaxViewports?: number;
 };
+
+/**
+ * How far beyond the viewport one observation reaches.
+ *
+ * An agent that sees only the screen answers list questions from the visible
+ * part and calls it complete — the catalog with seven products was reported as
+ * having four, the category with three dresses as having two. Ordinary pages
+ * are a few thousand characters in full, so they are observed whole. A page
+ * many screens tall (an encyclopedia article is 50+) would cost seconds to
+ * walk and overflow the prompt, so it is observed one extra viewport at a time
+ * and the agent scrolls.
+ */
+export function observationViewportExpansion(scrollHeight: number, viewportHeight: number, fullPageMaxViewports: number) {
+  const viewport = Math.max(1, viewportHeight);
+  return scrollHeight <= viewport * fullPageMaxViewports ? -1 : Math.round(viewport);
+}
 
 const CONTROLLER_VERSION = "1.12.1";
 const PROJECTION_VERSION = 2;
@@ -393,10 +414,12 @@ export class SiteAgentPageController extends PageController {
   private actionBoundary = true;
   private pendingObservations = new Set<Promise<void>>();
   private observationError?: unknown;
+  private readonly fullPageMaxViewports?: number;
 
   constructor(options: Options) {
-    const { context, projectState, initialSeed, onObservation, onMetric, ...controllerOptions } = options;
+    const { context, projectState, initialSeed, onObservation, onMetric, fullPageMaxViewports, ...controllerOptions } = options;
     super(controllerOptions);
+    this.fullPageMaxViewports = fullPageMaxViewports;
     this.context = context;
     this.projectState = projectState || ((state) => state);
     this.onObservation = onObservation;
@@ -446,6 +469,16 @@ export class SiteAgentPageController extends PageController {
       return this.latestCapture.state;
     }
 
+    if (this.fullPageMaxViewports) {
+      // The base controller reads this setting on every state call; pages grow
+      // and shrink between turns, so it is decided per observation.
+      const config = (this as unknown as { config: { viewportExpansion?: number } }).config;
+      config.viewportExpansion = observationViewportExpansion(
+        document.documentElement.scrollHeight,
+        window.innerHeight,
+        this.fullPageMaxViewports,
+      );
+    }
     const rawStartedAt = Date.now();
     const raw = await super.getBrowserState();
     const rawSelectorMap = (this as unknown as { selectorMap?: Map<number, SelectorNode> }).selectorMap;

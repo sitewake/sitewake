@@ -3352,7 +3352,7 @@ test("public runtime model and evidence ingestion require one bounded AgentRun a
   assert.match(modelRoute, /getSiteAgentRunByToken\(siteAgentId, token,/);
   assert.match(modelRoute, /readBoundedJson\(request, MAX_MODEL_REQUEST_BYTES\)/);
   // The budget is accounted per authenticated run and registers the upstream abort handle (a retry of the same run supersedes the zombie call, see runtime-model-budget).
-  assert.match(modelRoute, /acquireRuntimeModelBudget\(\{\s*siteAgentId,\s*runId: authenticatedRunId,\s*abort: \(\) => \{ superseded = true; controller\.abort\(\); \},\s*\}\)/);
+  assert.match(modelRoute, /waitForRuntimeModelBudget\(\{\s*siteAgentId,\s*runId: authenticatedRunId,\s*abort: \(\) => \{ superseded = true; controller\.abort\(\); \},\s*signal: request\.signal,\s*\}\)/);
   assert.match(modelRoute, /model_rate_limited/);
   assert.match(episodeRoute, /if \(!token\).*agent_run_token_required/);
   assert.match(episodeRoute, /authorizeAgentRunEpisode\(episode\.taskSessionId, token, episode\)/);

@@ -400,6 +400,8 @@ type AdaptiveTrace = {
   budgetEvidence?: PageExecutionBudget;
   runtimeMetrics?: PageRuntimeMetric[];
   toolReceipts?: NonNullable<TaskEpisode["experience"]>["toolReceipts"];
+  /** The page agent's own per-document conclusions; see AgentPageNote in user-agent-adaptive.ts. */
+  notes?: Array<{ documentId: string; url: string; memory: string; nextGoal?: string }>;
 };
 
 type CapabilityToolContext = {
@@ -1041,6 +1043,8 @@ function reconciliationStatusFor(result: { output: Record<string, JsonValue>; ep
 }
 
 const COMPILED_RUNTIME_LIMIT_MS = 180_000;
+/** A dropped task older than this was left long ago; a fresh visit owes no explanation. */
+const DROPPED_RUN_NOTICE_MS = 60_000;
 const COMPILED_RUNTIME_MODEL_REQUEST_LIMIT = 100;
 
 export type CompiledRuntimeWindow = {
@@ -2087,6 +2091,12 @@ export class AgentPort {
       : "";
     const continuationToken = trustedHandoffToken || intentHandoffToken;
     let checkpoint = this.readCheckpoint();
+    // A task that was mid-step when this document loaded, with nothing to hand
+    // it over, is dropped below. Say so: the widget used to come back as
+    // "ready" with the request unanswered and no hint that it had stopped.
+    const droppedByPageChange = Boolean(!continuationToken && pointer && checkpoint
+      && ["running", "navigating", "waiting-page-restore"].includes(checkpoint.phase || "running")
+      && Date.now() - checkpoint.savedAt < DROPPED_RUN_NOTICE_MS);
     if (!continuationToken && pointer) {
       this.saveRunPointer();
       this.saveCheckpoint();
@@ -2125,6 +2135,7 @@ export class AgentPort {
       if (this.passiveObservationAllowed()) void this.submitObservation(pending, snapshot).catch(() => undefined);
     }
     if (!checkpoint && !continuationToken) this.status("ready", this.say.connectedVersion(this.release.version), { profile: this.release.profile, capabilities: this.release.capabilities.length });
+    if (droppedByPageChange) this.status("ready", this.say.stoppedByPageChange, { taskInterrupted: true });
     void connectionPromise;
     this.restoreDemonstration();
     if (this.demonstration) this.reportDemonstration(this.say.resumedRecording);

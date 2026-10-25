@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getModelConfig } from "@/lib/model-config";
 import { forwardToProvider, isEventStream, providerPayload } from "@/lib/model-proxy/forward";
 import { normalizeAgentToolEnvelope } from "@/lib/site-knowledge/model-protocol";
-import { acquireRuntimeModelBudget } from "@/lib/site-knowledge/runtime-model-budget";
+import { waitForRuntimeModelBudget } from "@/lib/site-knowledge/runtime-model-budget";
 import { recordModelInvocation } from "@/db/site-agent-store";
 import { AGENT_RUN_RUNTIME_MODEL_REQUEST_LIMIT, consumeAgentRunRuntimeModelRequest, getSiteAgentRunByToken } from "@/db/agent-run-store";
 import { boundedJsonErrorStatus, readBoundedJson } from "@/lib/http/bounded-json";
@@ -77,10 +77,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ si
   // its own zombie request and get a 429.
   const controller = new AbortController();
   let superseded = false;
-  const budget = acquireRuntimeModelBudget({
+  const budget = await waitForRuntimeModelBudget({
     siteAgentId,
     runId: authenticatedRunId,
     abort: () => { superseded = true; controller.abort(); },
+    signal: request.signal,
   });
   if (!budget.allowed) {
     return siteAgentJson(

@@ -149,6 +149,42 @@ export function acquireRuntimeModelBudget(input: {
   return { allowed: true, release, superseded };
 }
 
+/**
+ * Limits shared by every visitor of one site. Hitting one says another visitor
+ * is mid-call, not that this request is over budget, so it waits its turn.
+ */
+const SHARED_SITE_LIMITS = new Set(["site_concurrency", "request_spacing"]);
+/** Kept under the browser's 20s first-byte deadline for a model turn. */
+export const RUNTIME_MODEL_SLOT_WAIT_MS = 15_000;
+
+/**
+ * acquireRuntimeModelBudget, queueing behind other visitors of the same site.
+ *
+ * The site-wide limits allow one model call at a time. Rejecting the second
+ * visitor outright meant two people asking the same site something at once
+ * was enough for one of them to see "the task was interrupted while
+ * starting": the browser retried once after a second, while the other
+ * visitor's call takes five to ten. The limit stays; the request waits for a
+ * slot instead, up to a bound, and only then is refused as before.
+ */
+export async function waitForRuntimeModelBudget(input: Parameters<typeof acquireRuntimeModelBudget>[0] & {
+  maxWaitMs?: number;
+  signal?: AbortSignal;
+  sleep?: (ms: number) => Promise<void>;
+  clock?: () => number;
+}): Promise<ReturnType<typeof acquireRuntimeModelBudget>> {
+  const clock = input.clock || Date.now;
+  const sleep = input.sleep || ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const deadline = clock() + Math.max(0, input.maxWaitMs ?? RUNTIME_MODEL_SLOT_WAIT_MS);
+  for (;;) {
+    const attempt = acquireRuntimeModelBudget({ ...input, now: input.now === undefined ? undefined : clock() });
+    if (attempt.allowed) return attempt;
+    const remaining = deadline - clock();
+    if (!SHARED_SITE_LIMITS.has(attempt.reason) || remaining <= 0 || input.signal?.aborted) return attempt;
+    await sleep(Math.min(remaining, Math.max(100, Math.min(500, attempt.retryAfterSeconds * 1_000))));
+  }
+}
+
 export function resetRuntimeModelBudgetForTests() {
   const root = globalThis as BudgetRoot;
   delete root.__SITEWAKE_RUNTIME_MODEL_BUDGET__;
