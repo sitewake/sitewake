@@ -21,7 +21,7 @@ Object.assign(port,{
  options:{siteAgentId:'fixture',endpoint:config.api,runtimeMode:'full'},sequence:0,activityTimeline:read('activities')||[],activeSession:session,activeAbort:new AbortController(),
  capabilityAllowed:()=>true,assertCapabilityAllowed:()=>{},requireAgentRunToken:()=> 'fixture-token',readRunPointer:()=>({resumeToken:'fixture-token'}),
  acquireLease:()=>true,releaseLease:()=>{},executionPinFrom:()=>undefined,session:async()=>session,
- armNavigationIntent:async()=>{sessionStorage.setItem("arms",String(Number(sessionStorage.getItem("arms")||0)+1));sessionStorage.setItem("grant","1");},clearNavigationIntent:(force)=>{if(force)sessionStorage.removeItem("grant");},prepareRunHandoff:async url=>{sessionStorage.setItem("handoffs",String(Number(sessionStorage.getItem("handoffs")||0)+1));return url;},
+ armNavigationIntent:async()=>{sessionStorage.setItem("arms",String(Number(sessionStorage.getItem("arms")||0)+1));sessionStorage.setItem("grant","1");sessionStorage.setItem("armedCheckpoint",sessionStorage.getItem("checkpoint")||"null");},clearNavigationIntent:(force)=>{if(force)sessionStorage.removeItem("grant");},prepareRunHandoff:async url=>{sessionStorage.setItem("handoffs",String(Number(sessionStorage.getItem("handoffs")||0)+1));const armed=sessionStorage.getItem("armedCheckpoint");if(armed&&armed!=="null")sessionStorage.setItem("checkpoint",armed);return url;},
  storeCheckpointLocally:cp=>save('checkpoint',cp),
  saveCheckpoint(cp){if(cp)cp.activityTimeline=this.activityTimeline;save('checkpoint',cp);},readCheckpoint:()=>read('checkpoint'),
  flushCheckpoint:async()=>{throw Error('duplicate_checkpoint_roundtrip')},patchSession:async(_,patch)=>{if(config.slow)await new Promise(r=>setTimeout(r,1500));window.projectionComplete=true;return {...session,...patch};},
@@ -51,7 +51,7 @@ function artifact(mode){
  document.querySelector('[data-rank="'+input.rank+'"]').click();
  ${mode==='failure'?"throw Error('fixture_execution_failed');":''}
 
- return {outcome:'Continue'${mode==='plain'||mode==='native'?'':",navigation:{url:"+(mode==='hard'?"new URL('/detail?rank='+input.rank,location.href).href":'location.href')+",target:'_self'}"}};
+ return {outcome:'Continue'${mode==='plain'||mode==='native'||mode==='link'?'':",navigation:{url:"+(mode==='hard'||mode==='entry-hard'?"new URL('/detail?rank='+input.rank,location.href).href":'location.href')+",target:'_self'}"}};
  }},{...${JSON.stringify(stages[1])},async run({input}){
  // Like an authored verify Stage: wait for the result to be on the page. In
  // 'native' this wait spans the document navigation the click started.
@@ -64,7 +64,7 @@ function artifact(mode){
 test('published capability executes and terminates through the real SDK across browser states', {timeout:60000},async t=>{
  const bundled=await build({stdin:{contents:bootstrap,loader:'ts',resolveDir:process.cwd()},bundle:true,format:'iife',platform:'browser',write:false});
  const browser=await chromium.launch();
- try{for(const mode of ['plain','spa','hash','hard','native','link','entry-hash','slow-network','failure','no-result','integrity'])await t.test(mode,async()=>{
+ try{for(const mode of ['plain','spa','hash','hard','entry-hard','native','link','entry-hash','slow-network','failure','no-result','integrity'])await t.test(mode,async()=>{
   const module=artifact(mode);let modelCalls=0,results=[],moduleRequests=0;
   const runtime={capabilityId:'rank',versionId:'v1',name:'按排名打开热搜',contract:{intent:'按排名打开热搜',inputSchema:{type:'object',properties:{rank:{type:'number'},...(mode==='link'?{via:{type:'string',default:'link'}}:{})},required:['rank']},outputSchema:{type:'object',properties:{pageUrl:{type:'string'},rank:{type:'number',title:'请求序号'},targetTitle:{type:'string',minLength:1}},required:['pageUrl','rank','targetTitle']},successConditions:[{type:'outputExists',path:'pageUrl'}]},program:{schemaVersion:'2.0',runtime:'BrowserJavaScriptStage',entry:{mode:'CurrentPage'},stages:module.stages,module:{contentHash:mode==='integrity'?'0'.repeat(64):module.hash,moduleUrl:'/module.js',exportName:'capability'}}};
   const cors={'access-control-allow-origin':'*','access-control-allow-headers':'content-type,authorization,x-sitewake-site-id,x-sitewake-site-agent-id,x-sitewake-site-id,x-sitewake-site-agent-id,x-sitewake-ai-stage,x-capability-input,x-capability-goal,x-capability-current-url','access-control-allow-methods':'GET,POST,OPTIONS'};
@@ -86,7 +86,9 @@ test('published capability executes and terminates through the real SDK across b
    document.querySelector('button').onclick=()=>{sessionStorage.setItem('clicks',String(Number(sessionStorage.getItem('clicks')||0)+1));${mode==='native'?"setTimeout(()=>location.assign('/detail?rank=3'),300);return;":''}document.querySelector('#detail').textContent='3';document.querySelector('#topic-title').textContent='本次真实话题';${mode==='spa'?"history.pushState({},'', '?rank=3');":mode==='hash'?"location.hash='rank=3';":''}};
    </script><script src="/sdk-test.js"></script>`);
   });
-  const siteOrigin=await listen(site);if(mode==='entry-hash')runtime.program.entry={mode:'Navigate',url:siteOrigin+'/#ready'};const context=await browser.newContext();const page=await context.newPage();
+  const siteOrigin=await listen(site);if(mode==='entry-hash')runtime.program.entry={mode:'Navigate',url:siteOrigin+'/#ready'};
+  // The first Stage leaves the entry page: the destination resumes that Stage, not the program's entry.
+  if(mode==='entry-hard')runtime.program.entry={mode:'Navigate',url:siteOrigin+'/'};const context=await browser.newContext();const page=await context.newPage();
   try{
    await page.goto(siteOrigin);await page.waitForFunction(()=>Boolean(window.start));
    await page.evaluate(()=>{window.start().catch(e=>window.fatal=String(e))});
@@ -95,7 +97,7 @@ test('published capability executes and terminates through the real SDK across b
    assert.equal(observed.fatal,undefined);assert.ok(observed.result);assert.equal(modelCalls,1);assert.ok(moduleRequests>=1);
    assert.ok(observed.result.timings.some(span=>span.name==='module.fetch'));
    assert.ok(observed.result.timings.some(span=>span.name==='model.choose-tool'));
-   assert.equal(await page.evaluate(()=>Number(sessionStorage.getItem('handoffs')||0)),mode==='hard'?1:0);
+   assert.equal(await page.evaluate(()=>Number(sessionStorage.getItem('handoffs')||0)),mode==='hard'||mode==='entry-hard'?1:0);
    // Every Stage whose manifest allows navigation arms the one-shot continuation
    // before authored code runs (the click Stage: once); a Stage that cannot
    // navigate (verify) never does. 'integrity' fails before any Stage runs.

@@ -1,3 +1,4 @@
+import { runCandidateInVisitorHost } from "./visitor-host-check";
 import { gzipSync } from "node:zlib";
 import { CapabilityWorkspace } from "./workspace";
 import { chromium, type BrowserContext, type Page } from "playwright";
@@ -434,6 +435,15 @@ async function performCandidateValidation(
   const stageReceipts: JavaScriptStageReceipt[] = [];
   const targetEvidence: CapabilityStageEvidence[] = [];
   const artifactRefs: UploadedArtifact[] = [];
+  const caseStartUrl = () => {
+    const explored = spec.browser.startUrl || spec.input.context.startUrl;
+    const siteEntry = candidate.contract.scope?.kind === "site-global"
+      ? (() => { try { return new URL(explored!).origin + "/"; } catch { return explored; } })()
+      : explored;
+    return candidate.program.entry.mode === "Navigate"
+      ? candidate.program.entry.url
+      : siteEntry;
+  };
   for (const testCase of candidate.cases) {
     const isolated = await isolatedValidationPage(
       page,
@@ -465,14 +475,7 @@ async function performCandidateValidation(
       // archive capability was replayed on the very day page it had been built
       // from, read it without moving, passed, and then could do nothing when a
       // person asked for another day from the home page.
-      const explored = spec.browser.startUrl || spec.input.context.startUrl;
-      const siteEntry = candidate.contract.scope?.kind === "site-global"
-        ? (() => { try { return new URL(explored!).origin + "/"; } catch { return explored; } })()
-        : explored;
-      const startUrl =
-        candidate.program.entry.mode === "Navigate"
-          ? candidate.program.entry.url
-          : siteEntry;
+      const startUrl = caseStartUrl();
       if (startUrl) {
         await isolated.page.goto(startUrl, {
           waitUntil: "domcontentloaded",
@@ -613,6 +616,37 @@ async function performCandidateValidation(
       "NoResult",
       `validation_no_case_produced_a_result:${first?.noResultReason || first?.failureReason || "no_result"}`,
     );
+  }
+  // The replay above is this runner's host; visitors run the program in the
+  // widget. The first input that succeeded here must succeed there too, or the
+  // capability would be published to hang, loop or fail for the people it is
+  // for. Same program, same input, two hosts disagreeing is a defect either
+  // way, and it is not published until they agree.
+  const accepted = answered[0];
+  const visitorPage = await isolatedValidationPage(page, spec, baselineStorageState);
+  try {
+    const check = await runCandidateInVisitorHost({
+      page: visitorPage.page,
+      startUrl: caseStartUrl(),
+      candidate: {
+        name: spec.input.candidateSummary?.name || spec.goal || "candidate",
+        description: spec.input.candidateSummary?.description,
+        contract: candidate.contract,
+        program: candidate.program,
+      },
+      input: accepted.resolvedInput,
+      timeoutMs: Math.min(240_000, (candidate.program.controlFlow?.totalTimeoutMs || 120_000) + 30_000),
+    });
+    if (check.outcome === "Skipped") {
+      await helpers.onEvent("Validating", "visitor check skipped", { caseId: accepted.caseId, reason: check.reason, ai: false });
+    } else if (check.outcome === "Agreed") {
+      await helpers.onEvent("Validating", "visitor check passed", { caseId: accepted.caseId, url: check.result.url, ai: false });
+    } else {
+      await helpers.onEvent("Validating", "visitor check failed", { caseId: accepted.caseId, reason: check.reason, ...(check.widgetStatus ? { widgetStatus: check.widgetStatus } : {}), ai: false });
+      throw new EvaluationError("NoResult", `validation_visitor_host_diverged:${accepted.caseId}:${check.reason}`);
+    }
+  } finally {
+    await visitorPage.context.close().catch(() => undefined);
   }
   // The cases that did answer, read together, can still show that the program
   // never looked at the item: two inputs the expectations say should differ,

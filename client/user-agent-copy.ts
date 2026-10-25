@@ -21,6 +21,7 @@
  * customer's site must not leak to another's.
  */
 
+import type { CapabilityRuntimeFailureWording } from "../lib/capability-center-v2/runtime-failure";
 import type { CompletionCopy } from "../lib/capability-center-v2/result-presentation";
 export type WidgetLocale = "zh" | "en";
 
@@ -345,6 +346,30 @@ const zh = {
     outcomeTargetNotFound: "网页结构发生了变化，原有操作目标已失效，系统已记录问题。本次任务没有完成。",
     outcomeTechnicalFault: "能力执行遇到了技术问题，系统已保留真实错误证据并进入修复流程。本次任务没有完成。",
     capabilityNoUsableResult: (name: string) => `能力“${name}”未产生可用结果。`,
+    inputNotOffered: (capability: string, wanted: string, offered: string) => offered
+      ? `“${capability}”无法使用“${wanted}”：网站上没有这个选项。可选的有：${offered}。`
+      : `“${capability}”无法使用“${wanted}”：网站上没有这个选项。`,
+    runtimeFailure: {
+      quote: (value: string) => `“${value}”`,
+      currentCapability: "当前能力",
+      pageEntry: "页面操作入口",
+      requiredInput: "必要参数",
+      partialWarning: "此前的页面操作可能已经部分生效，请先检查当前状态，不要直接重复执行。",
+      nothingDone: "本次尚未执行任何页面操作。",
+      locatorNotFound: (capability: string, target: string, warning: string) => `执行${capability}时，当前页面没有找到所需的${target}。${warning}`,
+      targetAmbiguous: (capability: string, target: string, warning: string) => `执行${capability}时，页面上有多个符合条件的${target}，无法安全确定操作对象。为避免误操作，任务已停止。${warning}`,
+      waitTimeout: (capability: string, target: string, warning: string) => `执行${capability}时，等待${target}就绪超时。页面可能仍在加载，也可能已经发生变化。${warning}`,
+      preconditionUrlMismatch: (capability: string) => `当前页面不符合${capability}要求的入口条件，因此没有开始执行。请从正确页面重试。`,
+      preconditionTextMissing: (capability: string) => `当前页面缺少执行${capability}所需的业务前置状态，因此没有开始执行。`,
+      inputRequired: (capability: string, input: string) => `执行${capability}缺少必要输入${input}，因此没有开始操作页面。`,
+      resultUnverified: (capability: string) => `${capability}已经执行页面操作，但没有观察到约定的成功结果。任务未被判定成功；操作可能已经部分生效，请检查页面状态后再决定是否重试。`,
+      navigationOriginInvalid: (capability: string) => `${capability}试图跳转到当前网站允许范围之外的地址，系统已阻止该操作。`,
+      fillVerificationFailed: (capability: string, target: string, warning: string) => `执行${capability}时，页面没有接受写入${target}的内容。页面控件可能已变化，任务已停止。${warning}`,
+      targetNotCheckbox: (capability: string, target: string, warning: string) => `执行${capability}时，${target}已不再是预期的勾选控件。为避免误操作，任务已停止。${warning}`,
+      uploadRequiresUser: (capability: string) => `${capability}需要用户手动选择并上传文件，当前无法自动继续。`,
+      cancelled: (capability: string, sideEffectStarted: boolean) => `${capability}已停止。${sideEffectStarted ? "停止前的操作可能已经部分生效，请检查页面当前状态。" : "尚未执行页面操作。"}`,
+      unrecognized: (capability: string, warning: string) => `执行${capability}时遇到未能识别的运行问题，任务没有可靠完成。${warning}`,
+    } satisfies CapabilityRuntimeFailureWording,
     enteredSceneViaKnowledge: (scene: string) => `已通过网站知识库进入「${scene}」页面。`,
     usingVerifiedEntry: (scene: string) => `使用已验证入口进入「${scene}」`,
     readOnlyModeNotice: "当前站点助手处于只读模式，可以帮你查询信息或进入公开页面，但不会提交、保存或修改任何数据。",
@@ -357,6 +382,7 @@ const zh = {
     reconciliationCompleted: "只读核对确认原目标已经完成。",
     reconciliationNotCompleted: "只读核对明确显示原目标尚未完成。",
     reconciliationUnknown: "只读核对无法可靠确认页面是否已经产生结果。任务已停止且不会继续操作。",
+    outcomeUnconfirmed: "还不能可靠确认任务结果。",
     reconciliationIncomplete: "只读核对未能完成；页面没有被继续操作。若要继续执行，需要你明确确认后启动一次新的任务。",
     confirmedStepTechnicalIssue: "你确认后的单次继续执行遇到技术问题，任务已停止且不会自动续跑。",
     demoEnter: "回车",
@@ -493,6 +519,7 @@ const zh = {
     yes: "是",
     no: "否",
     viewDetails: "查看详情",
+    moreItems: "另有 {count} 项",
   },
   /**
    * Failure explanations. Each answers two things: what happened, and what you can do
@@ -732,6 +759,30 @@ const en: WidgetCopy = {
     outcomeTargetNotFound: "The page changed and the original target no longer exists. The problem has been recorded. The task did not finish.",
     outcomeTechnicalFault: "The capability hit a technical problem. The real error has been kept and sent for repair. The task did not finish.",
     capabilityNoUsableResult: (name: string) => `“${name}” produced no usable result.`,
+    inputNotOffered: (capability: string, wanted: string, offered: string) => offered
+      ? `${capability} can’t use “${wanted}”: the site doesn’t offer that option. It offers: ${offered}.`
+      : `${capability} can’t use “${wanted}”: the site doesn’t offer that option.`,
+    runtimeFailure: {
+      quote: (value: string) => `“${value}”`,
+      currentCapability: "this capability",
+      pageEntry: "page control",
+      requiredInput: "required input",
+      partialWarning: "Some earlier actions on the page may already have taken effect. Check the page before trying again.",
+      nothingDone: "Nothing on the page was changed.",
+      locatorNotFound: (capability: string, target: string, warning: string) => `While running ${capability}, the page didn’t have the ${target} it needs. ${warning}`,
+      targetAmbiguous: (capability: string, target: string, warning: string) => `While running ${capability}, several ${target} matched, so it stopped rather than act on the wrong one. ${warning}`.trim(),
+      waitTimeout: (capability: string, target: string, warning: string) => `While running ${capability}, the ${target} never became ready. The page may still be loading or may have changed. ${warning}`,
+      preconditionUrlMismatch: (capability: string) => `This page isn’t where ${capability} starts, so nothing was done. Try again from the right page.`,
+      preconditionTextMissing: (capability: string) => `This page isn’t in the state ${capability} needs, so nothing was done.`,
+      inputRequired: (capability: string, input: string) => `${capability} needs ${input}, so nothing on the page was changed.`,
+      resultUnverified: (capability: string) => `${capability} acted on the page, but the expected result didn’t appear, so it isn’t counted as done. Some actions may have taken effect; check the page before trying again.`,
+      navigationOriginInvalid: (capability: string) => `${capability} tried to leave this site, and that was blocked.`,
+      fillVerificationFailed: (capability: string, target: string, warning: string) => `While running ${capability}, the page didn’t accept what was written into the ${target}. The page may have changed. ${warning}`,
+      targetNotCheckbox: (capability: string, target: string, warning: string) => `While running ${capability}, the ${target} was no longer the checkbox it expected, so it stopped. ${warning}`,
+      uploadRequiresUser: (capability: string) => `${capability} needs you to choose and upload a file yourself, so it can’t continue on its own.`,
+      cancelled: (capability: string, sideEffectStarted: boolean) => `${capability} was stopped. ${sideEffectStarted ? "Actions before the stop may already have taken effect; check the page." : "Nothing on the page was changed."}`,
+      unrecognized: (capability: string, warning: string) => `${capability} ran into a problem it couldn’t identify and didn’t finish. ${warning}`,
+    } satisfies CapabilityRuntimeFailureWording,
     enteredSceneViaKnowledge: (scene: string) => `Opened “${scene}” using site knowledge.`,
     usingVerifiedEntry: (scene: string) => `Opening “${scene}” through a verified entry`,
     readOnlyModeNotice: "This assistant is in read-only mode. It can look things up and open public pages, but it will not submit, save or change anything.",
@@ -744,6 +795,7 @@ const en: WidgetCopy = {
     reconciliationCompleted: "The read-only check confirms the original goal was met.",
     reconciliationNotCompleted: "The read-only check shows the original goal was not met.",
     reconciliationUnknown: "The read-only check cannot reliably tell whether the page produced a result. The task has stopped and nothing further will be done.",
+    outcomeUnconfirmed: "The result of the task can’t be confirmed yet.",
     reconciliationIncomplete: "The read-only check could not finish; the page was left alone. To go on, confirm and start a new task.",
     confirmedStepTechnicalIssue: "The single step you confirmed hit a technical problem. The task has stopped and will not continue on its own.",
     demoEnter: "Enter",
@@ -876,6 +928,7 @@ const en: WidgetCopy = {
     yes: "Yes",
     no: "No",
     viewDetails: "View details",
+    moreItems: "and {count} more",
   },
   error: {
     inputRequired: "To finish this I need one more piece of information from you.",

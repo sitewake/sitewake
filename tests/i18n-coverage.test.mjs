@@ -177,3 +177,42 @@ test("清单只增不减——删掉条目等于放弃已经拿到的覆盖率",
   assert.ok(EXTRACTED.length >= 1, "清单不该为空");
   assert.equal(new Set(EXTRACTED).size, EXTRACTED.length, "清单里有重复条目");
 });
+
+/**
+ * Every module the widget bundle reaches is held to the same rule, whether or
+ * not someone remembered to list it above. The runtime failure explainer was
+ * imported by the widget and never listed, so every English visitor whose
+ * capability failed read 「执行…时遇到未能识别的运行问题」. Reached modules are
+ * found from the bundle itself; the only ones let through are the copy
+ * catalogs and the files below, whose Chinese is matched or sent to a model,
+ * never shown.
+ */
+const WIDGET_NOT_DISPLAYED = {
+  "client/user-agent-copy.ts": "the widget's copy catalog",
+  "lib/site-knowledge/capability-compatibility.ts": "vocabulary matched against what visitors type",
+  "lib/site-knowledge/execution-evidence.ts": "vocabulary matched against what visitors type",
+  "lib/site-knowledge/execution-requirement.ts": "patterns matched against what visitors type",
+  "lib/site-knowledge/url-scene.ts": "patterns matched against page titles",
+  "lib/site-knowledge/goal-semantics.ts": "vocabulary matched against what visitors type",
+  "lib/site-knowledge/knowledge-search-guidance.ts": "model prompt body",
+  "lib/site-knowledge/navigation-tools.ts": "tool schema descriptions read by the model",
+  "lib/site-knowledge/planner.ts": "planner context read by the model",
+  "lib/site-knowledge/protocol.ts": "release defaults, replaced by the site's localized branding",
+};
+
+test("every module the widget bundle reaches keeps its display copy in the catalogs", async () => {
+  const { build } = await import("esbuild");
+  const root = fileURLToPath(new URL("../", import.meta.url));
+  const offenders = [];
+  for (const entry of ["client/user-agent-client.ts", "client/user-agent-adaptive.ts"]) {
+    const result = await build({ entryPoints: [`${root}${entry}`], absWorkingDir: root, bundle: true, write: false, metafile: true, platform: "browser", format: "esm", logLevel: "silent" });
+    for (const input of Object.keys(result.metafile.inputs)) {
+      if (input.includes("node_modules") || !/\.tsx?$/.test(input) || WIDGET_NOT_DISPLAYED[input]) continue;
+      const source = await readFile(`${root}${input}`, "utf8");
+      for (const hit of offendingLines(source)) offenders.push(`${input}:${hit.line}  ${hit.text}`);
+    }
+  }
+  assert.deepEqual([...new Set(offenders)], [],
+    "The widget shows these to visitors in every language; move them into client/user-agent-copy.ts.\n  "
+    + [...new Set(offenders)].join("\n  "));
+});

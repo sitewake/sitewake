@@ -36,100 +36,74 @@ export function capabilityVerificationOnlyFailure(context: {
   return context.stages.slice(0, -1).every((stage) => completed.has(stage.id));
 }
 
-function quoted(value: string | undefined, fallback: string) {
-  return `“${value?.trim() || fallback}”`;
-}
+/**
+ * The words a visitor reads when a capability fails, in the visitor's
+ * language. The explanation rules live here; the sentences live in the widget
+ * copy catalogs, so an English visitor never reads a Chinese failure.
+ */
+export type CapabilityRuntimeFailureWording = {
+  quote: (value: string) => string;
+  currentCapability: string;
+  pageEntry: string;
+  requiredInput: string;
+  partialWarning: string;
+  nothingDone: string;
+  locatorNotFound: (capability: string, target: string, warning: string) => string;
+  targetAmbiguous: (capability: string, target: string, warning: string) => string;
+  waitTimeout: (capability: string, target: string, warning: string) => string;
+  preconditionUrlMismatch: (capability: string) => string;
+  preconditionTextMissing: (capability: string) => string;
+  inputRequired: (capability: string, input: string) => string;
+  resultUnverified: (capability: string) => string;
+  navigationOriginInvalid: (capability: string) => string;
+  fillVerificationFailed: (capability: string, target: string, warning: string) => string;
+  targetNotCheckbox: (capability: string, target: string, warning: string) => string;
+  uploadRequiresUser: (capability: string) => string;
+  cancelled: (capability: string, sideEffectStarted: boolean) => string;
+  unrecognized: (capability: string, warning: string) => string;
+};
 
 /**
  * Converts V2 runtime codes into stable, user-facing explanations. Technical
  * details stay in evidence; callers never have to display raw executor codes.
  */
-export function explainCapabilityRuntimeFailure(context: CapabilityRuntimeFailureContext): CapabilityRuntimeFailureExplanation {
+export function explainCapabilityRuntimeFailure(context: CapabilityRuntimeFailureContext, say: CapabilityRuntimeFailureWording): CapabilityRuntimeFailureExplanation {
   const separator = context.technicalError.indexOf(":");
   const code = separator < 0 ? context.technicalError : context.technicalError.slice(0, separator);
-  const capability = quoted(context.capabilityName, "当前能力");
-  const target = quoted(context.targetLabel, "页面操作入口");
-  const input = quoted(context.inputLabel, "必要参数");
-  const partialWarning = context.sideEffectStarted
-    ? "此前的页面操作可能已经部分生效，请先检查当前状态，不要直接重复执行。"
-    : "本次尚未执行任何页面操作。";
+  const capability = say.quote(context.capabilityName?.trim() || say.currentCapability);
+  const target = say.quote(context.targetLabel?.trim() || say.pageEntry);
+  const input = say.quote(context.inputLabel?.trim() || say.requiredInput);
+  const warning = context.sideEffectStarted ? say.partialWarning : say.nothingDone;
+  const recognized = (summary: string, repairSuggested = true) => ({ code, summary, repairSuggested, recognized: true });
 
-  if (code === "locator_not_found") return {
-    code,
-    summary: `执行${capability}时，当前页面没有找到所需的${target}。${partialWarning}`,
-    repairSuggested: true,
-    recognized: true,
-  };
-  if (code === "target_ambiguous") return {
-    code,
-    summary: `执行${capability}时，页面上有多个符合条件的${target}，无法安全确定操作对象。为避免误操作，任务已停止。${context.sideEffectStarted ? partialWarning : ""}`,
-    repairSuggested: true,
-    recognized: true,
-  };
-  if (code === "wait_timeout") return {
-    code,
-    summary: `执行${capability}时，等待${target}就绪超时。页面可能仍在加载，也可能已经发生变化。${partialWarning}`,
-    repairSuggested: true,
-    recognized: true,
-  };
-  if (code === "precondition_url_mismatch") return {
-    code,
-    summary: `当前页面不符合${capability}要求的入口条件，因此没有开始执行。请从正确页面重试。`,
-    repairSuggested: true,
-    recognized: true,
-  };
-  if (code === "precondition_text_missing") return {
-    code,
-    summary: `当前页面缺少执行${capability}所需的业务前置状态，因此没有开始执行。`,
-    repairSuggested: true,
-    recognized: true,
-  };
-  if (code === "capability_input_required" || code === "precondition_input_missing" || code.startsWith("capability_run_input_")) return {
-    code,
-    summary: `执行${capability}缺少必要输入${input}，因此没有开始操作页面。`,
-    repairSuggested: false,
-    recognized: true,
-  };
-  if (code.startsWith("success_") || code === "capability_result_unverified" || code.startsWith("capability_output_")) return {
-    code,
-    summary: `${capability}已经执行页面操作，但没有观察到约定的成功结果。任务未被判定成功；操作可能已经部分生效，请检查页面状态后再决定是否重试。`,
-    repairSuggested: true,
-    recognized: true,
-  };
-  if (code === "capability_navigation_origin_invalid") return {
-    code,
-    summary: `${capability}试图跳转到当前网站允许范围之外的地址，系统已阻止该操作。`,
-    repairSuggested: true,
-    recognized: true,
-  };
-  if (code === "fill_verification_failed") return {
-    code,
-    summary: `执行${capability}时，页面没有接受写入${target}的内容。页面控件可能已变化，任务已停止。${partialWarning}`,
-    repairSuggested: true,
-    recognized: true,
-  };
-  if (code === "target_not_checkbox") return {
-    code,
-    summary: `执行${capability}时，${target}已不再是预期的勾选控件。为避免误操作，任务已停止。${partialWarning}`,
-    repairSuggested: true,
-    recognized: true,
-  };
-  if (code === "upload_requires_user_interaction") return {
-    code,
-    summary: `${capability}需要用户手动选择并上传文件，当前无法自动继续。`,
-    repairSuggested: false,
-    recognized: true,
-  };
-  if (code === "task_cancelled") return {
-    code,
-    summary: `${capability}已停止。${context.sideEffectStarted ? "停止前的操作可能已经部分生效，请检查页面当前状态。" : "尚未执行页面操作。"}`,
-    repairSuggested: false,
-    recognized: true,
-  };
+  if (code === "locator_not_found") return recognized(say.locatorNotFound(capability, target, warning));
+  if (code === "target_ambiguous") return recognized(say.targetAmbiguous(capability, target, context.sideEffectStarted ? say.partialWarning : ""));
+  if (code === "wait_timeout") return recognized(say.waitTimeout(capability, target, warning));
+  if (code === "precondition_url_mismatch") return recognized(say.preconditionUrlMismatch(capability));
+  if (code === "precondition_text_missing") return recognized(say.preconditionTextMissing(capability));
+  if (code === "capability_input_required" || code === "precondition_input_missing" || code.startsWith("capability_run_input_")) return recognized(say.inputRequired(capability, input), false);
+  if (code.startsWith("success_") || code === "capability_result_unverified" || code.startsWith("capability_output_")) return recognized(say.resultUnverified(capability));
+  if (code === "capability_navigation_origin_invalid") return recognized(say.navigationOriginInvalid(capability));
+  if (code === "fill_verification_failed") return recognized(say.fillVerificationFailed(capability, target, warning));
+  if (code === "target_not_checkbox") return recognized(say.targetNotCheckbox(capability, target, warning));
+  if (code === "upload_requires_user_interaction") return recognized(say.uploadRequiresUser(capability), false);
+  if (code === "task_cancelled") return recognized(say.cancelled(capability, context.sideEffectStarted), false);
   return {
     code: code || "runtime_error",
-    summary: `执行${capability}时遇到未能识别的运行问题，任务没有可靠完成。${partialWarning}`,
+    summary: say.unrecognized(capability, warning),
     repairSuggested: false,
     recognized: false,
   };
+}
+
+/**
+ * The value a stage was asked to choose, and what the page offered instead,
+ * when the page does not offer it (`capability_stage_select_option_missing`).
+ * That is an answer for the visitor, not a fault of the capability.
+ */
+export function capabilityOptionNotOffered(technicalError: string): { wanted: string; offered: string[] } | undefined {
+  const match = /capability_stage_select_option_missing:[^:]*:([^;\n]*);\s*options:\s*([^\n]*)/u.exec(technicalError);
+  if (!match) return undefined;
+  const offered = match[2].split("|").map((item) => item.trim()).filter(Boolean);
+  return { wanted: match[1].trim(), offered };
 }
