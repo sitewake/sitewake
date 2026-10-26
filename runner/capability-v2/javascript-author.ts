@@ -803,7 +803,16 @@ export async function authorJavaScriptCapability(options: {
    * unreplayed source, that source gets one replay before any verdict.
    */
   const maxToolCalls = Math.max(4, Math.min(96, options.maxToolCalls || Number(process.env.CAPABILITY_V2_AUTHOR_MAX_TOOL_CALLS || 48)));
-  const maxDraftRuns = Math.max(1, Math.min(12, options.maxDraftRuns || Number(process.env.CAPABILITY_V2_AUTHOR_MAX_DRAFT_RUNS || 6)));
+  let maxDraftRuns = Math.max(1, Math.min(12, options.maxDraftRuns || Number(process.env.CAPABILITY_V2_AUTHOR_MAX_DRAFT_RUNS || 6)));
+  /**
+   * Whether the one extra replay for a cross-run finding was granted. The
+   * answers-together check is the only one that can fire after every run
+   * passed on its own, so it tends to arrive on the last replay: the floor
+   * lamp rebuild spent five replays on unrelated errors and learned on the
+   * sixth that its count read the catalog total. With no replay left, the
+   * draft whose count was proven wrong went on to be published.
+   */
+  let crossRunReplayGranted = false;
   let recordedMessageCount = 0;
   let toolCallsUsed = 0;
   let draftRuns = 0;
@@ -1249,6 +1258,10 @@ export async function authorJavaScriptCapability(options: {
       await workspace.event('tool.result', {id:call.id,name:call.function.name,result});
       messages.push({ role: "tool", tool_call_id: call.id, name: call.function.name, content: JSON.stringify(result) });
       if (call.function.name === "run_draft" && successful) return successful;
+      if (draftRuns >= maxDraftRuns && !crossRunReplayGranted && call.function.name === "run_draft" && lastDraftFailure?.message.includes(":answers_together:")) {
+        crossRunReplayGranted = true;
+        maxDraftRuns += 1;
+      }
       if (toolCallsUsed >= maxToolCalls || draftRuns >= maxDraftRuns) break;
     }
   }

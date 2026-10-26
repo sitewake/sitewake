@@ -193,6 +193,29 @@ function targetEvidenceValues(evidence: CapabilityStageEvidence[], path: string)
 }
 
 /**
+ * Add, for every input the contract gives a default, an example that omits it.
+ *
+ * Grounding examples come from the exploration's parameter plan, but the
+ * program is written against the final contract. A rebuild or repair keeps the
+ * published contract, whose defaults the plan does not know about, so no
+ * example left such an input out: the draft was never run the way a visitor
+ * calls it without that input, and the quality gate refused the finished
+ * candidate after the whole authoring loop.
+ */
+export function withDefaultOmissionExamples<T extends Record<string, unknown>>(contract: CapabilityContract, examples: T[]): T[] {
+  const properties = record(record(contract.inputSchema).properties);
+  const next = [...examples];
+  const base = examples[0];
+  if (!base) return next;
+  for (const [name, schema] of Object.entries(properties)) {
+    if (!Object.hasOwn(record(schema), "default")) continue;
+    if (next.some((example) => example[name] === undefined)) continue;
+    next.push(Object.fromEntries(Object.entries(base).filter(([key]) => key !== name)) as T);
+  }
+  return next;
+}
+
+/**
  * The values every leak check judges against: what the successful exploration
  * demonstrated. They live on the generation task — the runner's
  * `demonstrationParameters`, else the task's own input. A Validation task's

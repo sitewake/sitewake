@@ -330,6 +330,33 @@ test("an authoring example that fails outright still goes back for repair", asyn
   );
 });
 
+test("a count proven wrong on the last replay still gets one replay to be fixed", async () => {
+  // The floor-lamp rebuild spent its replays on unrelated errors and learned
+  // on the last one that its count read the catalog total ("of 16") for
+  // every room; the draft with that count was accepted and published.
+  const turns = [
+    toolTurn(1, "write_file", { path: "capability.ts", content: source }),
+    toolTurn(2, "run_draft"),
+    toolTurn(3, "write_file", { path: "capability.ts", content: source }),
+    toolTurn(4, "run_draft"),
+  ];
+  const listed = (count, length) => ({ ...successfulDraft(), output: { ok: true, total: count, items: Array.from({ length }, (_, index) => ({ name: `item ${index}` })) } });
+  const { result, events } = await runAuthor({
+    turns,
+    maxToolCalls: 4,
+    maxDraftRuns: 1,
+    groundingExamples: [{ query: "pillow" }],
+    draftPage: { ...successfulDraft().page, goto: async () => undefined },
+    stageRun: async (options, attempt) => {
+      const length = options.input.query === "pillow" ? 1 : 3;
+      return attempt <= 2 ? listed(16, length) : listed(length, length);
+    },
+  });
+  assert.ok(events.some((event) => /answers_together:total was 16/.test(event.payload?.error || "")), "the finding reached the model");
+  assert.ok(!events.some((event) => /goes on to validation/.test(event.message || "")), "the proven-wrong draft was not accepted");
+  assert.equal(result.draft.output.total, 3, "the repaired count follows the list");
+});
+
 test("when repairs end on a grounding example, the draft that passed the demonstration goes on to validation", async () => {
   // A cart capability's grounding example asked for a lamp that cannot be
   // added without a plug type the capability has no input for. The model

@@ -39,7 +39,7 @@ import {
   type JavaScriptStageReceipt,
   isJavaScriptModuleLoadFailure,
 } from "./javascript-stage-runner";
-import { inspectCapabilityQuality } from "../../lib/capability-center-v2/quality";
+import { inspectCapabilityQuality, withDefaultOmissionExamples } from "../../lib/capability-center-v2/quality";
 import {
   compareCapabilityExpectedOutput,
   describeExpectedOutputDrift,
@@ -795,6 +795,7 @@ export async function performC1Authoring(
       explored.demonstrationParameters,
     ),
   };
+  const groundingExamples = withDefaultOmissionExamples(summary.contract, explored.groundingExamples);
   const authored = await authorJavaScriptCapability({
     explorationPage: page,
     workspace: helpers.workspace,
@@ -803,7 +804,7 @@ export async function performC1Authoring(
     input: { ...spec.input, parameters: explored.demonstrationParameters },
     contract: summary.contract,
     explorationProgram: explored.program,
-    groundingExamples: explored.groundingExamples,
+    groundingExamples,
     startingSource: resume?.source,
     summary,
     explorationPromptProvenance: explored.promptProvenance,
@@ -819,7 +820,7 @@ export async function performC1Authoring(
     authored.program,
     {
       demonstrationParameters: explored.demonstrationParameters,
-      validationCases: explored.groundingExamples,
+      validationCases: groundingExamples,
       source: authored.bundle,
       summary,
       entryUrl: spec.browser.startUrl,

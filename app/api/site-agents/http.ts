@@ -7,7 +7,7 @@ export const SITE_AGENT_CORS_HEADERS = {
   // Every product-prefixed header, including the runner-protocol ones
   // (`runner-token`, `lease-token`, `artifact-*`), is spelled `x-sitewake-*`.
   "access-control-allow-headers": "content-type,authorization,idempotency-key,if-none-match,x-sitewake-site-agent-id,x-sitewake-run-id,x-sitewake-learning-job-id,x-sitewake-ai-stage,x-sitewake-site-id,x-sitewake-runner-token,x-sitewake-lease-token,x-sitewake-artifact-kind,x-sitewake-artifact-role,x-sitewake-artifact-owner-kind,x-sitewake-artifact-label",
-  "access-control-expose-headers": "etag,x-sitewake-persistence",
+  "access-control-expose-headers": "etag,retry-after,x-sitewake-persistence",
   "cache-control": "no-store",
   "cdn-cache-control": "no-store",
   "cloudflare-cdn-cache-control": "no-store",

@@ -1826,6 +1826,34 @@ test("parameter-plan cleanup rejects technical parameters and preserves the fina
   ]);
 });
 
+test("grounding examples written the page address's way still name different rooms", () => {
+  // The floor-lamp rebuild: the demonstration chose "Living room" by its link,
+  // the planner wrote its examples the old contract's way ("living",
+  // "bedroom"). "bedroom" was dropped for lacking evidence, "living" survived
+  // as a second room, and both runs looked at the same room — so a count that
+  // ignored the room could not be told apart from one that followed it.
+  const rooms = ["Living room", "Bedroom", "Home office", "Dining"];
+  const snapshot = {
+    url: "https://lamps.example.test/",
+    title: "Lamps",
+    heading: "Light, considered.",
+    text: `Shop by room ${rooms.join(" ")}`,
+    elements: rooms.map((name, index) => ({ index: index + 1, tag: "a", role: "link", name, href: `https://lamps.example.test/shop?room=${name.split(" ").at(-1).toLowerCase()}`, container: { css: "section", text: `Shop by room ${rooms.join(" ")}` } })),
+  };
+  const raw = {
+    parameters: [{ name: "room", type: "string", description: "The room", required: true, exampleValue: "living" }],
+    groundingExamples: [{ room: "living" }, { room: "bedroom" }],
+    siteTerms: [
+      { name: "room", from: "Living room", value: "living" },
+      { name: "room", from: "Bedroom", value: "bedroom" },
+      { name: "room", from: "Home office", value: "office" },
+      { name: "room", from: "Dining", value: "dining" },
+    ],
+  };
+  const plan = cleanParameterPlan(raw, "Locate floor lamps suitable for a specific room", { parameters: { room: "Living room" }, context: {}, interactions: [], trigger: {} }, snapshot);
+  assert.deepEqual(plan.groundingExamples, [{ room: "Living room" }, { room: "Bedroom" }]);
+});
+
 test("a session's planner keeps the visitor's inputs, not values the run picked on its own", () => {
   // The demo lamp task: intake supplied only the finish the visitor asked for;
   // the planner added the plug type the agent chose, as a required input the
@@ -3111,6 +3139,27 @@ test("contract output schema cleanup wraps a model-returned property map", () =>
     ),
     { type: "object", additionalProperties: true },
   );
+});
+
+test("a rebuild keeps the published contract's defaults, and the draft is run without each of them", () => {
+  // The exploration planned `finish` as required; the published contract it is
+  // rebuilt against makes it optional with a default. Without an example that
+  // leaves it out, a correct candidate was refused after authoring finished.
+  const contract = {
+    intent: "Which wall lamps are available in {{finish}}?",
+    inputSchema: { type: "object", properties: { finish: { type: "string", default: "brass" }, room: { type: "string" } }, required: [], additionalProperties: false },
+    outputSchema: { type: "object", additionalProperties: true },
+    preconditions: [],
+    successConditions: [],
+  };
+  const explored = [{ finish: "brass", room: "hall" }, { finish: "matte black", room: "hall" }];
+  const examples = store.withDefaultOmissionExamples(contract, explored);
+  assert.deepEqual(examples, [...explored, { room: "hall" }]);
+  assert.deepEqual(store.withDefaultOmissionExamples(contract, examples), examples, "an existing omission is not added twice");
+  assert.deepEqual(store.withDefaultOmissionExamples(contract, []), [], "no example, nothing to derive from");
+  const issues = (cases) => inspectCapabilityQuality(contract, { schemaVersion: "1.0", stages: [], parameterRoles: [], targetBindings: [], module: {} }, { validationCases: cases }).issues.map((issue) => issue.code);
+  assert.ok(issues(explored).includes("default_omission_validation_required"));
+  assert.ok(!issues(examples).includes("default_omission_validation_required"));
 });
 
 test("quality gate rejects malformed conditions and target success that ignores its input", () => {

@@ -104,6 +104,7 @@ import {
   resolveTarget,
   resolveValue,
   targetFromEvidence,
+  fetchInSiteTurn,
   uid,
   waitFor,
 } from "./user-agent-shared";
@@ -3802,11 +3803,15 @@ export class AgentPort {
         const spacingMs = Math.max(0, nextRuntimeModelRequestAt - Date.now());
         if (spacingMs) await new Promise((resolve) => setTimeout(resolve, spacingMs));
         nextRuntimeModelRequestAt = Date.now() + RUNTIME_MODEL_MIN_INTERVAL_MS;
-        const response = await fetchWithTimeout(endpointUrl(this.options.endpoint, `/api/site-agents/${encodeURIComponent(this.options.siteAgentId)}/model/v2/chat/completions`), {
+        const body = JSON.stringify({ messages, tools, tool_choice: toolChoice, parallel_tool_calls: false, temperature: 0.2, stream: true, stream_options: { include_usage: true } });
+        const response = await fetchInSiteTurn(() => fetchWithTimeout(endpointUrl(this.options.endpoint, `/api/site-agents/${encodeURIComponent(this.options.siteAgentId)}/model/v2/chat/completions`), {
           method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${this.requireAgentRunToken()}`, "x-sitewake-ai-stage": "runtime-router" },
-          body: JSON.stringify({ messages, tools, tool_choice: toolChoice, parallel_tool_calls: false, temperature: 0.2, stream: true, stream_options: { include_usage: true } }),
+          body,
           signal,
-        }, RUNTIME_MODEL_TIMEOUT_MS, runtimeModelFirstByteTimeoutMs(attempt));
+        }, RUNTIME_MODEL_TIMEOUT_MS, runtimeModelFirstByteTimeoutMs(attempt)), {
+          signal,
+          onQueued: () => this.status("adaptive", this.say.waitingForSiteTurn, { presentation: "model-retry" }),
+        });
         if (!response.ok) {
           const text = await response.text().catch(() => "");
           const detail = text.slice(0, 240).replace(/\s+/g, " ").trim();
