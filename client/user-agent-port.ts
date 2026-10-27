@@ -3289,7 +3289,14 @@ export class AgentPort {
     return this.executeCapability(candidate.capability, session, input, "validation", operationStart, programStart, candidate);
   }
 
-  private async ingestEpisode(episode: TaskEpisode, output: Record<string, JsonValue>, mode: TaskResult["mode"], directCall = false, backgroundCapabilityExperience = false): Promise<TaskResult> {
+  private async ingestEpisode(rawEpisode: TaskEpisode, output: Record<string, JsonValue>, mode: TaskResult["mode"], directCall = false, backgroundCapabilityExperience = false): Promise<TaskResult> {
+    // The server accepts an Episode only with the input its run was started
+    // with. A capability the assistant called swaps the session input for the
+    // capability's, so the record of "Which floor lamps suit a bedroom?" carried
+    // {room: "bedroom"} against a run of {} and was refused after the answer.
+    const episode = this.activeRun?.id === rawEpisode.taskSessionId
+      ? { ...rawEpisode, input: this.activeRun.input }
+      : rawEpisode;
     if (this.cancelledSessionIds.delete(episode.taskSessionId)) {
       const session = this.activeSession || { status: "cancelled" } as TaskSession;
       return { success: false, mode, text: this.say.taskStopped, output, outcome: { status: "execution-fault", code: "cancelled", summary: this.say.taskStopped, evaluatedAt: new Date().toISOString(), evidence: {} }, session, release: this.release };

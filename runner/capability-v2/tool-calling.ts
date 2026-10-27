@@ -1,5 +1,5 @@
 import { modelChatCompletionsUrl, modelCompatibility, type ModelConfig } from "../../lib/model-config";
-import { applyProviderThinkingPolicy } from "../../lib/site-knowledge/provider-payload-policy";
+import { applyProviderPayloadPolicy, applyProviderThinkingPolicy } from "../../lib/site-knowledge/provider-payload-policy";
 import { modelRetryAfterMs, withModelProviderGate } from "../../lib/site-knowledge/model-provider-gate";
 
 export type ToolCall = { id: string; type: "function"; function: { name: string; arguments: string } };
@@ -110,7 +110,7 @@ function requestPayload(input: {
     tools: input.tools,
     messages: input.messages,
   };
-  if (!input.disableThinking) return payload;
+  if (!input.disableThinking) return applyProviderPayloadPolicy({ baseUrl: input.config.baseUrl, model: input.config.model, payload });
 
   return applyProviderThinkingPolicy({
     baseUrl: input.config.baseUrl,

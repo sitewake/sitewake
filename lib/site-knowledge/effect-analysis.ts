@@ -100,11 +100,15 @@ function record(value: JsonValue | undefined) {
     : {};
 }
 
+// The placeholder is read by owners in either language, so it is the same
+// language-free marker sensitive-data.ts writes.
+const REDACTED = "[REDACTED]";
+
 function redacted(value: string) {
   return value
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[邮箱已隐藏]")
-    .replace(/(?<!\d)1[3-9]\d{9}(?!\d)/g, "[手机号已隐藏]")
-    .replace(/(?<!\d)\d{15,19}(?!\d)/g, "[敏感号码已隐藏]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, REDACTED)
+    .replace(/(?<!\d)1[3-9]\d{9}(?!\d)/g, REDACTED)
+    .replace(/(?<!\d)\d{15,19}(?!\d)/g, REDACTED)
     .slice(0, 4_000);
 }
 
