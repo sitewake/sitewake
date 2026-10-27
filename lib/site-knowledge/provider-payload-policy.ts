@@ -72,7 +72,10 @@ function thinkingPolicyFor(baseUrl: string, modelName: string) {
   const hostname = hostnameFor(baseUrl);
   const model = modelName.trim();
   if ((isBailianHostname(hostname) || isOs1GatewayHostname(hostname)) && /^qwen(?:\d|[-.]|$)/i.test(model)) return "enable_thinking" as const;
-  if ((hostname === "open.bigmodel.cn" && /^glm(?:[-.]|$)/i.test(model))
+  // The gateway's DeepSeek route thinks by default and then rejects a forced
+  // tool_choice; it ignores enable_thinking and only honours this switch.
+  if ((isOs1GatewayHostname(hostname) && /^deepseek(?:[-.]|$)/i.test(model))
+    || (hostname === "open.bigmodel.cn" && /^glm(?:[-.]|$)/i.test(model))
     || (isArkHostname(hostname) && /^(?:(?:doubao|deepseek|glm|kimi)(?:[-.]|$)|qwen(?:\d|[-.]|$))/i.test(model))) return "thinking" as const;
   return undefined;
 }

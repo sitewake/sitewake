@@ -140,8 +140,10 @@ export function modelCompatibility(config: ModelConfig) {
   let hostname = "";
   try { hostname = new URL(config.baseUrl).hostname; } catch { /* invalid URLs fail at the actual request boundary */ }
   const alibaba = /(?:^|\.)aliyuncs\.com$/i.test(hostname);
+  // DeepSeek answers a json_schema response_format with a 400; json_object works.
+  const deepseek = /^deepseek(?:[-.]|$)/i.test(config.model.trim());
   return {
-    nativeJsonSchema: !alibaba,
+    nativeJsonSchema: !alibaba && !deepseek,
     omitStructuredMaxTokens: alibaba,
     requestBody: {},
   };

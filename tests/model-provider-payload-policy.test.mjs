@@ -85,6 +85,12 @@ for (const provider of [
     model: "doubao-seed-2.0-code",
     expected: { thinking: { type: "disabled" } },
   },
+  {
+    name: "OS1 DeepSeek gateway",
+    baseUrl: "https://openapi.os1.cn/v1",
+    model: "deepseek-v4-flash",
+    expected: { thinking: { type: "disabled" } },
+  },
 ]) {
   test(`${provider.name} preserves default thinking for auto`, () => {
     const payload = { tool_choice: "auto", reasoning_effort: "high", thinking: { type: "enabled" } };
