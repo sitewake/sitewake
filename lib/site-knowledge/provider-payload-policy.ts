@@ -91,6 +91,19 @@ function clearThinkingFields(payload: JsonRecord): JsonRecord {
   return rest;
 }
 
+function requiresReasoningEcho(baseUrl: string, model: string) {
+  return isOs1GatewayHostname(hostnameFor(baseUrl)) && /^deepseek(?:[-.]|$)/i.test(model.trim());
+}
+
+function carriesToolCallWithoutReasoning(messages: unknown) {
+  if (!Array.isArray(messages)) return false;
+  return messages.some((message) => {
+    if (!message || typeof message !== "object") return false;
+    const { role, tool_calls: toolCalls, reasoning_content: reasoning } = message as JsonRecord;
+    return role === "assistant" && Array.isArray(toolCalls) && toolCalls.length > 0 && !reasoning;
+  });
+}
+
 export function hasForcedToolChoice(toolChoice: unknown) {
   if (toolChoice === "required") return true;
   if (!toolChoice || typeof toolChoice !== "object" || Array.isArray(toolChoice)) return false;
@@ -128,6 +141,12 @@ export function applyProviderPayloadPolicy(input: {
   model: string;
   payload: JsonRecord;
 }): JsonRecord {
+  // A thinking turn after a tool call is refused unless the earlier turn's
+  // reasoning_content is sent back, which no caller keeps. Without thinking
+  // the same history is accepted.
+  if (requiresReasoningEcho(input.baseUrl, input.model) && carriesToolCallWithoutReasoning(input.payload.messages)) {
+    return applyProviderThinkingPolicy(input);
+  }
   if (!hasForcedToolChoice(input.payload.tool_choice)) return { ...input.payload };
 
   const hostname = hostnameFor(input.baseUrl);

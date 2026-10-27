@@ -181,3 +181,22 @@ test("behind the internal model proxy the worker sends the generic thinking-off 
     "only the proxy path itself counts",
   );
 });
+
+test("OS1 DeepSeek continues a tool-call history without thinking, since no caller sends reasoning back", () => {
+  const afterToolCall = [
+    { role: "user", content: "How many lamps are on sale?" },
+    { role: "assistant", content: "", tool_calls: [{ id: "call_1", type: "function", function: { name: "lookup", arguments: "{}" } }] },
+    { role: "tool", tool_call_id: "call_1", content: "0" },
+  ];
+  const base = { baseUrl: "https://openapi.os1.cn/v1", model: "deepseek-v4-flash" };
+  const continued = applyProviderPayloadPolicy({ ...base, payload: { tool_choice: "auto", messages: afterToolCall } });
+  assert.deepEqual(continued.thinking, { type: "disabled" });
+  assert.equal(continued.tool_choice, "auto");
+
+  const fresh = { tool_choice: "auto", messages: [{ role: "user", content: "hi" }] };
+  assert.deepEqual(applyProviderPayloadPolicy({ ...base, payload: fresh }), fresh, "a turn with nothing to send back keeps its thinking");
+  const echoed = { tool_choice: "auto", messages: [afterToolCall[0], { ...afterToolCall[1], reasoning_content: "kept" }, afterToolCall[2]] };
+  assert.deepEqual(applyProviderPayloadPolicy({ ...base, payload: echoed }), echoed);
+  const qwen = { tool_choice: "auto", messages: afterToolCall };
+  assert.deepEqual(applyProviderPayloadPolicy({ baseUrl: base.baseUrl, model: "qwen3.7-plus", payload: qwen }), qwen, "other models are untouched");
+});

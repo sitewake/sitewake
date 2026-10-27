@@ -189,3 +189,10 @@ test("effect page is submission-first and removes task-type panels", async () =>
   assert.match(zhCatalog, /goalRate: "用户目标达成率"/);
   assert.doesNotMatch(sourceText, /结果总览|能力价值|知识价值|问答任务|操作任务/);
 });
+
+test("redacted contact details read the same in either console language", async () => {
+  const source = await readFile(new URL("../lib/site-knowledge/effect-analysis.ts", import.meta.url), "utf8");
+  const redaction = source.slice(source.indexOf("function redacted("), source.indexOf("function sourceFacts("));
+  assert.ok(redaction.includes("REDACTED"), "contact details are still replaced");
+  assert.doesNotMatch(redaction, /\p{Script=Han}/u, "an English owner saw [邮箱已隐藏] in an order record");
+});
