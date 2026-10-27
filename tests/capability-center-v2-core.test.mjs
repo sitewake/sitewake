@@ -714,6 +714,14 @@ test("Alibaba Qwen compatibility uses supported JSON mode without overriding def
   assert.equal(generic.nativeJsonSchema, true);
   assert.equal(generic.omitStructuredMaxTokens, false);
   assert.deepEqual(generic.requestBody, {});
+  const deepseek = modelCompatibility({
+    configured: true,
+    apiKey: "test",
+    baseUrl: "https://openapi.os1.cn/v1",
+    model: "deepseek-v4-flash",
+    source: "console",
+  });
+  assert.equal(deepseek.nativeJsonSchema, false, "DeepSeek rejects json_schema; ask for json_object up front");
 });
 
 test("Function Calling validates tool names, JSON arguments and bounded protocol repair", async () => {
