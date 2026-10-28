@@ -315,6 +315,39 @@ test("a click that navigates the document mid-stage is a transition, not a direc
   }
 });
 
+test("nameOf names an element by what found it: its text, else its image's alt, else its title", async () => {
+  // A product card's image link has no text of its own; read as innerText
+  // the identity the stage kept was "", and the right product page was refused.
+  const browser = await launchTestBrowser();
+  const context = await browser.newContext();
+  try {
+    await context.route("**/*", async (route) => {
+      const url = route.request().url();
+      if (url === "https://target.test/start") {
+        return route.fulfill({ status: 200, contentType: "text/html", body: `<!doctype html><title>Start</title><article><a id="image" href="/a"><img alt="A Light in the Attic"></a><h3><a id="text" href="/a" title="A Light in the Attic">A Light in the ...</a></h3><a id="titled" href="/b" title="Only a title"></a></article>` });
+      }
+      if (url === "https://public.test/module.js") {
+        return route.fulfill({ status: 200, headers: { "content-type": "text/javascript; charset=utf-8", "access-control-allow-origin": "*" }, body: `export const capability={version:2,stages:[
+          {id:"stage_verify",io:{reads:{input:[],state:[]},writes:{state:[],output:["image","text","titled","none"]}},navigation:"none",run({nameOf}){return {outcome:"Success",output:{image:nameOf(document.getElementById("image")),text:nameOf(document.getElementById("text")),titled:nameOf(document.getElementById("titled")),none:nameOf(null)},evidence:[]}}}]}` });
+      }
+      await route.abort("failed");
+    });
+    const page = await context.newPage();
+    await page.goto("https://target.test/start");
+    const result = await stageRunner.runCapabilityJavaScriptStages({
+      page,
+      moduleUrl: "https://public.test/module.js",
+      program: { ...program, stages: [{ id: "stage_verify", title: "Verify", purpose: "Verify", effect: "read", resumePolicy: "skip-completed", io: { reads: { input: [], state: [] }, writes: { state: [], output: ["image", "text", "titled", "none"] } }, navigation: "none" }] },
+      input: {},
+    });
+    assert.equal(result.outcome, "Success");
+    assert.deepEqual(result.output, { image: "A Light in the Attic", text: "A Light in the ...", titled: "Only a title", none: "" });
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+});
+
 test("the state a stage keeps before a click that unloads its document reaches the next stage", async () => {
   // The seed reads the clicked card's text and returns it as the acted-on
   // identity, but a click that navigates ends the stage before it can return:

@@ -189,6 +189,12 @@ export async function executeBrowserCapabilityStage(payload: string | {
     const image = element.querySelector('img[alt]'); const own = normalizeText(element.textContent);
     return own || normalizeText(image?.getAttribute('alt')) || normalizeText(element.getAttribute('title'));
   };
+  // The name an element was found by, for the stage to keep as the identity
+  // it acted on. A product card's image link has no text of its own: read as
+  // innerText it is "", the kept identity was "", and the verify stage
+  // refused the right product page three times. What found the element is
+  // what names it — its text, else its image's alt, else its title.
+  const nameOf = (element: unknown) => element instanceof Element ? accessibleName(element) : '';
   const roleOf = (element: Element): string => {
     const explicit = element.getAttribute('role'); if (explicit) return explicit.trim().toLowerCase();
     const tag = element.tagName.toLowerCase();
@@ -354,7 +360,7 @@ export async function executeBrowserCapabilityStage(payload: string | {
   try {
     return await Promise.race([Promise.resolve().then(() => {
       if (abort.signal.aborted) throw abort.signal.reason;
-      return run({input:scopeJson(args.input,inputPaths,'input'),state:scopeJson(args.state,statePaths,'state'),signal:abort.signal,deadlineAt:args.deadlineAt,waitFor,waitUntil,settle,identityMatches,fill,find,waitForTarget,keep});
+      return run({input:scopeJson(args.input,inputPaths,'input'),state:scopeJson(args.state,statePaths,'state'),signal:abort.signal,deadlineAt:args.deadlineAt,waitFor,waitUntil,settle,identityMatches,fill,find,waitForTarget,keep,nameOf});
     }),cancelled]);
   } finally { clearTimeout(timer); args.signal?.removeEventListener('abort',propagate); abort.signal.removeEventListener('abort',rejectAbort); }
 }

@@ -71,7 +71,7 @@ test("the click stage records what it acted on, and the verification stage may r
   assert.ok(verify.io.reads.state.includes("targets.__actedOn"), "the verification stage may read it");
 
   const seed = author.seedCapabilitySource(manifest, trace, contract);
-  assert.match(seed, /const actedOn = \(element\.innerText \|\| element\.textContent \|\| ""\)/, "the identity is read before the click");
+  assert.match(seed, /const actedOn = \(nameOf\(element\) \|\| element\.innerText \|\| element\.textContent \|\| ""\)/, "the identity is read before the click, by the name the element was found by");
   assert.match(seed, /state: \{ targets: \{ __actedOn: actedOn \} \}/);
   assert.match(seed, /keep\(\{ targets: \{ __actedOn: actedOn \} \}\);\n\s*const hrefBefore/, "the identity is kept before the click, for a document the click may unload");
   assert.match(seed, /identityMatches\(state\.targets\.__actedOn, title\)/, "the stub names the one comparison to use");
@@ -115,6 +115,7 @@ test("the acted-on identity is the record a link or card opened, not the control
         waitUntil: async () => true,
         settle: async () => undefined,
         keep: (partial) => Object.assign(kept, partial),
+        nameOf: (element) => element.innerText || "",
       });
       if (result.state) Object.assign(state, result.state);
     }

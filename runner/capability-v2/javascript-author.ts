@@ -627,13 +627,15 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
         ? "true"
         : `!element.closest(${JSON.stringify(CONTROL_SELECTOR)})`;
       return `${header}
-      async run({ input, waitForTarget, waitUntil, settle, keep }) {
+      async run({ input, waitForTarget, waitUntil, settle, keep, nameOf }) {
         void input;
         const element = await waitForTarget(${target});
         // Read the identity of the object being acted on before the page changes;
         // stage_verify checks the result against this instead of re-deriving it
-        // from whatever wording the result page happens to carry.
-        const actedOn = (element.innerText || element.textContent || "").replace(/\\s+/gu, " ").trim().slice(0, 240);
+        // from whatever wording the result page happens to carry. nameOf is the
+        // name the element was found by: its text, else its image's alt, else
+        // its title — an image link has no text of its own.
+        const actedOn = (nameOf(element) || element.innerText || element.textContent || "").replace(/\\s+/gu, " ").trim().slice(0, 240);
         // A link or card names the object; a control keeps the identity an earlier stage recorded.
         const namesObject = ${namesObject};
         // The click may unload this document before this stage can return; the
