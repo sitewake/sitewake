@@ -1332,6 +1332,7 @@ export const en: ConsoleCopy = {
           "visitor check skipped": "The visitor check was skipped: the page does not run the site’s assistant",
           "authoring budget exhausted; replaying the unreplayed draft once": "Repair budget spent — replaying the last draft once",
           "quality gate passed": "Quality checks passed",
+          "quality note": "Quality note (does not block publishing)",
           "quality gate rejected the candidate": "Quality checks rejected this candidate",
           "pipeline gate ordering bug: a quality rule first fired after the authoring loop": "Quality checks ran out of order; recorded for engineering",
           "checkpoint holds no exploration to recheck it against; exploring again": "The saved source cannot be rechecked without its exploration; exploring again",

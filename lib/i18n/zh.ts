@@ -1415,6 +1415,7 @@ export const zh = {
           "visitor check skipped": "已跳过访客运行检查：页面没有运行网站助手",
           "authoring budget exhausted; replaying the unreplayed draft once": "修复预算已用完，最后回放一次草稿",
           "quality gate passed": "质量检查通过",
+          "quality note": "质量备注（不阻断发布）",
           "quality gate rejected the candidate": "质量检查拒绝了这个候选能力",
           "pipeline gate ordering bug: a quality rule first fired after the authoring loop": "质量检查顺序异常，已记录供工程排查",
           "checkpoint holds no exploration to recheck it against; exploring again": "保存的源码缺少探索记录，无法重新检查，重新探索",
