@@ -295,7 +295,9 @@ export async function executeBrowserCapabilityStage(payload: string | {
    *
    * Compares after collapsing whitespace and dropping pictographs, per line and
    * whole, in both directions. A candidate shorter than two characters proves
-   * nothing and never matches.
+   * nothing and never matches. A card cuts a long title short with an
+   * ellipsis ("A Light in the ..." for "A Light in the Attic"): what stands
+   * before the ellipsis is the title's beginning, and matches as one.
    */
   const identityMatches = (actedOn: unknown, candidate: unknown) => {
     const clean = (value: unknown) => String(value ?? "")
@@ -308,7 +310,13 @@ export async function executeBrowserCapabilityStage(payload: string | {
     const source = clean(actedOn);
     if (!source) return false;
     const parts = [source, ...String(actedOn ?? "").split(/[\n\r]+/u).map(clean)].filter((part) => part.length >= 2);
-    return parts.some((part) => part.includes(target) || target.includes(part));
+    const cut = (text: string) => { const match = /^(.*?)\s*(?:\.{3}|\u2026)$/u.exec(text); return match && match[1].trim().length >= 2 ? match[1].trim() : undefined; };
+    const targetCut = cut(target);
+    return parts.some((part) => {
+      if (part.includes(target) || target.includes(part)) return true;
+      const partCut = cut(part);
+      return (partCut !== undefined && target.startsWith(partCut)) || (targetCut !== undefined && part.startsWith(targetCut));
+    });
   };
   // This function reaches the page as its own source text (page.evaluate),
   // so it may not call anything declared outside it: settle() used to call
