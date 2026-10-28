@@ -4,6 +4,7 @@ import { getSiteAgentRunByToken, grantCompiledCapabilityExecution } from "@/db/a
 import { runToken } from "@/app/api/agent-runs/http";
 import { capabilityAgentAuthorized, capabilityJson, capabilityOptions, errorResponse, siteIdFromRequest } from "../../../http";
 import { scopeMatchesRequest } from "@/lib/capability-center-v2/semantic-analyzer";
+import { capabilityRunPage } from "@/lib/capability-center-v2/entry-page";
 import type { JsonValue } from "@/lib/capability-center-v2/model";
 
 export async function OPTIONS() { return capabilityOptions(); }
@@ -35,10 +36,14 @@ async function handleGET(request: Request, context: { params: Promise<{ capabili
       const parsed = raw ? JSON.parse(raw) : {};
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) input = parsed as Record<string, JsonValue>;
     } catch { return capabilityJson({ error: "capability_input_invalid" }, 400); }
+    // A page the capability is bound to is somewhere to go, not a reason to
+    // refuse: the scope is checked on the page it will run on, and the
+    // program is handed back starting there.
+    const runPage = capabilityRunPage(capability.contract, decodedHeader(request, "x-capability-current-url") || undefined);
     const scopeMatch = scopeMatchesRequest(capability.contract.scope, {
       goal: decodedHeader(request, "x-capability-goal"),
       input,
-      currentUrl: decodedHeader(request, "x-capability-current-url") || undefined,
+      currentUrl: runPage.url,
     });
     if (!scopeMatch.matched) return capabilityJson({ error: "capability_scope_mismatch", reason: scopeMatch.reason }, 409);
     const token = runToken(request);
@@ -55,7 +60,7 @@ async function handleGET(request: Request, context: { params: Promise<{ capabili
       name: capability.name,
       description: capability.description,
       contract: capability.contract,
-      program: version.program,
+      program: runPage.entry ? { ...version.program, entry: runPage.entry } : version.program,
       executionGrantId: grant.executionGrantId,
     });
   } catch (error) {

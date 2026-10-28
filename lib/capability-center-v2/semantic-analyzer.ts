@@ -12,6 +12,7 @@ import type {
   ProgramStep,
   ScopeDecision,
 } from "./model";
+import { capabilityUrlHas } from "./entry-page";
 
 type SemanticAction = {
   action?: string;
@@ -433,7 +434,7 @@ export function scopeMatchesRequest(
   }
   if (scope.kind === "page-scoped" && request.currentUrl) {
     const paths = scope.match?.urlPatterns || [];
-    if (paths.length && !paths.some((path) => request.currentUrl?.includes(path))) return { matched: false as const, reason: "page_scope_mismatch" };
+    if (paths.length && !paths.some((path) => capabilityUrlHas(request.currentUrl!, path))) return { matched: false as const, reason: "page_scope_mismatch" };
   }
   if (requiredInputPaths.length) return { matched: true as const, reason: "declared_scope_input" };
   return { matched: true as const, reason: goal ? "scope_evidence_match" : "scope_declared" };

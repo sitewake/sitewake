@@ -39,6 +39,7 @@ import { parseAndValidateToolArguments, requestToolCallingTurn, type ToolCalling
 import { isTerminalAuthoringError } from "./module-delivery";
 import { inspectCapabilityQuality, type CapabilityQualityReport } from "../../lib/capability-center-v2/quality";
 import { assertContractConsistent } from "../../lib/capability-center-v2/contract-consistency";
+import { capabilityEntryPage } from "../../lib/capability-center-v2/entry-page";
 
 export type JavaScriptAuthorResult = {
   source: string;
@@ -128,6 +129,13 @@ export function runtimeRepairHint(message: string, manifestStageIds: string[] = 
   const pendingWaitFor = message.match(/capability_control_flow_timeout:[^:\s]+:pending=waitFor\(("(?:[^"\\]|\\.)*")\)/u);
   if (pendingWaitFor) {
     return `REPAIR REQUIRED: waitFor(${pendingWaitFor[1]}) never matched a visible element and consumed the whole stage budget. The selector is wrong for this page: get_dom's role/name are computed accessibility metadata, not attributes. Use the element's css from get_dom, a placeholder/type/id attribute, or find it by visible text, and verify with execute_js(document.querySelector(...)) before run_draft.`;
+  }
+  // "Find floor lamps" looked for the shop's type filter on the home page,
+  // where there is none, and was told four times that a wait never settled
+  // and to check a controlled input. The page was the problem, not the wait.
+  const pendingFind = message.match(/capability_control_flow_timeout:[^:\s]+:pending=find\((.*)\)/u);
+  if (pendingFind) {
+    return `REPAIR REQUIRED: find(${pendingFind[1].slice(0, 200)}) never matched on the page the stage ran on. Read observation.url and observation.text first. If that page does not have the element — the demonstration found it on another page — the program never got there: the stage before it, or this stage if it comes first, must end by returning a same-origin navigation intent { outcome: "Continue", navigation: { url, target: "_self" } } to that page, and the following stage then runs there. Unless its Contract binds it to a page, a capability starts on whatever page the visitor is on, so never assume it starts where the demonstration did. If the page does have it, the selector is wrong: take its css from get_dom and verify with execute_js(document.querySelector(...)) before run_draft.`;
   }
   // The host's navigation, not the module's wait. Told to fix a wait, the
   // author rewrote waits it had no way to be wrong about, twice, and the run
@@ -703,6 +711,10 @@ export async function authorJavaScriptCapability(options: {
   const connectors = options.connectors || createAuthoringConnectors({page:options.explorationPage,startUrl:options.startUrl,createContext:options.createDraftContext});
   const config = getModelConfig("execution");
   if (!config.configured) throw new Error("javascript_author_model_not_configured");
+  // Every draft, example and debug page opens where the published program
+  // will start: the page the Contract binds it to, when it names one.
+  const entryPage = capabilityEntryPage(options.contract, options.startUrl);
+  const startPage = entryPage || options.startUrl;
   const addressOptions: AuthoringAddressOptions = {
     startUrl: options.startUrl,
     demonstrationParameters: resolveCapabilityInputDefaults(options.contract, options.input.parameters),
@@ -766,7 +778,7 @@ export async function authorJavaScriptCapability(options: {
       content: JSON.stringify({
         connectors: connectors.catalog,
         goal: options.goal,
-        startUrl: options.startUrl,
+        startUrl: startPage,
         contract: options.contract,
         demonstrationInput: demonstrationParameters,
         groundingExamples,
@@ -899,10 +911,13 @@ export async function authorJavaScriptCapability(options: {
         // bootstrap DraftReplay/C3, not a fixed navigation step in the
         // published capability.  Page/category-scoped capabilities keep
         // the explicit Navigate entry because their contract declares the
-        // page context as part of the business boundary.
-        entry: options.contract.scope?.kind === "site-global"
-          ? { mode: "CurrentPage" }
-          : { mode: "Navigate", url: options.startUrl },
+        // page context as part of the business boundary — the page the
+        // Contract names, not the one exploration happened to start on.
+        entry: entryPage
+          ? { mode: "Navigate", url: entryPage }
+          : options.contract.scope?.kind === "site-global"
+            ? { mode: "CurrentPage" }
+            : { mode: "Navigate", url: options.startUrl },
         stages: manifest.stages,
         parameterRoles: manifest.parameterRoles,
         targetBindings: manifest.targetBindings,
@@ -917,7 +932,7 @@ export async function authorJavaScriptCapability(options: {
       lastCase = {caseId:'demonstration',input:demonstrationParameters,moduleHash:moduleRef.contentHash};
       const draftPage = await connectors.execution.createContext();
       try {
-        await draftPage.page.goto(options.startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+        await draftPage.page.goto(startPage, { waitUntil: "domcontentloaded", timeout: 30_000 });
         const draft = await connectors.execution.run({
           page: draftPage.page,
           moduleUrl: options.absoluteModuleUrl(moduleRef.moduleUrl, moduleRef.contentHash),
@@ -1017,7 +1032,7 @@ export async function authorJavaScriptCapability(options: {
           };
           const isolatedExample = await connectors.execution.createContext();
           try {
-            await isolatedExample.page.goto(options.startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+            await isolatedExample.page.goto(startPage, { waitUntil: "domcontentloaded", timeout: 30_000 });
 
             const exampleReplay = await connectors.execution.run({
               page: isolatedExample.page,
@@ -1163,7 +1178,7 @@ export async function authorJavaScriptCapability(options: {
         } else if (call.function.name === "reset_browser") {
           await closeDebug();
           debugContext = await connectors.execution.createContext();
-          await debugContext.page.goto(options.startUrl, {waitUntil:'domcontentloaded',timeout:30_000});
+          await debugContext.page.goto(startPage, {waitUntil:'domcontentloaded',timeout:30_000});
           lastCase = undefined;
           result = {ok:true,url:debugContext.page.url(),message:'Fresh page. Use condition-based waits before inspecting async business data.'};
         } else if (call.function.name === "read_file") {

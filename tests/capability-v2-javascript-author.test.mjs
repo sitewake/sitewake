@@ -154,7 +154,7 @@ function toolTurn(index, name, args = {}) {
   };
 }
 
-async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [], draftPage, startingSource, persisted = [] }) {
+async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [], draftPage, startingSource, persisted = [], contract = {} }) {
   const requests = [];
   const events = [];
   const originalFetch = globalThis.fetch;
@@ -185,6 +185,7 @@ async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraf
         // A target input is verified by a parameterized condition, as in every
         // production Contract; the quality gate now checks this before the loop.
         successConditions: ["search completed", { type: "textTemplate", template: "{{query}}" }],
+        ...contract,
       },
       explorationProgram: {
         schemaVersion: "2.0",
@@ -294,6 +295,28 @@ test("ordinary code or Contract failure remains model-repairable and a corrected
     observation: {unavailable:true},
     budget: { toolCalls: 2, draftRuns: 5 },
   });
+});
+
+test("a capability bound to a page is drafted and published starting on that page, not where it was explored", async () => {
+  // "Find wall lamps by finish" was explored from the home page and bound to
+  // /shop?type=wall. Its drafts ran from the home page and it was published
+  // to start there, so every validation case failed the Contract's own
+  // precondition before it ran.
+  const opened = [];
+  const completed = await runAuthor({
+    turns: [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")],
+    stageRun: async () => successfulDraft(),
+    startUrl: "https://target.test/",
+    contract: {
+      preconditions: [{ type: "urlIncludes", value: "target.test/shop?type=wall" }],
+      scope: { kind: "category-scoped", onMismatch: "no-match", match: { urlPatterns: ["https://target.test/shop?type=wall"] } },
+    },
+    draftPage: { ...successfulDraft().page, goto: async (url) => { opened.push(url); } },
+  });
+  assert.deepEqual(completed.result.program.entry, { mode: "Navigate", url: "https://target.test/shop?type=wall" });
+  assert.ok(opened.length, "the draft opened a page");
+  assert.ok(opened.every((url) => url === "https://target.test/shop?type=wall"), `drafts opened ${opened.join(", ")}`);
+  assert.equal(JSON.parse(completed.requests[0].messages[1].content).startUrl, "https://target.test/shop?type=wall", "the model was told where the program starts");
 });
 
 test("an authoring example the site has no data for is recorded, not a reason to stop authoring", async () => {
@@ -675,6 +698,13 @@ test("runtime guard failures come back to the model with a repair hint, not just
   const pending = runtimeRepairHint('capability_control_flow_timeout:stage_1:pending=waitFor("input[name=\\"搜索历史热搜\\"]")');
   assert.match(pending, /waitFor\("input\[name=/);
   assert.match(pending, /never matched/);
+  // A find that never matched names the page it looked on as the suspect, and
+  // the way to another page, rather than the controlled-input advice for waits.
+  const notOnThisPage = runtimeRepairHint('capability_control_flow_timeout:stage_verify:pending=find({"strategies":[{"type":"css","value":"#type"}]})');
+  assert.match(notOnThisPage, /#type/);
+  assert.match(notOnThisPage, /observation\.url/);
+  assert.match(notOnThisPage, /navigation: \{ url/);
+  assert.doesNotMatch(notOnThisPage, /controlled input/);
   assert.equal(runtimeRepairHint("draft_business_outcome:NoResult:"), undefined, "业务结论自有其反馈，不套模板");
 });
 
@@ -1125,4 +1155,7 @@ test("a site-global capability is replayed from the site's own entry", async () 
   assert.match(block, /scope\?\.kind === "site-global"/, "按契约声明的适用范围决定起点");
   assert.match(block, /new URL\(explored!\)\.origin/, "站内任意页面可用的能力,从站点根地址回放");
   assert.doesNotMatch(block.slice(block.indexOf("const startUrl")), /spec\.browser\.startUrl \|\| spec\.input/, "不再直接用探索结束的地址");
+  // A capability bound to a page is validated from that page, ahead of the
+  // entry its program was published with.
+  assert.ok(block.indexOf("capabilityEntryPage(candidate.contract") >= 0 && block.indexOf("capabilityEntryPage(candidate.contract") < block.indexOf("program.entry.mode"), "the Contract's page comes first");
 });
