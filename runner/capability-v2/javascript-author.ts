@@ -11,7 +11,7 @@ import {
   inspectCapabilityJavaScriptProgram,
   validateCapabilityJavaScriptSource,
 } from "../../lib/capability-center-v2/javascript-runtime";
-import { resolveCapabilityInputDefaults } from "../../lib/capability-center-v2/input-template";
+import { resolveCapabilityInput } from "../../lib/capability-center-v2/run-resolution";
 import { pageSelectingInputs } from "../../lib/capability-center-v2/quality";
 import { promptProvenance } from "../../lib/capability-center-v2/prompt";
 import type {
@@ -717,7 +717,7 @@ export async function authorJavaScriptCapability(options: {
   const startPage = entryPage || options.startUrl;
   const addressOptions: AuthoringAddressOptions = {
     startUrl: options.startUrl,
-    demonstrationParameters: resolveCapabilityInputDefaults(options.contract, options.input.parameters),
+    demonstrationParameters: resolveCapabilityInput(options.contract, options.input.parameters).declared,
   };
   const manifest = authoringManifest(options.explorationProgram, options.contract, addressOptions);
   if (!manifest.stages.length) throw new Error("javascript_author_stage_manifest_empty");
@@ -741,7 +741,7 @@ export async function authorJavaScriptCapability(options: {
     targetBindings: manifest.targetBindings,
     promptProvenance: [],
   }, {
-    demonstrationParameters: resolveCapabilityInputDefaults(options.contract, options.input.parameters),
+    demonstrationParameters: resolveCapabilityInput(options.contract, options.input.parameters).declared,
     entryUrl: options.startUrl,
     validationCases: options.groundingExamples,
     summary: options.summary,
@@ -756,8 +756,8 @@ export async function authorJavaScriptCapability(options: {
   // boundary; passing the raw envelope here would make DraftReplay exercise a
   // different input from the immutable Contract and fail only after the
   // source has already been authored.
-  const demonstrationParameters = resolveCapabilityInputDefaults(options.contract, options.input.parameters);
-  const groundingExamples = (options.groundingExamples || []).filter(example => JSON.stringify(resolveCapabilityInputDefaults(options.contract, {...options.input.parameters,...example})) !== JSON.stringify(demonstrationParameters));
+  const demonstrationParameters = resolveCapabilityInput(options.contract, options.input.parameters).declared;
+  const groundingExamples = (options.groundingExamples || []).filter(example => JSON.stringify(resolveCapabilityInput(options.contract, {...options.input.parameters,...example}).declared) !== JSON.stringify(demonstrationParameters));
   const provenance = await promptProvenance(JAVASCRIPT_AUTHOR_PROMPT, config.model);
   let lastDraftObservation: unknown;
   let debugContext: {context: BrowserContext; page: Page} | undefined;
@@ -1025,10 +1025,7 @@ export async function authorJavaScriptCapability(options: {
         for (let exampleIndex = 0; exampleIndex < groundingExamples.length; exampleIndex += 1) {
           const groundingInput = {
             ...options.input,
-            parameters: resolveCapabilityInputDefaults(options.contract, {
-              ...options.input.parameters,
-              ...groundingExamples[exampleIndex],
-            }),
+            parameters: resolveCapabilityInput(options.contract, { ...options.input.parameters, ...groundingExamples[exampleIndex] }).declared,
           };
           const isolatedExample = await connectors.execution.createContext();
           try {

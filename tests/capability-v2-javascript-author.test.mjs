@@ -1156,6 +1156,6 @@ test("a site-global capability is replayed from the site's own entry", async () 
   assert.match(block, /new URL\(explored!\)\.origin/, "站内任意页面可用的能力,从站点根地址回放");
   assert.doesNotMatch(block.slice(block.indexOf("const startUrl")), /spec\.browser\.startUrl \|\| spec\.input/, "不再直接用探索结束的地址");
   // A capability bound to a page is validated from that page, ahead of the
-  // entry its program was published with.
-  assert.ok(block.indexOf("capabilityEntryPage(candidate.contract") >= 0 && block.indexOf("capabilityEntryPage(candidate.contract") < block.indexOf("program.entry.mode"), "the Contract's page comes first");
+  // entry its program was published with: the Contract's resolution is read first.
+  assert.ok(block.indexOf("resolveCapabilityRun(candidate.contract") >= 0 && block.indexOf("resolveCapabilityRun(candidate.contract") < block.indexOf("program.entry.mode"), "the Contract's page comes first");
 });

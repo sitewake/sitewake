@@ -5350,6 +5350,9 @@ test("CaseGeneration failure creates neither CandidateArtifact nor C3 task", asy
   );
   assert.equal(failed.task.status, "Failed");
   assert.equal(failed.task.result?.buildResult?.stage, "CaseGeneration");
+  // The terminal write attributes the failure: class from its code, stage from its result.
+  assert.equal(failed.task.error?.failureClass, "bad-test-data");
+  assert.equal(failed.task.error?.failureStage, "CaseGeneration");
   assert.equal(failed.task.result?.candidateArtifact, undefined);
   assert.equal(failed.task.result?.validationTaskId, undefined);
   assert.equal(
@@ -5793,7 +5796,8 @@ test("SDK navigates to a declared entry before checking page preconditions", asy
   const source = await readFile(fileURLToPath(new URL("../client/user-agent-port.ts", import.meta.url)), "utf8");
   const runtime = source.slice(source.indexOf("private async executeCapabilityV2JavaScriptRuntime"), source.indexOf("private async executeCapabilityV2ById"));
   const entryNavigation = runtime.indexOf('runtime.program.entry.mode === "Navigate"');
-  const preconditionCheck = runtime.indexOf("for (const raw of runtime.contract.preconditions");
+  // The check is the shared one (lib/capability-center-v2/run-resolution); what this test guards is its place after the navigation.
+  const preconditionCheck = runtime.indexOf("checkPreconditions(runtime.contract");
   assert.ok(entryNavigation >= 0, "V2 runtime entry navigation is missing");
   assert.ok(
     preconditionCheck > entryNavigation,

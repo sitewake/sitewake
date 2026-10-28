@@ -1,3 +1,4 @@
+import { resolveCapabilityInput, resolveCapabilityRun } from "../../lib/capability-center-v2/run-resolution";
 import { runCandidateInVisitorHost } from "./visitor-host-check";
 import { gzipSync } from "node:zlib";
 import { CapabilityWorkspace } from "./workspace";
@@ -54,9 +55,7 @@ import {
   capabilityV2RuntimeEndpoints,
   resolveCapabilityModuleUrl,
 } from "./module-delivery";
-import { resolveCapabilityInputDefaults } from "../../lib/capability-center-v2/input-template";
 import { projectCapabilityContract } from "../../lib/capability-center-v2/semantic-analyzer";
-import { capabilityEntryPage } from "../../lib/capability-center-v2/entry-page";
 import { runCapabilityCaseGeneration } from "./case-generation";
 import {
   capabilityCandidateHash,
@@ -437,16 +436,16 @@ async function performCandidateValidation(
   const artifactRefs: UploadedArtifact[] = [];
   const caseStartUrl = () => {
     const explored = spec.browser.startUrl || spec.input.context.startUrl;
-    // A version published before its entry followed the Contract still
-    // starts each case on the page the Contract binds it to.
-    const entryPage = capabilityEntryPage(candidate.contract, explored);
-    if (entryPage) return entryPage;
-    const siteEntry = candidate.contract.scope?.kind === "site-global"
+    // A caller of a site-wide capability may be anywhere; validation stands
+    // in for one at the site's root. The Contract's resolution then decides
+    // whether the run stays there or goes to the page it is bound to, ahead
+    // of whatever entry the program was published with.
+    const callerPage = candidate.contract.scope?.kind === "site-global"
       ? (() => { try { return new URL(explored!).origin + "/"; } catch { return explored; } })()
       : explored;
-    return candidate.program.entry.mode === "Navigate"
-      ? candidate.program.entry.url
-      : siteEntry;
+    const run = resolveCapabilityRun(candidate.contract, { currentUrl: callerPage, input: {} });
+    if (run.entry?.mode === "Navigate") return run.entry.url;
+    return candidate.program.entry.mode === "Navigate" ? candidate.program.entry.url : callerPage;
   };
   for (const testCase of candidate.cases) {
     const isolated = await isolatedValidationPage(
@@ -459,10 +458,7 @@ async function performCandidateValidation(
     const caseInput: import("../../lib/capability-center-v2/model").CapabilityTaskInput =
       {
         ...spec.input,
-        parameters: resolveCapabilityInputDefaults(
-          candidate.contract,
-          testCase.input,
-        ),
+        parameters: resolveCapabilityInput(candidate.contract, testCase.input).declared,
       };
     try {
       validateContractInput(candidate.contract, caseInput);
@@ -795,7 +791,7 @@ export async function performC1Authoring(
       explorationContract,
       addressOpenedInputs(explored.program, explorationContract, {
         startUrl: spec.browser.startUrl,
-        demonstrationParameters: resolveCapabilityInputDefaults(explorationContract, explored.demonstrationParameters),
+        demonstrationParameters: resolveCapabilityInput(explorationContract, explored.demonstrationParameters).declared,
       }),
       explored.demonstrationParameters,
     ),
@@ -1098,13 +1094,14 @@ async function perform(
     const caseVideo = isolated.page.video();
     const caseInput = {
       ...spec.input,
-      parameters: resolveCapabilityInputDefaults(spec.contract, validationCase),
+      parameters: resolveCapabilityInput(spec.contract, validationCase).declared,
     };
     try {
       validateContractInput(spec.contract, caseInput);
       const explored = spec.browser.startUrl || spec.input.context.startUrl;
+      const boundEntry = resolveCapabilityRun(spec.contract, { currentUrl: explored, input: {} }).entry;
       const startUrl =
-        capabilityEntryPage(spec.contract, explored)
+        (boundEntry?.mode === "Navigate" ? boundEntry.url : undefined)
         || (replay.entry.mode === "Navigate" ? replay.entry.url : explored);
       if (startUrl) {
         await isolated.page.goto(startUrl, {

@@ -4,7 +4,7 @@ import { getSiteAgentRunByToken, grantCompiledCapabilityExecution } from "@/db/a
 import { runToken } from "@/app/api/agent-runs/http";
 import { capabilityAgentAuthorized, capabilityJson, capabilityOptions, errorResponse, siteIdFromRequest } from "../../../http";
 import { scopeMatchesRequest } from "@/lib/capability-center-v2/semantic-analyzer";
-import { capabilityRunPage } from "@/lib/capability-center-v2/entry-page";
+import { resolveCapabilityRun } from "@/lib/capability-center-v2/run-resolution";
 import type { JsonValue } from "@/lib/capability-center-v2/model";
 
 export async function OPTIONS() { return capabilityOptions(); }
@@ -39,11 +39,11 @@ async function handleGET(request: Request, context: { params: Promise<{ capabili
     // A page the capability is bound to is somewhere to go, not a reason to
     // refuse: the scope is checked on the page it will run on, and the
     // program is handed back starting there.
-    const runPage = capabilityRunPage(capability.contract, decodedHeader(request, "x-capability-current-url") || undefined);
+    const runPage = resolveCapabilityRun(capability.contract, { currentUrl: decodedHeader(request, "x-capability-current-url") || undefined, input });
     const scopeMatch = scopeMatchesRequest(capability.contract.scope, {
       goal: decodedHeader(request, "x-capability-goal"),
       input,
-      currentUrl: runPage.url,
+      currentUrl: runPage.startUrl,
     });
     if (!scopeMatch.matched) return capabilityJson({ error: "capability_scope_mismatch", reason: scopeMatch.reason }, 409);
     const token = runToken(request);

@@ -4,8 +4,13 @@ function decoded(value: string) {
   try { return decodeURIComponent(value); } catch { return value; }
 }
 
-// A path is looked for in the path: "/shop" is inside "https://shop.example/"
-// as text, on a page that is not the shop.
+/**
+ * Whether an address contains a written part of one, the way the Contract's
+ * conditions mean it. A path is looked for in the path: "/shop" is inside
+ * "https://shop.example/" as text, on a page that is not the shop. Both sides
+ * are also compared decoded: the browser shows `category=出行` percent-encoded
+ * while the condition was written with the visible text.
+ */
 export function capabilityUrlHas(url: string, expected: string) {
   let haystack = url;
   if (expected.startsWith("/")) {
@@ -74,9 +79,9 @@ export function capabilityEntryPage(contract: Pick<CapabilityContract, "precondi
  * the entry page. `entry` is undefined when the Contract binds no page and the
  * program's own entry stands.
  */
-export function capabilityRunPage(contract: Pick<CapabilityContract, "preconditions" | "scope">, currentUrl: string | undefined) {
+export function capabilityRunPage(contract: Pick<CapabilityContract, "preconditions" | "scope"> | undefined, currentUrl: string | undefined) {
   const entryPage = capabilityEntryPage(contract, currentUrl);
-  if (!entryPage || !currentUrl) return { url: currentUrl, entry: undefined };
+  if (!contract || !entryPage || !currentUrl) return { url: currentUrl, entry: undefined };
   if (capabilityPageSatisfied(contract, currentUrl)) return { url: currentUrl, entry: { mode: "CurrentPage" as const } };
   return { url: entryPage, entry: { mode: "Navigate" as const, url: entryPage } };
 }

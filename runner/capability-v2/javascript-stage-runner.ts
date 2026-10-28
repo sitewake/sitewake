@@ -1,3 +1,4 @@
+import { applyCapabilityInputAliases as applyAliases } from "../../lib/capability-center-v2/run-resolution";
 import { capabilityNavigationKind } from "../../lib/capability-center-v2/navigation";
 import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
 import type { BrowserContext, Frame, Page } from "playwright";
@@ -120,13 +121,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** Convert user-facing values to site-language terms learned during discovery. */
 export function applyCapabilityInputAliases(program: CapabilityProgram, input: JsonObject): JsonObject {
-  if (!program.inputAliases) return input;
-  const resolved: JsonObject = { ...input };
-  for (const [name, aliases] of Object.entries(program.inputAliases)) {
-    const value = resolved[name];
-    if (typeof value === "string" && typeof aliases[value] === "string") resolved[name] = aliases[value];
-  }
-  return resolved;
+  return applyAliases(program.inputAliases, input) as JsonObject;
 }
 
 /**

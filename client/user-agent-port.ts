@@ -1,3 +1,4 @@
+import { checkPreconditions, evaluateSuccessConditions, resolveCapabilityInput } from "../lib/capability-center-v2/run-resolution";
 import { capabilityCompletionText } from "../lib/capability-center-v2/result-presentation";
 export { capabilityCompletionText } from "../lib/capability-center-v2/result-presentation";
 import { RuntimeReleaseClient, AgentStartupError } from './runtime-release-client';
@@ -73,7 +74,6 @@ import {
 import { capabilityOptionNotOffered, capabilityVerificationOnlyFailure, explainCapabilityRuntimeFailure } from "../lib/capability-center-v2/runtime-failure";
 import { capabilityTextIncludes } from "../lib/capability-center-v2/text-match";
 import { VALIDATION_RESULT_KEY } from "../lib/capability-center-v2/validation-run";
-import { resolveCapabilityInputDefaults } from "../lib/capability-center-v2/input-template";
 import { startDomReplayRecorder } from "./user-agent-recorder";
 import { capabilityInputPathValue, capabilityTemplateInputPaths, capabilityUrlTemplateMatches, matchCapabilityIntentTemplate, renderCapabilityInputTemplate } from "../lib/capability-center-v2/input-template";
 import { assertCapabilityInput, assertCapabilityOutput } from "../lib/site-knowledge/capability-output";
@@ -194,18 +194,6 @@ export type CapabilityV2RuntimeDefinition = {
  * status/episode presentation, but never expose the unprojected value to the
  * executable module.
  */
-function applyCapabilityV2InputAliases(runtime: { program?: { inputAliases?: Record<string, Record<string, string>> }; contract: { inputAliases?: Record<string, Record<string, string>> } }, input: Record<string, JsonValue>): Record<string, JsonValue> {
-  const aliases = runtime.program?.inputAliases || runtime.contract.inputAliases;
-  if (!aliases) return input;
-  const resolved: Record<string, JsonValue> = { ...input };
-  for (const [name, values] of Object.entries(aliases)) {
-    const value = resolved[name];
-    if (typeof value !== "string") continue;
-    const mapped = values[value];
-    if (typeof mapped === "string" && mapped.trim()) resolved[name] = mapped;
-  }
-  return resolved;
-}
 
 /**
  * A natural-language value can omit punctuation used by a site's visible
@@ -1285,6 +1273,8 @@ export class AgentPort {
   private taskInFlight = false;
   private taskGeneration = 0;
   private activityTimeline: AgentRunActivity[] = [];
+  /** Why a capability the request named outright was not used; read once by the next Agent turn. */
+  private pendingCapabilityRejection?: string;
   /**
    * What this run did to the page, across its attempts.
    *
@@ -3978,7 +3968,8 @@ export class AgentPort {
     // Only required inputs were defaulted here, so an optional one reached the
     // program as undefined: 「maxPrice=undefined」 in a filter that had passed
     // validation with its default of 300.
-    const executionInput = applyCapabilityV2InputAliases(runtime, resolveCapabilityInputDefaults(runtime.contract, input));
+    const resolvedInput = resolveCapabilityInput(runtime.contract, input, runtime.program?.inputAliases);
+    const executionInput = resolvedInput.site;
     const activityId = `capability-v2:${session.id}:${runtime.capabilityId}`;
     const start = capturePageSnapshot(this.sequence++);
     const domRecorder = this.options.domReplay
@@ -4033,17 +4024,17 @@ export class AgentPort {
       if (agentStep && handled) return this.continueAgentAfterCapability(session, agentStep, runtime, { status: outcome.status, summary: outcome.summary, output }, activityId, input, settle);
       return settle();
     };
+    // A run is fresh until a Stage has started. A Stage that leaves the
+    // entry page resumes on the destination with the cursor still at that
+    // Stage, so the cursor alone cannot say so: the first Stage of "Find
+    // kids room lamps" went to /shop, the destination took itself for a new
+    // run, went back to the entry page and started over, forever.
+    const fresh = startIndex === 0 && !restoredReceipts.length;
     try {
       if (compiledRuntimeRemainingMs(runtimeWindow) <= 0) throw compiledRuntimeDeadlineError();
       assertCapabilityInput(runtime.contract.inputSchema as never, executionInput);
       if (restoredModuleHash && restoredModuleHash !== runtime.program.module.contentHash) throw new Error("capability_checkpoint_module_mismatch");
       const pageText = () => (document.body?.innerText || "").replace(/\s+/g, " ");
-      // A run is fresh until a Stage has started. A Stage that leaves the
-      // entry page resumes on the destination with the cursor still at that
-      // Stage, so the cursor alone cannot say so: the first Stage of "Find
-      // kids room lamps" went to /shop, the destination took itself for a new
-      // run, went back to the entry page and started over, forever.
-      const fresh = startIndex === 0 && !restoredReceipts.length;
       if (fresh && runtime.program.entry.mode === "Navigate" && runtime.program.entry.url) {
         const entryUrl = new URL(runtime.program.entry.url, location.href);
         if (entryUrl.origin !== location.origin) throw new Error("capability_navigation_origin_invalid");
@@ -4054,19 +4045,11 @@ export class AgentPort {
       }
 
       if (fresh) {
-        for (const raw of runtime.contract.preconditions || []) {
-          if (typeof raw === "string" && !capabilityTextIncludes(pageText(), raw)) throw new Error(`precondition_text_missing:${raw}`);
-          const condition = capabilityV2Object(raw);
-          const type = String(condition.type || "");
-          if (type === "urlIncludes" && !location.href.includes(String(condition.value || ""))) throw new Error("precondition_url_mismatch");
-          if (type === "urlTemplate" && !capabilityUrlTemplateMatches(location.href, condition.template, executionInput)) throw new Error("precondition_url_mismatch");
-          if (type === "textIncludes" && !capabilityTextIncludes(pageText(), condition.value)) throw new Error("precondition_text_missing");
-          if (type === "textTemplate" && !capabilityTextIncludes(pageText(), capabilityV2RenderTemplate(condition.template, executionInput))) {
-            const inputPaths = capabilityV2TemplateInputPaths(condition.template);
-            if (inputPaths.length) throw capabilityV2NoResultForInputs(runtime, executionInput, inputPaths, { conditionType: "textTemplate" });
-            throw new Error("precondition_text_missing");
-          }
-          if (type === "inputExists" && capabilityV2PathValue(input, String(condition.path || "")) === undefined) throw new Error(`precondition_input_missing:${String(condition.path || "")}`);
+        // The same judgement validation makes on the same page facts. A text
+        // the run's own input was meant to produce is an answer for the visitor.
+        for (const failure of checkPreconditions(runtime.contract, { url: location.href, text: pageText() }, resolvedInput)) {
+          if (failure.inputPaths?.length) throw capabilityV2NoResultForInputs(runtime, executionInput, failure.inputPaths, { conditionType: "textTemplate" });
+          throw new Error(failure.code);
         }
       }
 
@@ -4342,32 +4325,15 @@ export class AgentPort {
       state.__pageText = pageText().slice(0, 8_000);
       const output: Record<string, JsonValue> = { ...(terminalResult.output || {}) };
       assertCapabilityOutput(runtime.contract.outputSchema as never, output);
-      const conditions = runtime.contract.successConditions || [];
-      // What a capability produced and where it ended up are facts about the
-      // run. What the page says at this instant is a fact about the world, and
-      // the world moves: 打开指定排名的微博热搜 opened the topic it was asked
-      // for and was failed because the live board had already renumbered it, so
-      // 「第 7 名」 was no longer written anywhere. A text condition is recorded
-      // as unmet and travels with the result; it does not decide the run.
-      const unmetText: string[] = [];
-      for (const raw of conditions) {
-        if (typeof raw === "string") {
-          if (!capabilityTextIncludes(pageText(), raw)) unmetText.push(raw);
-          continue;
-        }
-        const condition = capabilityV2Object(raw);
-        const type = String(condition.type || "");
-        if (type === "urlIncludes" && !location.href.includes(String(condition.value || ""))) throw new Error("success_url_mismatch");
-        if (type === "urlTemplate" && !capabilityUrlTemplateMatches(location.href, condition.template, executionInput)) throw new Error("success_url_mismatch");
-        if (type === "textIncludes" && !capabilityTextIncludes(pageText(), condition.value)) unmetText.push(String(condition.value || ""));
-        if (type === "textTemplate") {
-          const rendered = capabilityV2RenderTemplate(condition.template, executionInput);
-          if (!capabilityTextIncludes(pageText(), rendered)) unmetText.push(rendered);
-        }
-        if (type === "outputEquals" && capabilityV2PathValue(output, String(condition.path || "")) !== condition.value) throw new Error("success_output_mismatch");
-        if (type === "outputExists" && capabilityV2PathValue(output, String(condition.path || "")) === undefined) throw new Error("success_output_missing");
-      }
-      const needsModelJudge = !conditions.length || conditions.some((raw) => typeof raw === "object" && String(capabilityV2Object(raw).type || "") === "modelGoal");
+      // The same judgement validation makes (lib/capability-center-v2/run-resolution):
+      // what a capability produced and where it ended up are facts about the
+      // run and decide it; what the page says at this instant is a fact about
+      // a world that moves — 打开指定排名的微博热搜 opened the topic it was asked
+      // for while the live board renumbered it — and is recorded, not charged.
+      const verdict = evaluateSuccessConditions(runtime.contract, { url: location.href, text: pageText(), output }, resolvedInput);
+      for (const failure of verdict.failures) throw new Error(failure.code);
+      const unmetText = verdict.unmetText;
+      const needsModelJudge = verdict.needsModelJudge;
       let outcome: TaskEpisode["outcome"] = { status: "success", code: "capability_v2_program_verified", summary: capabilityCompletionText(runtime.name, executionInput, output, runtime.contract.outputSchema, completionPresentation()), evaluatedAt: new Date().toISOString(), evidence: { source: "capability-center-v2-sdk", capabilityId: runtime.capabilityId, versionId: runtime.versionId, output, stageEvidence, stageReceipts, ...(unmetText.length ? { unmetTextConditions: unmetText } : {}) } };
       if (needsModelJudge) {
         const end = capturePageSnapshot(this.sequence++);
@@ -4385,6 +4351,15 @@ export class AgentPort {
       this.pendingCapabilityNavigation = undefined;
       this.saveCheckpoint();
       const message = error instanceof Error ? error.message : String(error);
+      // A page the Contract rules out, found only after the entry navigation
+      // brought the run here: the capability is not usable from this page, and
+      // the visitor's task goes on with the Agent instead of ending.
+      if (fresh && !agentStep && !this.validationRun && /^precondition_(?:url|text|input)/.test(message)) {
+        this.pendingCapabilityRejection = `Capability ${runtime.capabilityId} (${runtime.name}) could not start on ${location.href}: ${message.slice(0, 160)}`;
+        this.status("executing", this.say.capabilityFailed(runtime.name), { activity: { id: activityId, kind: "capability", state: "failed", sessionId: session.id, capabilityId: runtime.capabilityId, capabilityName: runtime.name, input, summary: message.slice(0, 160) } });
+        this.activeSession = session;
+        return this.runMainAgent(session);
+      }
       // A value the site does not offer is an answer for the visitor: say which
       // options it does offer. Reported as an unrecognized fault, it read as a
       // broken capability, in whatever language the explainer was written in.
@@ -4493,7 +4468,7 @@ export class AgentPort {
     const runtimeWindow = establishCompiledRuntimeWindow();
     const runtime = await this.getCapabilityV2Runtime(capabilityId, input, runtimeWindow);
     // Invalid tool arguments are recoverable before any browser action starts.
-    assertCapabilityInput(runtime.contract.inputSchema as never, applyCapabilityV2InputAliases(runtime, input));
+    assertCapabilityInput(runtime.contract.inputSchema as never, resolveCapabilityInput(runtime.contract, input, runtime.program?.inputAliases).site);
     return this.executeCapabilityV2JavaScriptRuntime(runtime, session, input, 0, {}, [], [], undefined, undefined, runtimeWindow, agentStep);
   }
 
@@ -4659,6 +4634,23 @@ export class AgentPort {
     const relevantSceneIds = new Set<string>();
     const relevantCapabilityIds = new Set<string>();
     const rejectedCapabilityReasons = new Set<string>();
+    if (this.pendingCapabilityRejection) { rejectedCapabilityReasons.add(this.pendingCapabilityRejection); this.pendingCapabilityRejection = undefined; }
+    // A capability the request names outright is run at once — unless it
+    // cannot start from here: the runtime refused it, its page is out of
+    // reach, its input is not valid. That is a note for the Agent, which goes
+    // on with the page; it used to end the visitor's task three seconds in.
+    const startCapabilityDirectly = async (capabilityId: string, name: string, input: Record<string, JsonValue>): Promise<{ started: true; result: TaskResult | undefined } | { started: false }> => {
+      try {
+        return { started: true, result: await this.executeCapabilityV2ById(this.activeSession || session, capabilityId, input) };
+      } catch (error) {
+        if (this.activeAbort?.signal.aborted || this.handoffCommitted) throw error;
+        const reason = error instanceof Error ? error.message.slice(0, 200) : String(error);
+        rejectedCapabilityReasons.add(`Capability ${capabilityId} (${name}) could not start here: ${reason}`);
+        this.activeSession = session;
+        this.status("executing", this.say.capabilityFailed(name), { activity: { id: `capability-unavailable:${session.id}:${capabilityId}`, kind: "capability", state: "failed", sessionId: session.id, capabilityId, capabilityName: name, summary: reason } });
+        return { started: false };
+      }
+    };
     const knowledgeReceiptRefs = new Set<string>();
     const invocable = userInvocableCapabilities(this.release).filter((capability) => this.capabilityAllowed(capability.id));
     const invocableIds = new Set(invocable.map((capability) => capability.id));
@@ -4706,7 +4698,8 @@ export class AgentPort {
       : [];
     const missingExactV2Inputs = exactV2RequiredInputs.filter((key) => session.input[key] === undefined);
     if (!continuation && exactV2 && !missingExactV2Inputs.length) {
-      return this.executeCapabilityV2ById(session, exactV2.capabilityId, session.input);
+      const direct = await startCapabilityDirectly(exactV2.capabilityId, exactV2.name, session.input);
+      if (direct.started) return direct.result;
     }
     // A published intent is a sentence with holes; a request that is that
     // sentence with the holes filled names the capability as plainly as its
@@ -4728,7 +4721,8 @@ export class AgentPort {
       const [matched] = templateV2Matches;
       relevantCapabilityIds.add(matched.candidate.capabilityId);
       this.activeSession = { ...session, input: matched.input };
-      return this.executeCapabilityV2ById(this.activeSession, matched.candidate.capabilityId, matched.input);
+      const direct = await startCapabilityDirectly(matched.candidate.capabilityId, matched.candidate.name, matched.input);
+      if (direct.started) return direct.result;
     }
     // Fuzzy recall is evidence for the Agent, not permission to execute.
     // Only an exact public name/alias may bind inputs without a model decision.
@@ -4738,7 +4732,8 @@ export class AgentPort {
       : undefined;
     if (!continuation && deterministicV2Candidate && deterministicV2Input) {
       this.activeSession = { ...session, input: deterministicV2Input };
-      return this.executeCapabilityV2ById(this.activeSession, deterministicV2Candidate.capabilityId, deterministicV2Input);
+      const direct = await startCapabilityDirectly(deterministicV2Candidate.capabilityId, deterministicV2Candidate.name, deterministicV2Input);
+      if (direct.started) return direct.result;
     }
     const exactCandidate = exactCapabilityForGoal(this.release, session.goal);
     const exactCapability = exactCandidate && invocableIds.has(exactCandidate.id) ? exactCandidate : undefined;
@@ -4914,7 +4909,7 @@ export class AgentPort {
           }
           const v2Capability = v2ToolByName.get(name);
           if (v2Capability) {
-            const input = applyCapabilityV2InputAliases(v2Capability, args);
+            const input = resolveCapabilityInput(v2Capability.contract, args).site;
             assertCapabilityInput(v2Capability.contract.inputSchema as never, input);
             this.activeSession = { ...session, input };
             return await this.executeCapabilityV2ById(this.activeSession, v2Capability.capabilityId, input, { messages, nextTurn: turn + 1, toolCallId: call.id || name, toolName: name });
@@ -4930,7 +4925,7 @@ export class AgentPort {
             const capabilityInput = args.input && typeof args.input === "object" && !Array.isArray(args.input) ? args.input as Record<string, JsonValue> : {};
             const discoveredV2 = v2Candidates.get(capabilityId);
             if (discoveredV2) {
-              const input = applyCapabilityV2InputAliases(discoveredV2, capabilityInput);
+              const input = resolveCapabilityInput(discoveredV2.contract, capabilityInput).site;
               assertCapabilityInput(discoveredV2.contract.inputSchema as never, input);
               this.activeSession = { ...session, input };
               return await this.executeCapabilityV2ById(this.activeSession, capabilityId, input, { messages, nextTurn: turn + 1, toolCallId: call.id || name, toolName: name });
@@ -5607,7 +5602,7 @@ export class AgentPort {
       this.taskGenerations.set(session.id, generation);
       if (!this.acquireLease(session.id)) throw new Error("task_active_in_another_page");
       const runtimeWindow = establishCompiledRuntimeWindow();
-      assertCapabilityInput(runtime.contract.inputSchema as never, applyCapabilityV2InputAliases(runtime, input));
+      assertCapabilityInput(runtime.contract.inputSchema as never, resolveCapabilityInput(runtime.contract, input, runtime.program?.inputAliases).site);
       return await this.executeCapabilityV2JavaScriptRuntime(runtime, session, input, 0, {}, [], [], undefined, undefined, runtimeWindow);
     } catch (error) {
       this.status("error", error instanceof Error ? error.message : String(error));
