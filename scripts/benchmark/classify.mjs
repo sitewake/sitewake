@@ -38,11 +38,11 @@ export function classify(record) {
     if (generation.state === "timed-out") return { failureClass: "timeout", stage: `${generation.phase || "pipeline"}` };
     // The console attributed the task when it failed; that is the class.
     if (generation.failureClass && generation.failureClass !== "unclassified") return { failureClass: generation.failureClass, stage: generation.failureStage ? `generation.${String(generation.failureStage).toLowerCase()}` : "generation" };
-    const codes = `${generation.code || ""} ${generation.message || ""}`;
+    const codes = `${generation.cause?.code || ""} ${generation.cause?.message || ""} ${generation.code || ""} ${generation.message || ""}`;
     // Validation that never reached the page the program needs: the stages
     // disagree about where the capability starts, not the site or the data.
     if (/precondition_url_mismatch|scope_mismatch/i.test(codes)) return { failureClass: "pipeline-contradiction", stage: `generation.${(generation.phase || "validation").toLowerCase()}` };
-    const failureClass = classFromCode(codes);
+    const failureClass = generation.cause?.code && classFromCode(generation.cause.code) !== "unclassified" ? classFromCode(generation.cause.code) : classFromCode(codes);
     // A candidate the demonstration already proved, refused by a check: the
     // demonstration is the proof, so a refusal here is a false rejection
     // unless the code says the site or the model was at fault.

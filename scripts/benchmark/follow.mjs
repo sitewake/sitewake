@@ -59,6 +59,8 @@ export async function followGeneration(client, { runId, appearTimeoutMs = 3 * 60
     phase: progress.phase,
     code: progress.code || task.error?.code,
     message: task.error?.message,
+    // What the wrapper code ended on: the runner keeps the raw cause with the error.
+    cause: task.error?.cause ? { code: task.error.cause.code, message: String(task.error.cause.message || "").slice(0, 300) } : undefined,
     failureClass: progress.failureClass || task.error?.failureClass,
     failureStage: progress.failureStage || task.error?.failureStage,
     generationTaskId: generation.id,
