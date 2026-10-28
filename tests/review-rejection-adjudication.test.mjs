@@ -38,6 +38,7 @@ const {
   REVIEW_REJECTION_UNSUBSTANTIATED,
   REVIEW_DEMONSTRATION_CASE_FAILED,
   REVIEW_DEMONSTRATION_CASE_NO_RESULT,
+  REVIEW_OFFERED_INPUT_NO_RESULT,
   REVIEW_NO_CASE_PASSED,
 } = await import(BUNDLE_PATH);
 rmSync(BUNDLE_PATH);
@@ -255,6 +256,20 @@ test("the demonstrated case finding nothing is a failure when the visitor's run 
   // A run the visitor saw end with nothing is reproduced by nothing; a record that does not say is not held to it.
   assert.equal(validationCaseFloor(nothing, demonstration, "NoResult"), undefined);
   assert.equal(validationCaseFloor(nothing, demonstration), undefined);
+});
+
+test("a case that found nothing for a value the site lists beside the demonstrated one fails the floor", () => {
+  // "Count books in category" was published on Poetry alone; asked for
+  // Mystery, a category in the same list, it opened the Poetry page and said
+  // the page was not Mystery.
+  const demonstration = { roomContext: "Home office" };
+  const listed = [roomResults[0], { caseId: "case_2", resolvedInput: { roomContext: "Bedroom" }, failureReason: "no_result_for_offered_input:roomContext=\"Bedroom\":Category page shows \"Home office\", not \"Bedroom\"" }];
+  assert.deepEqual(validationCaseFloor(listed, demonstration), {
+    reason: REVIEW_OFFERED_INPUT_NO_RESULT, caseId: "case_2", failure: "no_result_for_offered_input:roomContext=\"Bedroom\":Category page shows \"Home office\", not \"Bedroom\"",
+  });
+  assert.equal(classifyValidationCase(listed[1], demonstration).outcome, "Failed");
+  // Nothing found for a value the page never listed is still the capability answering.
+  assert.equal(validationCaseFloor([roomResults[0], { caseId: "case_2", resolvedInput: { roomContext: "Attic" }, noResultReason: "no such room" }], demonstration), undefined);
 });
 
 test("a claim that a case failed verifies only for a case that failed on an input the site offers", () => {

@@ -1482,6 +1482,21 @@ function regionValues(region: CapabilityCaseDiscoveryRegion) {
   return [...region.observedValues, ...(region.controlOptions || [])];
 }
 
+/**
+ * The inputs of a case whose value the site lists beside the demonstrated
+ * one — an item of a choice-list the harvest kept. A program that finds
+ * nothing for such a value has not answered "there is none of that": the
+ * list says there is. Empty when the case took no value from such a list.
+ */
+export function offeredInputPaths(input: JsonObject, regions: CapabilityCaseDiscoveryRegion[]): string[] {
+  const lists = regions.filter((region) => region.kind === "choice-list");
+  if (!lists.length) return [];
+  return Object.entries(input)
+    .filter(([, value]) => value !== null && typeof value !== "object"
+      && lists.some((region) => regionValues(region).some((offered) => evidenceValueEqual(offered, value))))
+    .map(([path]) => path);
+}
+
 function mapCaseEvidence(
   cases: CapabilityValidationCase[],
   evidence: CapabilityCaseDiscoveryEvidence,
