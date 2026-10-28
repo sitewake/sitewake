@@ -619,9 +619,9 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
     }
     if (step.action === "click" || step.action === "check" || step.action === "press") {
       // Only the first acted-on stage names the object unconditionally. A later
-      // control (a variant, a quantity, "Add to cart") acts on the object that
+      // control (a variant, a quantity, the cart button) acts on the object that
       // is already chosen; letting it overwrite the identity made stage_verify
-      // compare the product heading with "Add to cart — $219" and reject its
+      // compare the product heading with the cart button's own label and reject its
       // own correct result.
       const namesObject = step === firstActedOnStep
         ? "true"
@@ -990,23 +990,13 @@ export async function authorJavaScriptCapability(options: {
             urlBefore: receipt.urlBefore,
             urlAfter: receipt.urlAfter,
           }));
-          const facetHint = Object.keys(options.input.parameters).some((key) => /color|material|size|variant|facet|filter/i.test(key))
-            ? "Facet text may be absent from a result card; select by target identity, open its dynamic detail link, then verify the facet on the detail page instead of rejecting the card from its first href."
-            : "";
-          const disabledCartHint = /(?:no\s+enabled|add\s+to\s+cart\s+button\s+is\s+disabled|disabled.*add\s+to\s+cart)/iu.test(draft.reason || "")
-            ? "Do not stop at a disabled primary product button: if the current product requires unprovided customization, inspect sibling product cards and either click an enabled Add to cart control scoped to an article whose name matches input.productKeyword, or open that card's dynamic detail link and verify the requested facet there. Never invent customization text and never click a disabled or unrelated card."
-            : "";
-          const searchHint = /no\s+products?\s+found|products?\s+found\s+matching|search\s+results?/iu.test(draft.reason || "")
-            ? "If the search form produces a URL but the next stage sees no result cards, do not use form.submit() as the only path; return a same-origin input-driven navigation intent for /search?controller=search&s=encodeURIComponent(input.productKeyword), then let the following stage inspect the settled result page."
-            : "";
-          const cartConfirmationHint = /success_text_missing|cart\s+(?:does\s+not\s+show|confirmation)|no\s+cart\s+confirmation|Could not confirm|购物车.*(?:确认|成功)|颜色.*(?:未在|未被).*购物车/iu.test(draft.reason || "")
-            ? "The success check must use real post-action DOM structure or a state transition, never a fabricated or copied natural-language sentence. After the enabled detail-page action, wait briefly for the asynchronous UI update and inspect a visible status/dialog node, the selected business object identity, a cart badge/count transition, or a cart-row structure. Return observed values as evidence; do not put any fixed locale text or fixed number in capability.ts. If receipts show the terminal stage still on a listing URL, fix the dynamic product href handoff before changing the success predicate."
-            : "";
-          const relatedTargetHint = /capability_stage_related_target_navigation|related.*target|different.*product.*detail/iu.test(draft.reason || "")
-            ? "The runner detected a detail-to-detail transition that changed the selected business object. Never follow a related-product or variant href from the whole document; keep the primary detail pathname stable and scope facet controls to the selected product region."
-            : "";
-          const hints = [facetHint, disabledCartHint, searchHint, cartConfirmationHint, relatedTargetHint].filter(Boolean).join(" ");
-          throw new Error(`draft_business_outcome:${draft.outcome}:${draft.reason || ""};receipts=${JSON.stringify(receipts)}${hints ? `;hint=${hints}` : ""}`);
+          // One hint for every business outcome, in no site's words. Five
+          // hints used to hang here, each written after an incident on the
+          // demo shop — its search address, its cart button's label, its
+          // product-keyword input — and they steered authoring on every other
+          // site toward that shop's shape.
+          const hint = "Read observation.url and observation.text before changing code. If the page is not the one the demonstration reached, the stage before this one must get there (return a same-origin navigation intent, or click the link that leads there) and this stage runs on the next page. If it is the right page, locate the business element by its own structure — its card, row or heading — and select it by the input's value, never by position; verify the result from that element's state, not from a fixed sentence or number.";
+          throw new Error(`draft_business_outcome:${draft.outcome}:${draft.reason || ""};receipts=${JSON.stringify(receipts)};hint=${hint}`);
         }
         const outputIdentityIssue = draftOutputIdentityIssue(draft.output);
         if (outputIdentityIssue) throw new Error(`draft_output_identity_invalid:${outputIdentityIssue}`);
