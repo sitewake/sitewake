@@ -116,9 +116,17 @@ async function ask(browser, site, task, phase) {
 async function retireEarlierCapabilities(admin, site) {
   const payload = await admin.json("/api/admin/capability-v2/capabilities").catch(() => ({}));
   const earlier = (payload.capabilities || []).filter((capability) => capability.status !== "Deleted");
-  for (const capability of earlier) await admin.request(`/api/admin/capability-v2/capabilities/${encodeURIComponent(capability.id)}`, { method: "DELETE" }).catch(() => undefined);
-  if (earlier.length) log(`   ${site.slug}: ${earlier.length} capabilit${earlier.length === 1 ? "y" : "ies"} from earlier runs retired`);
-  return earlier.length;
+  let retired = 0;
+  for (const capability of earlier) {
+    const path = `/api/admin/capability-v2/capabilities/${encodeURIComponent(capability.id)}`;
+    // The console deletes only a disabled capability; a live one is disabled first.
+    const disabled = capability.status === "Active" ? await admin.request(`${path}/disable`, { method: "POST", body: {} }).catch((error) => ({ ok: false, status: 0, payload: { error: error.message } })) : { ok: true };
+    const deleted = disabled.ok ? await admin.request(path, { method: "DELETE" }).catch((error) => ({ ok: false, status: 0, payload: { error: error.message } })) : disabled;
+    if (deleted.ok) retired += 1;
+    else log(`   ${site.slug}: capability ${capability.id.slice(0, 8)} (${capability.name}) could not be retired: ${deleted.status} ${deleted.payload?.error || ""}`);
+  }
+  if (earlier.length) log(`   ${site.slug}: ${retired} of ${earlier.length} capabilit${earlier.length === 1 ? "y" : "ies"} from earlier runs retired`);
+  return retired;
 }
 
 const browser = await launchBrowser();
