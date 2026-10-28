@@ -4,6 +4,7 @@ export * from "../../lib/capability-center-v2/coordinator";
 export * from "../../lib/capability-center-v2/javascript-runtime";
 export * from "../../lib/capability-center-v2/quality";
 export * from "../../lib/capability-center-v2/review-adjudication";
+export * from "../../lib/capability-center-v2/production-status";
 export * from "../../lib/capability-center-v2/model-json";
 export * from "../../lib/capability-center-v2/prompt";
 export * from "../../lib/capability-center-v2/input-template";

@@ -36,7 +36,7 @@ import {
 import { traceFromExperience } from "./recording-trace";
 import { harvestStartPage, type CapabilityCaseDiscoverySnapshot } from "./case-discovery";
 import { contractFromDemonstration } from "./contract-from-demonstration";
-import { addressOpenedInputs, authorJavaScriptCapability } from "./javascript-author";
+import { addressOpenedInputs, authorJavaScriptCapability, type AuthoringRepair } from "./javascript-author";
 import { bootstrapAuthentication } from "./auth-bootstrap";
 import {
   projectStageReceipts,
@@ -765,6 +765,24 @@ export type C1Exploration = {
   promptProvenance: CapabilityPromptProvenance[];
 };
 
+/**
+ * The rejection a generation was rerun to answer, as the coordinator wrote it
+ * into the task's context: the verdict's reason and the case it named.
+ */
+function repairOf(spec: { input: { context: Record<string, JsonValue | undefined> } }): AuthoringRepair | undefined {
+  const raw = spec.input.context.repair;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as JsonObject;
+  if (typeof record.reason !== "string") return undefined;
+  const input = record.input && typeof record.input === "object" && !Array.isArray(record.input) ? record.input as Record<string, JsonValue> : undefined;
+  return {
+    reason: record.reason,
+    ...(typeof record.caseId === "string" ? { caseId: record.caseId } : {}),
+    ...(typeof record.failure === "string" ? { failure: record.failure } : {}),
+    ...(input ? { input } : {}),
+  };
+}
+
 export async function performC1Authoring(
   page: Page,
   spec: RunSpec,
@@ -848,7 +866,10 @@ export async function performC1Authoring(
     });
   }
   startPageSnapshot = harvested?.snapshot;
-  const groundingExamples = withDefaultOmissionExamples(summary.contract, [...siblingExamples, ...explored.groundingExamples]);
+  // A generation rerun as the one repair after a rejection carries the case
+  // the verdict named; that case is replayed first, ahead of the siblings.
+  const repair = repairOf(spec);
+  const groundingExamples = withDefaultOmissionExamples(summary.contract, [...(repair?.input ? [repair.input] : []), ...siblingExamples, ...explored.groundingExamples]);
   const authored = await authorJavaScriptCapability({
     explorationPage: page,
     workspace: helpers.workspace,
@@ -860,6 +881,7 @@ export async function performC1Authoring(
     groundingExamples,
     discoveryRegions: harvested?.snapshot.regions,
     startingSource: resume?.source,
+    repair,
     summary,
     explorationPromptProvenance: explored.promptProvenance,
     createDraftContext: () =>

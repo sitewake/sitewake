@@ -1,9 +1,11 @@
 import {
   appendTaskEvent,
+  createCapabilityMaintenanceTask,
   createCapabilityTask,
   findLiveCapabilityByName,
   getCapability,
   getTask,
+  getTaskMaintenance,
   getGenerationPublication,
   getVersion,
   listTasks,
@@ -15,7 +17,7 @@ import {
 import type { CapabilityContract, CapabilityPublishResult, CapabilityTask, JsonValue, ValidatedCapabilityPackage } from "./model";
 import { inspectCapabilityQuality, demonstrationParametersOf } from "./quality";
 import { decodeC2CaseGenerationOutput } from "./case-generation";
-import { validationVerdict, type ValidationVerdict } from "./review-adjudication";
+import { REVIEW_DEMONSTRATION_CASE_FAILED, REVIEW_DEMONSTRATION_CASE_NO_RESULT, REVIEW_OFFERED_INPUT_NO_RESULT, validationVerdict, type ValidationVerdict } from "./review-adjudication";
 
 /** Review is a read-only gate over the exact persisted C3 package. */
 function assertValidatedPackageForReview(validated: ValidatedCapabilityPackage) {
@@ -109,6 +111,70 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
   }
 }
 
+/** The rejections a second authoring can answer: a case the program did not satisfy, named with its input. */
+const REPAIRABLE_REJECTIONS = new Set([REVIEW_OFFERED_INPUT_NO_RESULT, REVIEW_DEMONSTRATION_CASE_NO_RESULT, REVIEW_DEMONSTRATION_CASE_FAILED]);
+
+/**
+ * One more authoring after a rejection the verdict can name a case for: the
+ * generation is rerun with the same goal, guidance and parameters, so the
+ * source that passed its self-test is restored as the first draft, and the
+ * rejected case travels in the task's context, to be replayed first and
+ * shown to the author with the verdict. A generation that is itself that
+ * repair is not repaired again; the second rejection stands.
+ */
+async function scheduleRepairAfterRejection(
+  validation: CapabilityTask,
+  validated: ValidatedCapabilityPackage,
+  review: { reason: string; caseId?: string; failure?: string },
+): Promise<CapabilityTask | undefined> {
+  if (!REPAIRABLE_REJECTIONS.has(review.reason)) return undefined;
+  const generation = await getTask(validation.siteId, validated.artifact.generationTaskId, true);
+  if (!generation || generation.input.context.__autoRepairOfTaskId !== undefined) return undefined;
+  if (generation.type !== "Discovery" && generation.type !== "Repair") return undefined;
+  const failedCase = validated.validation.cases.find((item) => item.caseId === review.caseId);
+  const context = {
+    ...generation.input.context,
+    __autoRepairOfTaskId: generation.id,
+    repair: {
+      reason: review.reason,
+      ...(review.caseId ? { caseId: review.caseId } : {}),
+      ...(review.failure ? { failure: review.failure } : {}),
+      ...(failedCase?.resolvedInput ? { input: failedCase.resolvedInput } : {}),
+    },
+  };
+  // A rebuild or repair of a live capability is rerun the way the console
+  // reruns it, as the next maintenance of that capability.
+  const maintenance = getTaskMaintenance(generation);
+  const created = maintenance
+    ? await createCapabilityMaintenanceTask(validation.siteId, maintenance.capabilityId, {
+      mode: maintenance.mode,
+      baseVersionId: generation.input.trigger.baseVersionId || undefined,
+      sourceAgentRunId: generation.sourceAgentRunId,
+      goal: generation.goal,
+      guidance: generation.guidance,
+      parameters: generation.input.parameters,
+      context,
+      rerunOfTaskId: generation.id,
+    })
+    : await createCapabilityTask(validation.siteId, {
+      type: generation.type,
+      goal: generation.goal,
+      guidance: generation.guidance,
+      sourceAgentRunId: generation.sourceAgentRunId,
+      input: { ...generation.input, context },
+      rerunOfTaskId: generation.id,
+    });
+  await appendTaskEvent(validation.siteId, validation.id, {
+    eventType: "RepairScheduled",
+    payload: { phase: "Reviewing", message: "rejected; authoring once more from the failure", reason: review.reason, repairTaskId: created.task.id, ...(review.caseId ? { caseId: review.caseId } : {}) },
+  }).catch(() => undefined);
+  if (created.task.status === "Pending" && process.env.CAPABILITY_V2_AUTO_DISPATCH !== "0") {
+    const { RuntimeLauncher } = await import("../../runner/capability-v2/runtime-launcher");
+    void new RuntimeLauncher().dispatchOne(validation.siteId, created.task.id).catch(() => undefined);
+  }
+  return created.task;
+}
+
 export async function advanceCompletedTask(task: CapabilityTask) {
   if (task.status !== "Succeeded") return { task };
   const moduleV2 = task.input.context.__pipelineVersion === "2.0";
@@ -134,6 +200,10 @@ export async function advanceCompletedTask(task: CapabilityTask) {
       // the published Version rather than the pre-Candidate draft id.
       await recordCapabilityTaskPublication(task.siteId, task.id, { capabilityId: review.capability.id, versionId: review.version.id });
       await recordCapabilityTaskPublication(task.siteId, buildResult.package.artifact.generationTaskId, { capabilityId: review.capability.id, versionId: review.version.id });
+    }
+    if (review.outcome === "Rejected") {
+      const repair = await scheduleRepairAfterRejection(task, buildResult.package, review);
+      if (repair) return { task, buildResult, review, nextTask: repair };
     }
     return { task, buildResult, review };
   }
@@ -169,7 +239,8 @@ export async function advanceCompletedTask(task: CapabilityTask) {
 /** The verdict on a validated candidate, without performing D's publish mutation. */
 export async function authorizeValidatedCandidate(siteId: string, task: CapabilityTask, validated: ValidatedCapabilityPackage): Promise<
   | { outcome: "Approved"; review: Extract<ValidationVerdict, { decision: "Approved" }>; authorization: { mode: "Validated"; reason: string } }
-  | { outcome: "Rejected" | "Error"; reason: string }
+  | { outcome: "Rejected"; reason: string; caseId?: string; failure?: string }
+  | { outcome: "Error"; reason: string }
 > {
   assertValidatedPackageForReview(validated);
   try {
@@ -183,7 +254,7 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
       requiredInputs: requiredInputsOf(candidate.contract),
     });
     await appendTaskEvent(siteId, task.id, { eventType: "ReviewCompleted", payload: verdictEvent(verdict) }).catch(() => undefined);
-    if (verdict.decision !== "Approved") return { outcome: "Rejected", reason: verdict.reason };
+    if (verdict.decision !== "Approved") return { outcome: "Rejected", reason: verdict.reason, ...(verdict.caseId ? { caseId: verdict.caseId } : {}), ...(verdict.failure ? { failure: verdict.failure } : {}) };
     return { outcome: "Approved", review: verdict, authorization: { mode: "Validated", reason: verdict.reason } };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -193,7 +264,7 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
 }
 
 /** C3 result → verdict → D authorization, without creating a Draft. */
-type ReviewPublishResult = CapabilityPublishResult | { outcome: "ReviewPending" | "Rejected" | "Error"; reason: string };
+type ReviewPublishResult = CapabilityPublishResult | { outcome: "ReviewPending" | "Rejected" | "Error"; reason: string; caseId?: string; failure?: string };
 // Coalesce automatic completion and an administrator retry within this process.
 // Across processes, D's database transaction remains the idempotency authority.
 const publicationFlights = new Map<string, Promise<ReviewPublishResult>>();

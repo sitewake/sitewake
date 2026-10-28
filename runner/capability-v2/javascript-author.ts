@@ -700,6 +700,14 @@ async function transpile(source: string) {
   return result.code.trim();
 }
 
+/** What a generation rerun after a rejection is told: the verdict and the case it named. */
+export type AuthoringRepair = {
+  reason: string;
+  caseId?: string;
+  failure?: string;
+  input?: Record<string, JsonValue>;
+};
+
 export async function authorJavaScriptCapability(options: {
   explorationPage: Page;
   startUrl: string;
@@ -716,6 +724,8 @@ export async function authorJavaScriptCapability(options: {
   discoveryRegions?: CapabilityCaseDiscoveryRegion[];
   /** Source a prior run authored; it replaces the seed as the first draft and meets every check the seed does. */
   startingSource?: string;
+  /** The rejection this run is the one repair for: the verdict and the case it named, replayed first among the examples. */
+  repair?: AuthoringRepair;
   /** The candidate's name, description and aliases, for the rules that read them. */
   summary?: { name?: string; description?: string; aliases?: string[] };
   explorationPromptProvenance?: CapabilityPromptProvenance[];
@@ -812,7 +822,10 @@ export async function authorJavaScriptCapability(options: {
         parameterRoles: manifest.parameterRoles,
         targetBindings: manifest.targetBindings,
         successfulExplorationTrace: options.explorationProgram,
-        instruction: "编写通用 JavaScript Stage 模块，不得硬编码 demonstrationInput。",
+        ...(options.repair ? { priorRejection: options.repair } : {}),
+        instruction: options.repair
+          ? "上一版源码通过了自测，却在独立验证中被拒绝：priorRejection 给出原因、没通过的样例输入与程序当时的失败。先用 run_draft 复现（该样例排在 groundingExamples 第一位），再修改源码让它与演示输入都成立，不得硬编码任何取值。"
+          : "编写通用 JavaScript Stage 模块，不得硬编码 demonstrationInput。",
       }),
     },
   ];
@@ -822,7 +835,7 @@ export async function authorJavaScriptCapability(options: {
   const seed = options.startingSource || seedCapabilitySource(manifest, options.explorationProgram, contract, addressOptions);
   await workspace.revision(seed);
   source = seed;
-  await workspace.write('task/authoring-input.json', {goal:options.goal,startUrl:options.startUrl,input:options.input,contract:contract,explorationProgram:options.explorationProgram,groundingExamples});
+  await workspace.write('task/authoring-input.json', {goal:options.goal,startUrl:options.startUrl,input:options.input,contract:contract,explorationProgram:options.explorationProgram,groundingExamples,...(options.repair ? {priorRejection:options.repair} : {})});
   await workspace.write('context/authoring-prompt.json', {provenance,messages});
   await workspace.write('context/tools.json', JAVASCRIPT_AUTHOR_TOOLS);
   await workspace.write('context/connectors.json', connectors.catalog);

@@ -87,6 +87,7 @@ const {
   parseAndValidateToolArguments,
   parseCapabilityExperienceAbstraction,
   parseStructuredModelJson,
+  projectProductionStatus,
   REVIEW_APPROVED_ON_VALIDATION,
   REVIEW_NO_CASE_PASSED,
   REVIEW_OFFERED_INPUT_NO_RESULT,
@@ -5022,7 +5023,7 @@ test("module boundary B -> C -> D commits a candidate, validates it and publishe
 });
 
 /** Runs one generation through C1/C2 and C3 as the boundary test does, returning what D needs. */
-async function generationReadyForPublish(task, runnerId, candidateName) {
+async function generationReadyForPublish(task, runnerId, candidateName, validationResults = passingValidationResults) {
   await claimTask(siteId, task.id, runnerId);
   const source = `export const capability={version:2,stages:[{id:"complete",async run({input}){const query=String(input.query??"").trim();return {outcome:"Success",state:{targets:{query}},output:{query}}}}]};`;
   const program = await makeProgram(source, {
@@ -5053,14 +5054,88 @@ async function generationReadyForPublish(task, runnerId, candidateName) {
   await claimTask(siteId, validationTaskId, `${runnerId}-validation`);
   const validated = await submitTaskResult(siteId, validationTaskId, `${runnerId}-validation`, {
     outcome: "Success",
-    validationResults: [
-      { caseId: "case_1", resolvedInput: { query: "马克杯" }, output: { query: "马克杯" }, stageReceipts: [{ stageId: "complete", outcome: "Success", evidenceRefs: ["evidence://case_1"] }], evidenceRefs: ["evidence://case_1"] },
-      { caseId: "case_2", resolvedInput: { query: "棕色垫子" }, output: { query: "棕色垫子" }, stageReceipts: [{ stageId: "complete", outcome: "Success", evidenceRefs: ["evidence://case_2"] }], evidenceRefs: ["evidence://case_2"] },
-    ],
+    validationResults,
   });
   assert.equal(validated.task.result?.buildResult?.outcome, "Validated");
   return { validated: validated.task.result.buildResult.package, validationTaskId };
 }
+
+const passingValidationResults = [
+  { caseId: "case_1", resolvedInput: { query: "马克杯" }, output: { query: "马克杯" }, stageReceipts: [{ stageId: "complete", outcome: "Success", evidenceRefs: ["evidence://case_1"] }], evidenceRefs: ["evidence://case_1"] },
+  { caseId: "case_2", resolvedInput: { query: "棕色垫子" }, output: { query: "棕色垫子" }, stageReceipts: [{ stageId: "complete", outcome: "Success", evidenceRefs: ["evidence://case_2"] }], evidenceRefs: ["evidence://case_2"] },
+];
+// The second case is a value the page lists beside the demonstrated one, and the program found nothing for it.
+const OFFERED_VALUE_FAILURE = "no_result_for_offered_input:query=\"棕色垫子\":the search page lists nothing for it";
+const offeredValueRejectedResults = [
+  passingValidationResults[0],
+  { caseId: "case_2", resolvedInput: { query: "棕色垫子" }, output: {}, failureReason: OFFERED_VALUE_FAILURE, stageReceipts: [], evidenceRefs: [] },
+];
+
+async function generationFor(name) {
+  const classified = await classifyCapabilityGeneration(siteId, {
+    request: { goal: name, parameters: { query: "马克杯" }, entryUrl: "https://example.test/search", locale: "zh-CN" },
+    source: "Admin",
+    instruction: { operation: "create" },
+  });
+  assert.equal(classified.disposition, "Created");
+  // The classification returns a projection; the stored task carries the goal and guidance a rerun copies.
+  return getTask(siteId, classified.task.id, true);
+}
+
+test("a rejection the verdict names a case for is followed by one repair that starts from that case", async () => {
+  const name = "分类计数能力";
+  const generation = await generationFor(name);
+  const first = await generationReadyForPublish(generation, "repair-first", name, offeredValueRejectedResults);
+  const validation = await getTask(siteId, first.validationTaskId, true);
+  const advanced = await advanceCompletedTask(validation);
+  assert.equal(advanced.review.outcome, "Rejected");
+  assert.equal(advanced.review.reason, REVIEW_OFFERED_INPUT_NO_RESULT);
+  assert.equal(advanced.review.caseId, "case_2");
+  const repair = advanced.nextTask;
+  assert.ok(repair, "the rejection schedules a repair");
+  assert.equal(repair.type, "Discovery");
+  assert.equal(repair.status, "Pending");
+  assert.equal(repair.rerunOfTaskId, generation.id);
+  assert.equal(repair.goal, generation.goal);
+  assert.equal(repair.guidance, generation.guidance, "the same guidance, so the prior source is restored as the first draft");
+  assert.deepEqual(repair.input.parameters, generation.input.parameters);
+  assert.equal(repair.input.context.__autoRepairOfTaskId, generation.id);
+  assert.deepEqual(repair.input.context.repair, { reason: REVIEW_OFFERED_INPUT_NO_RESULT, caseId: "case_2", failure: OFFERED_VALUE_FAILURE, input: { query: "棕色垫子" } });
+  const events = await listTaskEvents(siteId, first.validationTaskId);
+  const scheduled = events.find((event) => event.eventType === "RepairScheduled");
+  assert.equal(scheduled.payload.repairTaskId, repair.id);
+  const status = projectProductionStatus(await getTask(siteId, first.validationTaskId, true), events);
+  assert.equal(status.state, "Running");
+  assert.equal(status.messageKey, "repairScheduled");
+  assert.equal(status.nextTaskId, repair.id, "the record runs on, into the repair");
+  // The repair's candidate passes on both values and is published; the chain holds one repair.
+  const second = await generationReadyForPublish(repair, "repair-second", name);
+  const published = await advanceCompletedTask(await getTask(siteId, second.validationTaskId, true));
+  assert.equal(published.review.outcome, "Published");
+  assert.equal(published.nextTask, undefined);
+  // The marker travels into the repair's own validation task with the rest of its context; the authoring tasks are what is counted.
+  const repairs = (await listTasks(siteId, { includeDeleted: true, includeArchived: true })).tasks.filter((task) => task.type !== "Validation" && task.input.context.__autoRepairOfTaskId === generation.id);
+  assert.equal(repairs.length, 1);
+});
+
+test("a repair rejected again is not repaired a second time; the second rejection stands", async () => {
+  const name = "分类计数能力二";
+  const generation = await generationFor(name);
+  const first = await generationReadyForPublish(generation, "again-first", name, offeredValueRejectedResults);
+  const repair = (await advanceCompletedTask(await getTask(siteId, first.validationTaskId, true))).nextTask;
+  assert.ok(repair);
+  const before = (await listTasks(siteId, { includeDeleted: true, includeArchived: true })).tasks.length;
+  const second = await generationReadyForPublish(repair, "again-second", name, offeredValueRejectedResults);
+  const validation = await getTask(siteId, second.validationTaskId, true);
+  const advanced = await advanceCompletedTask(validation);
+  assert.equal(advanced.review.outcome, "Rejected");
+  assert.equal(advanced.nextTask, undefined);
+  const after = (await listTasks(siteId, { includeDeleted: true, includeArchived: true })).tasks.length;
+  assert.equal(after - before, 1, "only the repair's own validation task was added; no third authoring");
+  const status = projectProductionStatus(validation, await listTaskEvents(siteId, second.validationTaskId));
+  assert.equal(status.state, "Rejected");
+  assert.equal(status.detail, REVIEW_OFFERED_INPUT_NO_RESULT, "the second rejection is the reason shown");
+});
 
 test("a second generation of an already published capability ends as AlreadyPublished, never as a failed publish", async () => {
   const name = "同名竞速能力";

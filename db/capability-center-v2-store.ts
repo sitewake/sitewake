@@ -565,12 +565,12 @@ export async function appendTaskEvent(
 
 /** Read only the latest business gate event, independent of verbose browser traces. */
 export async function getLatestTaskPublicationEvent(siteId: string, taskId: string): Promise<CapabilityTaskEvent | undefined> {
-  const types = ["ReviewStarted", "ReviewCompleted", "ReviewFailed", "PublicationStarted", "PublicationFailed", "PublicationSuperseded"];
+  const types = ["ReviewStarted", "ReviewCompleted", "ReviewFailed", "RepairScheduled", "PublicationStarted", "PublicationFailed", "PublicationSuperseded"];
   const database = db();
   if (!database) return [...(memory.events.get(`${siteId}:${taskId}`) || [])].reverse().find(event => types.includes(event.eventType));
   await ready(database);
   const rows = await all<Record<string, unknown>>(database,
-    `SELECT * FROM ccv2_task_events WHERE site_id=? AND task_id=? AND event_type IN (?,?,?,?,?,?) ORDER BY sequence DESC LIMIT 1`,
+    `SELECT * FROM ccv2_task_events WHERE site_id=? AND task_id=? AND event_type IN (?,?,?,?,?,?,?) ORDER BY sequence DESC LIMIT 1`,
     [siteId, taskId, ...types]);
   const row = rows[0];
   return row ? { id: text(row.id), sequence: Number(row.sequence), eventType: text(row.event_type), payload: json<JsonObject>(text(row.payload_json), {}), createdAt: text(row.created_at) } : undefined;
