@@ -37,6 +37,7 @@ const {
   hardcodedDemonstrationInputs,
   REVIEW_REJECTION_UNSUBSTANTIATED,
   REVIEW_DEMONSTRATION_CASE_FAILED,
+  REVIEW_DEMONSTRATION_CASE_NO_RESULT,
   REVIEW_NO_CASE_PASSED,
 } = await import(BUNDLE_PATH);
 rmSync(BUNDLE_PATH);
@@ -241,6 +242,19 @@ test("the demonstration's own case must pass; no review can lower that floor", (
     reason: REVIEW_DEMONSTRATION_CASE_FAILED, caseId: "case_1", failure: "capability_stage_fill_target_missing:stage_2",
   });
   assert.deepEqual(validationCaseFloor([roomResults[1]], undefined), { reason: REVIEW_NO_CASE_PASSED });
+});
+
+test("the demonstrated case finding nothing is a failure when the visitor's run found a result", () => {
+  // "Add product to cart" was proven with one cushion, said "cart has no row
+  // matching" for that very cushion on replay, and was published on that.
+  const demonstration = { roomContext: "Home office" };
+  const nothing = [{ caseId: "case_1", resolvedInput: { roomContext: "Home office" }, noResultReason: "cart has no row matching \"Home office\"" }, roomResults[1]];
+  assert.deepEqual(validationCaseFloor(nothing, demonstration, "Success"), {
+    reason: REVIEW_DEMONSTRATION_CASE_NO_RESULT, caseId: "case_1", failure: "cart has no row matching \"Home office\"",
+  });
+  // A run the visitor saw end with nothing is reproduced by nothing; a record that does not say is not held to it.
+  assert.equal(validationCaseFloor(nothing, demonstration, "NoResult"), undefined);
+  assert.equal(validationCaseFloor(nothing, demonstration), undefined);
 });
 
 test("a claim that a case failed verifies only for a case that failed on an input the site offers", () => {

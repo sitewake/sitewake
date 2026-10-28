@@ -29,6 +29,7 @@ export const REVIEW_REJECTION_UNSUBSTANTIATED =
 
 /** Deterministic rejections, ahead of any model; details travel beside them on the event. */
 export const REVIEW_DEMONSTRATION_CASE_FAILED = "review rejected: the demonstrated input's case did not pass";
+export const REVIEW_DEMONSTRATION_CASE_NO_RESULT = "review rejected: the demonstrated input's case found nothing where the visitor's run found a result";
 export const REVIEW_NO_CASE_PASSED = "review rejected: no validation case passed";
 export const REVIEW_DEMONSTRATION_VALUE_LEAKED = "review rejected: a demonstrated value is written into the source";
 
@@ -93,10 +94,18 @@ export function classifyValidationCase(
  * The deterministic floor under any review: the demonstration's own case
  * passed, or, without one among the cases, some case did. Undefined when it
  * holds; otherwise the reason and the case it is about.
+ *
+ * A case that finds nothing is the capability answering, except for the
+ * demonstrated input of a run the visitor saw succeed: the site had the
+ * result in front of them, and a program that finds nothing there has not
+ * reproduced the demonstration. "Add product to cart" was proven with one
+ * cushion, reported "cart has no row matching" for it on replay, and was
+ * published on that.
  */
 export function validationCaseFloor(
   results: ValidationCaseResult[],
   demonstrationParameters?: Record<string, JsonValue>,
+  demonstrationOutcome?: "Success" | "NoResult",
 ): { reason: string; caseId?: string; failure?: string } | undefined {
   const demonstration = demonstrationParameters && Object.keys(demonstrationParameters).length
     ? results.find((item) => Object.entries(demonstrationParameters).every(([path, value]) => {
@@ -106,6 +115,9 @@ export function validationCaseFloor(
     : undefined;
   if (demonstration) {
     const outcome = classifyValidationCase(demonstration, demonstrationParameters).outcome;
+    if (outcome === "NoResult" && demonstrationOutcome === "Success") {
+      return { reason: REVIEW_DEMONSTRATION_CASE_NO_RESULT, caseId: demonstration.caseId, failure: firstLine(demonstration.noResultReason) };
+    }
     return outcome === "Passed" || outcome === "NoResult"
       ? undefined
       : { reason: REVIEW_DEMONSTRATION_CASE_FAILED, caseId: demonstration.caseId, failure: firstLine(demonstration.failureReason) };

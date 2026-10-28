@@ -60,6 +60,12 @@ function reviewPrompt(value: JsonObject | undefined): VersionedPrompt {
   return { ...PUBLISH_REVIEW_PROMPT, text: [PUBLISH_REVIEW_PROMPT.text, adminCriteria].filter(Boolean).join("\n\n") };
 }
 
+/** What the visitor's run came to, as the generation task recorded it: the outcome the demonstrated case is held to. */
+function demonstrationOutcomeOf(task: { input?: { experience?: { outcome?: unknown } } } | undefined): "Success" | "NoResult" | undefined {
+  const outcome = task?.input?.experience?.outcome;
+  return outcome === "Success" || outcome === "NoResult" ? outcome : undefined;
+}
+
 function requiredInputsOf(contract: CapabilityContract) {
   return Array.isArray(contract.inputSchema.required)
     ? contract.inputSchema.required.filter((value): value is string => typeof value === "string")
@@ -195,7 +201,7 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
     const requiredInputs = requiredInputsOf(capability.contract);
     const demonstrationParameters = demonstrationParametersOf(sourceTask);
     const results = validation.result?.validationResults || [];
-    const floor = validationCaseFloor(results, demonstrationParameters);
+    const floor = validationCaseFloor(results, demonstrationParameters, demonstrationOutcomeOf(sourceTask));
     if (floor) {
       await appendTaskEvent(siteId, validation.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: "Rejected", ...floor, deterministic: true } });
       return reviewVersion(siteId, versionId, { decision: "Rejected", reason: floor.reason, promptKey: prompt.key, promptVersion: prompt.version, promptHash: compiledPromptHash, model: config.model });
@@ -331,7 +337,7 @@ export async function authorizeValidatedCandidate(siteId: string, task: Capabili
     // The demonstration's own case passing is the floor no review can lower
     // or raise; the AI review below may only add a defect it can show.
     const hardcoded = hardcodedDemonstrationInputs(source, demonstrationParameters, requiredInputs);
-    const floor = validationCaseFloor(results, demonstrationParameters)
+    const floor = validationCaseFloor(results, demonstrationParameters, demonstrationOutcomeOf(generation))
       || (hardcoded.length ? { reason: REVIEW_DEMONSTRATION_VALUE_LEAKED, inputs: hardcoded } : undefined);
     if (floor) {
       await appendTaskEvent(siteId, task.id, { eventType: "ReviewCompleted", payload: { phase: "Reviewing", decision: "Rejected", ...floor, deterministic: true } }).catch(() => undefined);
