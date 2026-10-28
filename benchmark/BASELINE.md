@@ -54,6 +54,37 @@ using the search box; `books-cheapest-travel` once), a step limit
 that the console never recorded (`books-five-star-mystery`: 209 s, no run
 record).
 
+## Iteration 1 — build `9faf423f`, run `2026-10-28T07-59-08`
+
+The four refusals the baseline ranked first (benchmark/GATES.md, commit
+`9faf423f`): the `.html` detail-transition guard scoped, the explorer's
+element-less `extract` taken as the demonstration's end, a colour word inside
+a product's own name no longer a facet to ground, the output-provenance check
+demoted to a note.
+
+| Rate | Baseline run 2 (v2) | Iteration 1 |
+| --- | --- | --- |
+| First ask | 15 / 18 (83.3%) | 15 / 18 (83.3%) |
+| Generation published | 0 / 14 (0%) | 3 / 12 (25%) |
+| Reuse | 0 / 0 | 1 / 2 (50%) |
+
+Published: `books-price-named`, `ps-category-count`, `ps-cheapest-accessory`
+(whose reuse ask, the cheapest item in Clothes, passed through the published
+capability — the first reuse the benchmark has seen). `ps-category-count`'s
+reuse answered the wrong count. No rate fell; `books-cheapest-travel-zh`
+flipped to a wrong answer, as its English twin had flipped between the two
+baseline runs.
+
+What still ended generations, from the console's records: the detail-transition
+guard, three times, because the authoring manifest marks every clicking stage
+as a write (demoted to a receipt note in `d38922de`); a budget spent before
+any draft ran, twice; a wait that never settled in a PrestaShop add-to-cart
+draft, twice; a review that rejected `books-count-poetry` on two validation
+cases whose inputs — "In stock", "Tipping the Velvet" — were never categories;
+a validation that produced no result for `ps-open-detail-price`. The last two
+are the next class: validation cases drawn from page text that is not a value
+of the input's kind.
+
 ## Live demo, 2026-10-22 → 2026-10-27 (for comparison)
 
 Not a benchmark run: the demo console's own records over the days the fixes
