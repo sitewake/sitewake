@@ -33,6 +33,8 @@ export type JavaScriptStageReceipt = {
   iteration?: number;
   evidence?: CapabilityStageEvidence[];
   durationMs?: number;
+  /** What the host noticed and did not act on: a suspicion recorded with the stage, for the reader of the receipt. */
+  notes?: string[];
 };
 
 export type JavaScriptStageRunResult = {
@@ -682,8 +684,13 @@ export async function runCapabilityJavaScriptStages(options: {
     if (lostContext && (program.controlFlow || manifest.transitions)) {
       throw new JavaScriptStageRunError(`capability_stage_context_lost_before_result:${manifest.id}`, receipts);
     }
+    // The host cannot tell a link the stage followed from a related product's
+    // variant link without the element it acted on; the address shape alone
+    // read a category click and a page turn as detours, seven times out of
+    // seven in the benchmark, against no true detour. The suspicion is kept on
+    // the receipt for the reader; the demonstration and the validation decide.
     if (transitioned && isSuspiciousDetailTransition(urlBefore, page.url(), manifest.id, manifest.effect)) {
-      throw new JavaScriptStageRunError(`capability_stage_related_target_navigation:${manifest.id}`, receipts);
+      started.notes = [...(started.notes || []), `related_target_navigation_suspected:${urlBefore} -> ${page.url()}`];
     }
     let result = lostContext ? ({ outcome: "Continue" } satisfies CapabilityStageResult) : normalizeStageResult(rawResult, manifest);
     // Continue means "go on to the next stage", so it is not an answer the

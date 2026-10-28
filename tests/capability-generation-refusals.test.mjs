@@ -22,6 +22,13 @@ const bundle = await build({
 });
 const { isSuspiciousDetailTransition, extractWithoutElementAsDone, assertGoalTargetGrounded, validateCapabilityJavaScriptSource, DEMOTED_CHECKS } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
 
+test("the related-target suspicion is recorded on the receipt, never thrown", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(new URL("../runner/capability-v2/javascript-stage-runner.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /throw new JavaScriptStageRunError\(`capability_stage_related_target_navigation/, "the guard used to end the run");
+  assert.match(source, /related_target_navigation_suspected/, "the suspicion is kept on the stage's receipt");
+});
+
 test("paging a tag on a static site is not a product detour: only a write stage is judged", () => {
   const page1 = "http://quotes.bench:8102/tag/humor/index.html";
   const page2 = "http://quotes.bench:8102/tag/humor/page/2/index.html";
