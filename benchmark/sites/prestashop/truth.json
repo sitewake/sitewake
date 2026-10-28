@@ -1,0 +1,81 @@
+{
+  "computedAt": "2026-10-28T05:10:36.933Z",
+  "categories": {
+    "clothes": {
+      "count": 2,
+      "cheapest": {
+        "name": "Hummingbird printed t-shirt",
+        "price": 19.12
+      },
+      "mostExpensive": {
+        "name": "Hummingbird printed sweater",
+        "price": 28.72
+      },
+      "names": [
+        "Hummingbird printed t-shirt",
+        "Hummingbird printed sweater"
+      ]
+    },
+    "accessories": {
+      "count": 11,
+      "cheapest": {
+        "name": "Mug The adventure begins",
+        "price": 11.9
+      },
+      "mostExpensive": {
+        "name": "Pack Mug + Framed poster",
+        "price": 35
+      },
+      "names": [
+        "Mug The adventure begins",
+        "Mug The best is yet to come",
+        "Mug Today is a good day",
+        "Brown bear cushion",
+        "Mountain fox cushion",
+        "Hummingbird cushion",
+        "Pack Mug + Framed poster",
+        "Mountain fox notebook",
+        "Brown bear notebook",
+        "Hummingbird notebook",
+        "Customizable mug"
+      ]
+    },
+    "art": {
+      "count": 7,
+      "cheapest": {
+        "name": "Mountain fox - Vector graphics",
+        "price": 9
+      },
+      "mostExpensive": {
+        "name": "Pack Mug + Framed poster",
+        "price": 35
+      },
+      "names": [
+        "The best is yet to come'...",
+        "The adventure begins Framed...",
+        "Today is a good day Framed...",
+        "Mountain fox - Vector graphics",
+        "Brown bear - Vector graphics",
+        "Hummingbird - Vector graphics",
+        "Pack Mug + Framed poster"
+      ]
+    }
+  },
+  "search": {
+    "mug": 5,
+    "cushion": 3,
+    "notebook": 3,
+    "unicorn": 3
+  },
+  "products": {
+    "brownBearCushion": "Brown bear cushion",
+    "mountainFoxCushion": "Mountain fox cushion",
+    "bestMug": "Mug The best is yet to come",
+    "brownBearNotebook": "Brown bear notebook",
+    "tshirt": "Hummingbird printed t-shirt",
+    "sweater": "Hummingbird printed sweater",
+    "tshirtPrice": 19.12,
+    "sweaterPrice": 28.72,
+    "bestMugPrice": 11.9
+  }
+}

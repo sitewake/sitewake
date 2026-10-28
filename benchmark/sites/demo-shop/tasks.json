@@ -1,0 +1,76 @@
+[
+  {
+    "id": "shop-on-sale-count",
+    "startUrl": "/",
+    "goal": "How many products are on sale right now?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": false,
+    "expect": { "type": "answer-contains", "facts": ["{{onSale.count}}"] }
+  },
+  {
+    "id": "shop-dimmable-under-price",
+    "startUrl": "/",
+    "goal": "Show me dimmable table lamps under $250",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{dimmableTableUnder250.names.0}}", "{{dimmableTableUnder250.names.1}}"] },
+    "reuse": {
+      "goal": "Show me dimmable table lamps under $150",
+      "expect": { "type": "answer-contains", "facts": ["{{dimmableTableUnder150.names.0}}"] }
+    }
+  },
+  {
+    "id": "shop-add-cheapest-dimmable",
+    "startUrl": "/",
+    "goal": "Add the cheapest dimmable lamp to my cart",
+    "locale": "en-US",
+    "kind": "action",
+    "generates": true,
+    "expect": { "type": "site-state", "probe": { "url": "/cart", "contains": ["{{cheapestDimmable.name}}"], "count": { "selector": "[data-cart-line]", "equals": 1 } } },
+    "reuse": {
+      "goal": "Add the cheapest floor lamp to my cart",
+      "expect": { "type": "site-state", "probe": { "url": "/cart", "contains": ["{{cheapestFloor.name}}"], "count": { "selector": "[data-cart-line]", "equals": 1 } } }
+    }
+  },
+  {
+    "id": "shop-cheapest-floor-dims",
+    "startUrl": "/",
+    "goal": "Open the cheapest floor lamp and tell me its dimensions",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{cheapestFloor.name}}", "{{cheapestFloor.height}}"] },
+    "reuse": {
+      "goal": "Open the cheapest table lamp and tell me its dimensions",
+      "expect": { "type": "answer-contains", "facts": ["{{cheapestTable.name}}", "{{cheapestTable.height}}"] }
+    }
+  },
+  {
+    "id": "shop-bedroom-floor-zh",
+    "startUrl": "/",
+    "goal": "帮我找一款适合卧室的落地灯，告诉我价格",
+    "locale": "zh-CN",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{bedroomFloor.names.0}}", "{{bedroomFloor.prices.0}}"] },
+    "reuse": {
+      "goal": "帮我找一款适合客厅的落地灯，告诉我价格",
+      "expect": { "type": "answer-contains", "facts": ["{{livingFloor.names.0}}", "{{livingFloor.prices.0}}"] }
+    }
+  },
+  {
+    "id": "shop-order-dimmable-brass",
+    "startUrl": "/",
+    "goal": "Order a dimmable desk lamp in brass",
+    "locale": "en-US",
+    "kind": "action",
+    "generates": true,
+    "expect": { "type": "site-state", "probe": { "url": "/account/orders", "contains": ["{{dimmableBrassDesk.name}}"], "count": { "selector": "[data-order]", "equals": 1 } } },
+    "reuse": {
+      "goal": "Order a dimmable desk lamp in matte black",
+      "expect": { "type": "site-state", "probe": { "url": "/account/orders", "contains": ["{{dimmableBlackDesk.name}}"], "count": { "selector": "[data-order]", "equals": 1 } } }
+    }
+  }
+]

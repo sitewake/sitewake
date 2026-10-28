@@ -1,0 +1,14 @@
+{
+  "id": "bench-saucedemo",
+  "name": "Swag Labs (benchmark mirror)",
+  "kind": "mirror",
+  "internalUrl": "http://saucedemo.bench:8103/",
+  "hostUrl": "http://localhost:8103/",
+  "mirror": {
+    "source": "https://www.saucedemo.com/",
+    "marker": "Swag Labs"
+  },
+  "crawl": {
+    "limits": { "maxRenders": 20 }
+  }
+}

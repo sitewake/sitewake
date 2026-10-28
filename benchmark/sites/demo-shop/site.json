@@ -1,0 +1,9 @@
+{
+  "id": "bench-demo-shop",
+  "name": "Orvelle lamp shop (local copy of demo-website.sitewake.ai)",
+  "kind": "app",
+  "configured": false,
+  "note": "Needs the demo shop's source or a runnable copy; set internalUrl/hostUrl and remove `configured` once it runs in the benchmark network.",
+  "internalUrl": "",
+  "hostUrl": ""
+}
