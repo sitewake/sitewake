@@ -164,7 +164,12 @@ export type CapabilityCaseDiscoveryEvidenceRef = {
 export type CapabilityCaseDiscoveryRegion = {
   regionId: string;
   url: string;
-  kind: "page-summary" | "business-region" | "control-group";
+  /**
+   * A choice-list is the list a demonstrated value was chosen from — the
+   * category links "Poetry" sits among, the options beside the chosen one —
+   * harvested as that list's items and nothing else.
+   */
+  kind: "page-summary" | "business-region" | "control-group" | "choice-list";
   text: string;
   /** Typed values actually observed in this region, never model proposals. */
   observedValues: JsonValue[];

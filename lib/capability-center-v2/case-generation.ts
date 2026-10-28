@@ -829,7 +829,7 @@ function decodeDiscoveryRegion(
     throw new Error(`case_discovery_region_fields_invalid:${index}`);
   }
   if (
-    !["page-summary", "business-region", "control-group"].includes(
+    !["page-summary", "business-region", "control-group", "choice-list"].includes(
       String(region.kind),
     )
   ) {
@@ -1504,12 +1504,12 @@ function mapCaseEvidence(
     const candidateRegions = [...evidence.regions]
       .filter(
         (region) =>
-          !requiresBusinessRegion || region.kind === "business-region",
+          !requiresBusinessRegion || region.kind === "business-region" || region.kind === "choice-list",
       )
       .filter((region) => supplied.length < 2 || region.kind !== "page-summary")
       .sort((left, right) => {
         const kindRank = (region: CapabilityCaseDiscoveryRegion) =>
-          region.kind === "business-region"
+          region.kind === "choice-list" || region.kind === "business-region"
             ? 0
             : region.kind === "control-group"
               ? 1
@@ -1866,6 +1866,22 @@ function demonstrationSiblings(
   const holding = regions
     .filter((region) => regionValues(region).some((value) => evidenceValueEqual(value, witness)))
     .sort((left, right) => regionValues(left).length - regionValues(right).length);
+  // Closest of all: the list the harvest found the value in, as the page
+  // lays it out. "Poetry" sat in the catalogue's category list beside Travel
+  // and Mystery; the cases that took "In stock" and a book's title from the
+  // product card above it asked the category page for a badge and a book,
+  // and the reviewer rejected a working program for what they came to.
+  for (const region of holding) {
+    if (region.kind !== "choice-list") continue;
+    const keys = new Set([evidenceKey(witness)]);
+    const listed = regionValues(region).filter((value) => {
+      const key = evidenceKey(value);
+      if (keys.has(key)) return false;
+      keys.add(key);
+      return admits(value);
+    });
+    if (listed.length) return listed;
+  }
   // Closest of all: the other items of a list the value is written in, as in
   // "3 finishes: Brass, Matte black, Chalk white". The harvest splits that
   // text at spaces, which gives "Matte" and "black" but not "Matte black".
@@ -1949,7 +1965,7 @@ function siblingsIn(
 }
 
 function regionRank(kind: CapabilityCaseDiscoveryRegion["kind"]) {
-  return kind === "business-region" ? 0 : kind === "control-group" ? 1 : 2;
+  return kind === "choice-list" ? 0 : kind === "business-region" ? 1 : kind === "control-group" ? 2 : 3;
 }
 
 /**
@@ -2217,12 +2233,19 @@ export function deriveCapabilityCases(
   // with anything the contract accepts.
   if (!taken.some((item) => canonicalCapabilityCaseJson(item.input) === canonicalCapabilityCaseJson(demonstrationCase))
     && Object.keys(demonstrationCase).length) {
+    // The suggestions beside a value are the list it was chosen from when the
+    // harvest found one, and everything the page offered otherwise.
+    const chosenFrom = (path: string) => {
+      const list = orderedRegions.find((region) => region.kind === "choice-list"
+        && regionValues(region).some((value) => evidenceValueEqual(value, demonstrationCase[path])));
+      return list ? regionValues(list).filter((value) => admitsValue(path, value)) : undefined;
+    };
     taken.unshift({
       input: cloneJson(demonstrationCase) as JsonObject,
       expected: {},
       regionId: discovery.regions[0]?.regionId || "",
       alternatives: Object.fromEntries(
-        Object.keys(demonstrationCase).map((path) => [path, (acrossRegions.get(path) || []).slice(0, CASE_ALTERNATIVES_MAX_VALUES)]),
+        Object.keys(demonstrationCase).map((path) => [path, (chosenFrom(path) || acrossRegions.get(path) || []).slice(0, CASE_ALTERNATIVES_MAX_VALUES)]),
       ),
     });
     if (taken.length > CAPABILITY_CASE_DERIVATION_MAX_CASES) taken.length = CAPABILITY_CASE_DERIVATION_MAX_CASES;

@@ -972,6 +972,27 @@ test("a value written in a list takes the list's other items as its cases, one i
   ]);
 });
 
+test("a value the harvest found in a list takes that list's other items as its cases, not the card beside it", async () => {
+  // "Poetry" sat in the catalogue's category list; the cases built for the
+  // category input took "In stock" and a book's title from the first product
+  // card, and the reviewer rejected a working program for what they came to.
+  const { input } = await setup();
+  addCategoryParameter(input, { cases: [{ input: {} }, { input: {} }] });
+  input.demonstrationParameters = { query: "Brass", category: "Poetry" };
+  const discovery = regionsFor(input, [
+    { observedValues: ["A Light in the ...", "£51.77", "In stock", "Add to basket", "Tipping the Velvet", "Brass"] },
+    { kind: "choice-list", observedValues: ["Travel", "Mystery", "Historical Fiction", "Poetry", "Science"] },
+  ]);
+  const derived = deriveCapabilityCases(input, discovery);
+  assert.deepEqual(derived.cases.map((item) => item.input), [
+    { query: "Brass", category: "Poetry" },
+    { query: "Brass", category: "Travel" },
+    { query: "Brass", category: "Mystery" },
+  ]);
+  assert.deepEqual(derived.cases[0].alternatives.category, ["Poetry", "Travel", "Mystery", "Historical Fiction", "Science"], "the suggestions beside the demonstration are the list's items and nothing else");
+  assert.ok(derived.cases.every((item) => !["In stock", "Tipping the Velvet"].includes(item.input.category)));
+});
+
 test("a defaulted optional input is left out by one case", async () => {
   const { input } = await setup();
   addOptionalLimit(input);
