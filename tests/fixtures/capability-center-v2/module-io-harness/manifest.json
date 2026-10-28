@@ -73,14 +73,13 @@
     },
     {
       "module": "Review",
-      "expectedCaseCount": 9,
+      "expectedCaseCount": 6,
       "caseGlob": "cases/review/*.json",
       "covers": [
-        "Approved/Rejected/Error",
-        "拒绝理由完整性",
+        "Approved/Rejected 由验证记录决定，不调用模型",
+        "并列提供的值没有结果即拒绝",
         "必须有 C3 ValidatedPackage",
         "Validation hash 血缘",
-        "站点附加规则",
         "分析字段禁止",
         "Review 不直接发布"
       ]
@@ -90,7 +89,7 @@
       "expectedCaseCount": 11,
       "caseGlob": "cases/d/*.json",
       "covers": [
-        "AIApproved 和 AdminOverride",
+        "Validated 和 AdminOverride",
         "授权与完整 Validation 门禁",
         "generationTask 血缘",
         "Artifact hash",

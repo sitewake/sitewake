@@ -3812,6 +3812,8 @@ export async function reviewVersion(
     promptKey?: string;
     promptVersion?: string;
     promptHash?: string;
+    /** The decision was read off the validation record; no prompt produced it. */
+    deterministic?: boolean;
   },
 ) {
   if (!["Approved", "Rejected", "Error"].includes(input.decision))
@@ -3857,12 +3859,15 @@ export async function reviewVersion(
         reason: input.reason,
         model: input.model || version.review?.ai?.model,
         reviewedAt: timestamp,
+        ...(input.deterministic ? { deterministic: true } : {}),
         promptKey:
-          input.promptKey || version.review?.ai?.promptKey || "review.prompt",
+          input.promptKey ||
+          version.review?.ai?.promptKey ||
+          (input.deterministic ? undefined : "review.prompt"),
         promptVersion:
           input.promptVersion ||
           version.review?.ai?.promptVersion ||
-          "unversioned",
+          (input.deterministic ? undefined : "unversioned"),
         promptHash: input.promptHash || version.review?.ai?.promptHash,
       },
     },
@@ -3885,8 +3890,8 @@ export async function reviewVersion(
   );
   if (input.decision === "Approved")
     return publishVersion(siteId, versionId, {
-      adminId: "ai-review",
-      reason: "AI review approved",
+      adminId: input.deterministic ? "validation-verdict" : "ai-review",
+      reason: input.reason || "review approved",
     });
   return {
     version: reviewed,
@@ -4101,7 +4106,7 @@ export async function publishValidatedCapability(
 ): Promise<CapabilityPublishResult> {
   if (
     !input.authorization ||
-    (input.authorization.mode !== "AIApproved" &&
+    (input.authorization.mode !== "Validated" &&
       input.authorization.mode !== "AdminOverride")
   ) {
     throw new CapabilityCenterV2Error(
@@ -4289,12 +4294,13 @@ export async function publishValidatedCapability(
     program: artifact.candidate.program,
     status: "Published",
     review:
-      input.authorization.mode === "AIApproved"
+      input.authorization.mode === "Validated"
         ? {
             ai: {
               status: "Approved",
+              reason: input.authorization.reason,
               reviewedAt: timestamp,
-              model: input.authorization.reviewId,
+              deterministic: true,
             },
           }
         : {

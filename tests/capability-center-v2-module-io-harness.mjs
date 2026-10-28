@@ -573,7 +573,6 @@ function actualSideEffects(value) {
     sharedCookieLeakCount: value.sharedCookieLeakCount ?? 0,
     sharedStageStateLeakCount: value.sharedStageStateLeakCount ?? 0,
     contractChecks: value.contractChecks ?? [],
-    reviewPromptContainsSiteRule: value.reviewPromptContainsSiteRule ?? false,
     artifactDeleted: value.artifactDeleted ?? false,
     adminOverrideRecorded: value.adminOverrideRecorded ?? false,
     classificationReservationConsumed: value.classificationReservationConsumed ?? false,
@@ -935,27 +934,23 @@ async function runC3Case(item) {
 }
 
 async function runReviewCase(item) {
-  const counters = { modelCalls: 0, publishCount: 0, capabilityCount: 0, versionCount: 0, reviewPromptContainsSiteRule: false, artifactDeleted: false };
+  const counters = { modelCalls: 0, publishCount: 0, capabilityCount: 0, versionCount: 0, artifactDeleted: false };
   if (!item.input.validated) return { outcome: "error", errorCode: "validated_package_required", ...actualSideEffects(counters) };
   const c2Base = await readJson(resolve(fixtureRoot, "bases/c2-input.json"));
   let prepared;
   try {
     prepared = await prepareFormalPipeline(item.input.siteId || "prestashop_module_io_harness", c2Base);
     let validated = clone(prepared.validated);
+    // The verdict reads the cases: a value the page lists beside the
+    // demonstrated one, left without a result, is a rejection.
+    if (item.caseId === "REVIEW-02") validated.validation.cases[1] = { ...validated.validation.cases[1], failureReason: `no_result_for_offered_input:query=${JSON.stringify(validated.validation.cases[1].resolvedInput.query)}:the results page lists nothing for it` };
     if (item.caseId === "REVIEW-06") validated.validation.programHash = "sha256:" + "9".repeat(64);
     if (item.caseId === "REVIEW-08") validated.artifact.candidate.contract.semantic = { schemaVersion: "1.0" };
-    if (item.setup?.siteReviewRule) {
-      const { upsertSetting } = await import("../db/capability-center-v2-store.ts");
-      await upsertSetting(item.input.siteId, "review.prompt", { prompt: item.setup.siteReviewRule });
-      counters.reviewPromptContainsSiteRule = true;
-    }
     const reviewTask = prepared.validationTask;
-    const response = await withModel(async (body) => {
+    // Any model request here is a defect: the verdict is read off the record.
+    const response = await withModel(async () => {
       counters.modelCalls += 1;
-      if (item.setup?.fault === "review-model-timeout") return { httpStatus: 500, body: "timeout" };
-      if (item.setup?.modelScenario === "rejected-with-incomplete-reason") return { decision: "Rejected", reason: "不完整" };
-      if (item.setup?.modelScenario === "rejected-with-quality-evidence" || item.setup?.modelScenario === "reject-missing-site-rule-evidence") return { decision: "Rejected", reason: "Stage 源码、Contract、deterministicQuality 与 Validation 证据不足，不能发布。" };
-      return await readJson(resolve(notebookRoot, "05-review-model-fixture.json"));
+      return { httpStatus: 500, body: "the verdict asks no model" };
     }, async () => (await import("../lib/capability-center-v2/coordinator.ts")).authorizeValidatedCandidate(item.input.siteId, reviewTask, validated));
     counters.capabilityCount = (await listCapabilities(item.input.siteId)).capabilities.length;
     counters.versionCount = (await listVersions(item.input.siteId, "missing")).versions.length;

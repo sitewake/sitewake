@@ -1,6 +1,6 @@
 {
   "siteId": "prestashop_notebook_classify_real",
-  "authorization": { "mode": "AIApproved", "reviewId": "fixture-review-input" },
+  "authorization": { "mode": "Validated", "reason": "approved on validation: the demonstrated case and the offered values passed" },
   "setup": {
     "candidate": {
         "name": "搜索商品",

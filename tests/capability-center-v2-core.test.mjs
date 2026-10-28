@@ -86,8 +86,10 @@ const {
   markRunnerLost,
   parseAndValidateToolArguments,
   parseCapabilityExperienceAbstraction,
-  parseReviewDecision,
   parseStructuredModelJson,
+  REVIEW_APPROVED_ON_VALIDATION,
+  REVIEW_NO_CASE_PASSED,
+  REVIEW_OFFERED_INPUT_NO_RESULT,
   rejectMismatchedFacetAction,
   promptProvenance,
   publishVersion,
@@ -991,71 +993,6 @@ test("structured model JSON parser reports empty responses and accepts fenced ob
   assert.deepEqual(
     parseStructuredModelJson('```json\n{"decision":"Approved"}\n```'),
     { decision: "Approved" },
-  );
-});
-
-test("an English review rejection is judged by the evidence it cites, not by its language", () => {
-  const reason = "The source code of stage_verify reads a fixed heading instead of the order input, and the deterministic quality gate does not check which element it reads.";
-  assert.deepEqual(parseReviewDecision({ decision: "Rejected", reason }), { decision: "Rejected", reason });
-  assert.throws(
-    () => parseReviewDecision({ decision: "Rejected", reason: "The name does not feel abstract enough, so this version should not be published." }),
-    /ai_review_rejection_evidence_required/,
-  );
-});
-
-test("AI publish review requires a complete auditable decision reason", () => {
-  assert.deepEqual(
-    parseReviewDecision({
-      decision: "Approved",
-      reason: "确定性质量门禁与独立回放证据均已通过，可以发布。",
-    }),
-    {
-      decision: "Approved",
-      reason: "确定性质量门禁与独立回放证据均已通过，可以发布。",
-    },
-  );
-  assert.deepEqual(
-    parseReviewDecision({
-      decision: "Approved",
-      reason: "该能力已通过检查但模型解释在这里被截断为",
-    }),
-    {
-      decision: "Approved",
-      reason:
-        "ai review approved on gate evidence",
-    },
-  );
-  assert.throws(
-    () =>
-      parseReviewDecision({
-        decision: "Rejected",
-        reason: "能力名称和描述中包含",
-      }),
-    /ai_review_reason_incomplete/,
-  );
-  assert.throws(
-    () =>
-      parseReviewDecision({
-        decision: "Rejected",
-        reason: "发现了一个需要说明但没有结束标点的具体审核问题",
-      }),
-    /ai_review_reason_incomplete/,
-  );
-  assert.throws(
-    () =>
-      parseReviewDecision({
-        decision: "Rejected",
-        reason: "名称似乎不够抽象，因此拒绝发布这个能力版本。",
-      }),
-    /ai_review_rejection_evidence_required/,
-  );
-  assert.deepEqual(
-    parseReviewDecision({
-      decision: "Rejected",
-      reason:
-        "确定性质量门禁没有覆盖管理员附加规则；Validation 证据明确缺少管理员要求的第二种页面状态，因此拒绝发布。",
-    }).decision,
-    "Rejected",
   );
 });
 
@@ -4040,7 +3977,7 @@ test("quality gate requires source consumption, write reconciliation and distinc
   assert.equal(accepted.valid, true, JSON.stringify(accepted.issues));
 });
 
-test("V2 closes Discovery -> Validation -> AI review -> Publish without legacy data", async () => {
+test("V2 closes Discovery -> Validation -> verdict -> Publish without legacy data", async () => {
   const discovery = await createCapabilityTask(siteId, {
     type: "Discovery",
     goal: "加入购物车",
@@ -4463,7 +4400,7 @@ test("lost V2 Runner returns its task to Pending with visible diagnostics and re
   assert.equal(reclaimed.task.error, undefined);
 });
 
-test("Coordinator automatically creates Validation and records an AI error when no review model is configured", async () => {
+test("Coordinator automatically creates Validation and records the verdict without any review model; the administrator can still override", async () => {
   const discovery = await createCapabilityTask(siteId, {
     type: "Discovery",
     goal: "搜索商品",
@@ -4497,7 +4434,12 @@ test("Coordinator automatically creates Validation and records an AI error when 
   const version = (
     await listVersions(siteId, completed.task.result.capabilityId)
   ).versions[0];
-  assert.equal(version.review.ai.status, "Error");
+  // A validation that recorded no case holds nothing up: the verdict is read
+  // off the record, and an empty record is not a passed one.
+  assert.equal(version.review.ai.status, "Rejected");
+  assert.equal(version.review.ai.reason, REVIEW_NO_CASE_PASSED);
+  assert.equal(version.review.ai.deterministic, true);
+  assert.equal(version.review.ai.promptKey, undefined, "no prompt produced the verdict");
   await assert.rejects(
     () => publishVersion(siteId, version.id, { adminId: "admin" }),
     (error) => error.code === "admin_override_reason_required",
@@ -4507,6 +4449,57 @@ test("Coordinator automatically creates Validation and records an AI error when 
     reason: "人工核验通过",
   });
   assert.equal(published.version.status, "Published");
+});
+
+async function validatedVersion(goal, validationResults) {
+  const discovery = await createCapabilityTask(siteId, {
+    type: "Discovery",
+    goal,
+    input: {
+      candidateSummary: { name: goal, description: goal, contract },
+      program,
+      parameters: {},
+      context: { startUrl: "https://example.test" },
+      interactions: [],
+      trigger: {},
+    },
+  });
+  await claimTask(siteId, discovery.task.id, "runner-discovery");
+  const completed = await submitTaskResult(siteId, discovery.task.id, "runner-discovery", { outcome: "Success", candidateProgram: program });
+  const advanced = await advanceCompletedTask(completed.task);
+  await claimTask(siteId, advanced.nextTask.id, "runner-validation");
+  const validation = await submitTaskResult(siteId, advanced.nextTask.id, "runner-validation", { outcome: "Success", output: {}, validationResults });
+  const { review } = await advanceCompletedTask(validation.task);
+  const version = (await listVersions(siteId, completed.task.result.capabilityId)).versions[0];
+  return { review, version, validationTaskId: advanced.nextTask.id };
+}
+
+test("a validation whose cases passed is published on the verdict alone, with the verdict on the version", async () => {
+  const { review, version } = await validatedVersion("搜索商品", [
+    { caseId: "case_1", resolvedInput: { query: "notebook" }, output: { query: "notebook" } },
+  ]);
+  assert.equal(review.version.status, "Published");
+  assert.equal(version.status, "Published");
+  assert.equal(version.review.ai.status, "Approved");
+  assert.equal(version.review.ai.reason, REVIEW_APPROVED_ON_VALIDATION);
+  assert.equal(version.review.ai.deterministic, true);
+});
+
+test("a case that found nothing for a value the site offers rejects the version, and the event names the case", async () => {
+  const failure = "no_result_for_offered_input:query=\"Mug\":the search page shows no results for Mug";
+  const { version, validationTaskId } = await validatedVersion("搜索商品", [
+    { caseId: "case_1", resolvedInput: { query: "notebook" }, output: { query: "notebook" } },
+    { caseId: "case_2", resolvedInput: { query: "Mug" }, failureReason: failure },
+  ]);
+  assert.equal(version.status, "Draft");
+  assert.equal(version.review.ai.status, "Rejected");
+  assert.equal(version.review.ai.reason, REVIEW_OFFERED_INPUT_NO_RESULT);
+  const events = await listTaskEvents(siteId, validationTaskId);
+  const completed = events.find((event) => event.eventType === "ReviewCompleted");
+  assert.equal(completed.payload.decision, "Rejected");
+  assert.equal(completed.payload.caseId, "case_2");
+  assert.equal(completed.payload.failure, failure);
+  assert.equal(completed.payload.deterministic, true);
 });
 
 test("Runner receives decrypted interaction values only through its assigned RunSpec", async () => {

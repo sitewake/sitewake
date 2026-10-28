@@ -333,25 +333,23 @@ async function validateCandidate(input, outputDir) {
   }
 }
 
+// The verdict is read off the validated package; no model fixture is served.
 async function review(input) {
-  const modelFixture = await fixtureJson("05-review-model-fixture.json");
-  return withModelFixture(modelFixture, async () => {
-    const [{ authorizeValidatedCandidate }, { createCapabilityTask, resetCapabilityCenterV2ForTests }] = await Promise.all([
-      import("../lib/capability-center-v2/coordinator.ts"),
-      import("../db/capability-center-v2-store.ts"),
-    ]);
-    resetCapabilityCenterV2ForTests();
-    const artifact = input.package.artifact;
-    const created = await createCapabilityTask(input.siteId || defaultSiteId, {
-      type: "Validation",
-      goal: artifact.candidate.contract.intent || artifact.candidate.name,
-      candidateArtifact: artifact,
-      input: taskInputForCandidate(artifact.candidate, artifact.validationSuite.cases[0]?.input, artifact.candidate.program.entry.url || `http://localhost:${fixtureSitePort}/`),
-    });
-    const reviewed = await authorizeValidatedCandidate(created.task.siteId, created.task, input.package);
-    if (reviewed.outcome !== "Approved") return reviewed;
-    return { validated: input.package, authorization: reviewed.authorization, review: reviewed.review };
+  const [{ authorizeValidatedCandidate }, { createCapabilityTask, resetCapabilityCenterV2ForTests }] = await Promise.all([
+    import("../lib/capability-center-v2/coordinator.ts"),
+    import("../db/capability-center-v2-store.ts"),
+  ]);
+  resetCapabilityCenterV2ForTests();
+  const artifact = input.package.artifact;
+  const created = await createCapabilityTask(input.siteId || defaultSiteId, {
+    type: "Validation",
+    goal: artifact.candidate.contract.intent || artifact.candidate.name,
+    candidateArtifact: artifact,
+    input: taskInputForCandidate(artifact.candidate, artifact.validationSuite.cases[0]?.input, artifact.candidate.program.entry.url || `http://localhost:${fixtureSitePort}/`),
   });
+  const reviewed = await authorizeValidatedCandidate(created.task.siteId, created.task, input.package);
+  if (reviewed.outcome !== "Approved") return reviewed;
+  return { validated: input.package, authorization: reviewed.authorization, review: reviewed.review };
 }
 
 async function publish(input) {

@@ -127,8 +127,8 @@
     }
   },
   "authorization": {
-    "mode": "AIApproved",
-    "reviewId": "review.prompt:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    "mode": "Validated",
+    "reason": "approved on validation: the demonstrated case and the offered values passed"
   }
 }
 
