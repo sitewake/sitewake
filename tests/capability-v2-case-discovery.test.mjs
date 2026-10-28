@@ -25,6 +25,7 @@ const fixtureDir = resolve(fileURLToPath(new URL("../", import.meta.url)), "test
 // A catalogue's home page: the category list in the sidebar, product cards in
 // the main column. The demonstration chose "Poetry" from the sidebar.
 const CATALOGUE = `<!doctype html><title>All products | Books</title>
+<ul class="breadcrumb"><li><a href="/">Home</a></li><li><a href="/catalogue/category/books_1/index.html">Books</a></li><li class="active">Poetry</li></ul>
 <aside><ul class="nav"><li><a href="/catalogue/category/books_1/index.html">Books</a>
   <ul><li><a href="/c/travel_2">Travel</a></li><li><a href="/c/mystery_3">Mystery</a></li><li><a href="/c/historical-fiction_4">Historical Fiction</a></li><li><a href="/c/poetry_23">Poetry</a></li></ul>
 </li></ul></aside>
@@ -62,6 +63,7 @@ test("the harvest keeps the list a demonstrated value was chosen from, as a regi
     assert.equal(snapshot.regions[0].kind, "choice-list", "the list comes first, ahead of the region budget");
     assert.deepEqual(lists[0].observedValues, ["Travel", "Mystery", "Historical Fiction", "Poetry"], "its items are the inner list's own, by the name each is found by");
     assert.ok(!lists[0].observedValues.includes("Books"), "the outer list's entry is not one of the choices");
+    assert.ok(!lists[0].observedValues.includes("Home"), "the breadcrumb that also names the category is where the visitor is, not a choice");
     assert.ok(snapshot.regions.some((region) => region.kind !== "choice-list" && region.observedValues.includes("In stock")), "the cards are still harvested, after it");
   } finally {
     await browser.close();

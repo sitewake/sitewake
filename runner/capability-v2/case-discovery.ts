@@ -443,37 +443,47 @@ async function collectRawRegions(page: Page, demonstrationValues: string[] = [])
     );
     const itemOf = (item) => (item.matches("li,tr,[role=listitem]") && item.querySelector("a,button,label,[role=link],[role=button]")) || item;
     const choiceLists = [];
-    const listKey = (container) => container;
-    const seenLists = new Set();
+    // A breadcrumb also lists the value, between "Home" and the section it
+    // is in; those are where the visitor is, not what they could choose.
+    const breadcrumb = (container) => /breadcrumb/iu.test(container.className + " " + (container.getAttribute("aria-label") || "") + " " + (container.parentElement ? container.parentElement.className + " " + (container.parentElement.getAttribute("aria-label") || "") : ""));
+    const listNames = (container) => {
+      const items = container.matches("select,datalist") ? [...container.querySelectorAll("option")]
+        : container.matches("table,tbody") ? [...container.querySelectorAll("tr")]
+          : [...container.children];
+      const names = [];
+      const seenNames = new Set();
+      for (const item of items) {
+        if (!(item instanceof HTMLOptionElement) && !visible(item)) continue;
+        const name = nameOfItem(itemOf(item));
+        const key = valueKey(name);
+        if (!name || seenNames.has(key)) continue;
+        seenNames.add(key);
+        names.push(name);
+        if (names.length >= maxValues) break;
+      }
+      return names;
+    };
     for (const wanted of demonstrationValues) {
       const shown = wanted.normalize("NFKC").trim().toLocaleLowerCase();
       if (!shown) continue;
       const matches = [...document.querySelectorAll("a,button,option,li,label,td,th,dt,dd,span,[role=option],[role=tab],[role=menuitem],[role=radio],[role=link],[role=button]")]
         .filter((element) => visible(element) && nameOfItem(element).normalize("NFKC").toLocaleLowerCase() === shown);
+      // Of every list that shows the value, the one with the most choices: the
+      // category list over the breadcrumb that also names the category.
+      let chosen;
+      const seenLists = new Set();
       for (const element of matches) {
         const container = element.closest("ul,ol,select,datalist,table,tbody,[role=list],[role=listbox],[role=menu],[role=tablist],[role=radiogroup],[role=group],nav");
-        if (!container || seenLists.has(listKey(container))) continue;
-        const items = container.matches("select,datalist") ? [...container.querySelectorAll("option")]
-          : container.matches("table,tbody") ? [...container.querySelectorAll("tr")]
-            : [...container.children];
-        const names = [];
-        const seenNames = new Set();
-        for (const item of items) {
-          if (!(item instanceof HTMLOptionElement) && !visible(item)) continue;
-          const name = nameOfItem(itemOf(item));
-          const key = valueKey(name);
-          if (!name || seenNames.has(key)) continue;
-          seenNames.add(key);
-          names.push(name);
-          if (names.length >= maxValues) break;
-        }
+        if (!container || seenLists.has(container) || breadcrumb(container)) continue;
+        seenLists.add(container);
+        const names = listNames(container);
         if (names.length < 2 || !names.some((name) => name.normalize("NFKC").toLocaleLowerCase() === shown)) continue;
-        seenLists.add(listKey(container));
-        const before = container.previousElementSibling;
-        const heading = before && /^H[1-6]$/u.test(before.tagName) ? normalize(before.textContent || "", 120) : "";
-        choiceLists.push({ kind: "choice-list", text: normalize((heading ? heading + ": " : "") + names.join(", "), maxText), observedValues: names, controlOptions: [] });
-        break;
+        if (!chosen || names.length > chosen.names.length) chosen = { container, names };
       }
+      if (!chosen) continue;
+      const before = chosen.container.previousElementSibling;
+      const heading = before && /^H[1-6]$/u.test(before.tagName) ? normalize(before.textContent || "", 120) : "";
+      choiceLists.push({ kind: "choice-list", text: normalize((heading ? heading + ": " : "") + chosen.names.join(", "), maxText), observedValues: chosen.names, controlOptions: [] });
     }
     return [...choiceLists, ...regions];
   })()`);
