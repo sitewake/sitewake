@@ -75,6 +75,17 @@ test("paging back and forth collapses to the shortest way to the page the visito
   assert.equal(experience.endPage.url, "http://quotes.bench:8102/tag/humor/page/2/index.html");
 });
 
+test("an image link in the recording is found by the name the recording gave it, its image's alt", () => {
+  // A product card's image link has no text; the widget recorded its
+  // accessible name from the image, and that is what finds it again.
+  const { parameters, experience } = recording("ps-add-cushion");
+  const card = experience.actions[4];
+  const image = { ...card, element: { tag: "a", role: "link", accessibleName: "Brown bear cushion", href: card.element.href } };
+  const { program } = traceFromExperience({ ...experience, actions: [experience.actions[3], image] }, parameters);
+  assert.deepEqual(program.steps.map((step) => step.action), ["click", "click"]);
+  assert.ok(names(program.steps[1]).includes(JSON.stringify({ source: "input", path: "productName" })), "the alt names the product, so the step is found by the input");
+});
+
 test("a typed value equal to an input is written as that input, and Enter becomes a press", () => {
   const { parameters, experience } = recording("ps-add-cushion");
   const search = { ...experience, actions: [experience.actions[1]], endPage: { url: "http://prestashop.bench/search?controller=search&s=Brown+bear+cushion" } };

@@ -85,7 +85,9 @@ export function inspectContractConsistency(
   }
 
   const executable = (contract.successConditions || []).some((value) => typeof value === "string" ? Boolean(value.trim()) : EXECUTABLE_CONDITION_TYPES.includes(String(record(value).type || "")));
-  if (!executable) issues.push({ code: "deterministic_success_condition_required", path: "contract.successConditions", message: "At least one executable success condition is required." });
+  // A Contract whose outputs are still open is one a draft has not answered
+  // yet; its conditions arrive with the outputs, when they are frozen.
+  if (!executable && !output.open) issues.push({ code: "deterministic_success_condition_required", path: "contract.successConditions", message: "At least one executable success condition is required." });
   return issues;
 }
 

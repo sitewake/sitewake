@@ -1,5 +1,6 @@
 import { countsIgnoringTheirList, demonstrationAnswerDisagreement, describeAnswerDisagreement, describeCountIgnoringList } from "../../lib/capability-center-v2/output-consistency";
 import { createAuthoringConnectors, type AuthoringConnectors } from "./connectors";
+import { contractWithOutputs } from "./contract-from-demonstration";
 import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
 import { DEFAULT_CAPABILITY_TOTAL_TIMEOUT_MS } from "../../lib/capability-center-v2/control-flow";
 import { CapabilityWorkspace } from "./workspace";
@@ -45,6 +46,8 @@ export type JavaScriptAuthorResult = {
   source: string;
   bundle: string;
   program: CapabilityProgram;
+  /** The Contract as frozen on this draft: its outputs are what the draft answered with. */
+  contract: CapabilityContract;
   draft: JavaScriptStageRunResult;
   provenance: CapabilityPromptProvenance;
 };
@@ -604,7 +607,7 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
         // container: a mounted drawer can still be empty. settle() is available
         // for an in-place update whose shape is not known in advance.
         // TODO(author): wait for the real result region, then return
-        // { outcome: "Success", output: { ${outputs.join(", ")} }, evidence: [{ kind: "status", value: {...} }] }
+        // { outcome: "Success", output: { ${outputs.length ? outputs.join(", ") : "...the fields you read off the result, named for what they are (they become the capability's outputs)"} }, evidence: [{ kind: "status", value: {...} }] }
         // built from the page; NoResult when the page proves there is nothing; BusinessRejection when the site refuses.
         void expected; void state; void waitUntil; void settle; void identityMatches;
         throw new Error("stage_verify_not_authored");
@@ -723,17 +726,22 @@ export async function authorJavaScriptCapability(options: {
   if (!config.configured) throw new Error("javascript_author_model_not_configured");
   // Every draft, example and debug page opens where the published program
   // will start: the page the Contract binds it to, when it names one.
-  const entryPage = capabilityEntryPage(options.contract, options.startUrl);
+  // The Contract the authoring starts from names the inputs, the scope and
+  // the address; what the capability answers with is known only once a draft
+  // has answered, and is frozen from the first draft that passes the
+  // demonstration (contractWithOutputs). Everything after that reads this.
+  let contract = options.contract;
+  const entryPage = capabilityEntryPage(contract, options.startUrl);
   const startPage = entryPage || options.startUrl;
   const addressOptions: AuthoringAddressOptions = {
     startUrl: options.startUrl,
-    demonstrationParameters: resolveCapabilityInput(options.contract, options.input.parameters).declared,
+    demonstrationParameters: resolveCapabilityInput(contract, options.input.parameters).declared,
   };
-  const manifest = authoringManifest(options.explorationProgram, options.contract, addressOptions);
+  const manifest = authoringManifest(options.explorationProgram, contract, addressOptions);
   if (!manifest.stages.length) throw new Error("javascript_author_stage_manifest_empty");
   // The Contract and the Stage I/O it implies must agree before any budget is
   // spent: a predicate on a field no Stage may write is unrepairable by code.
-  assertContractConsistent(options.contract, manifest.stages);
+  assertContractConsistent(contract, manifest.stages);
   // The invariant every gate in this file serves: a draft the post-loop
   // quality gate would refuse is refused before or inside the loop, never
   // after it. Rules about the program run inside run_draft, where the model
@@ -741,7 +749,7 @@ export async function authorJavaScriptCapability(options: {
   // model's to fix and run here, on the seed manifest, before a single model
   // call is spent — the same rules, the same function, so nothing can first
   // appear after the loop.
-  const seedQuality = inspectCapabilityQuality(options.contract, {
+  const seedQuality = inspectCapabilityQuality(contract, {
     schemaVersion: "2.0",
     runtime: "BrowserJavaScriptStage",
     module: { contentHash: "0".repeat(64), moduleUrl: "/pending", exportName: "capability" },
@@ -751,7 +759,7 @@ export async function authorJavaScriptCapability(options: {
     targetBindings: manifest.targetBindings,
     promptProvenance: [],
   }, {
-    demonstrationParameters: resolveCapabilityInput(options.contract, options.input.parameters).declared,
+    demonstrationParameters: resolveCapabilityInput(contract, options.input.parameters).declared,
     entryUrl: options.startUrl,
     validationCases: options.groundingExamples,
     summary: options.summary,
@@ -766,8 +774,8 @@ export async function authorJavaScriptCapability(options: {
   // boundary; passing the raw envelope here would make DraftReplay exercise a
   // different input from the immutable Contract and fail only after the
   // source has already been authored.
-  const demonstrationParameters = resolveCapabilityInput(options.contract, options.input.parameters).declared;
-  const groundingExamples = (options.groundingExamples || []).filter(example => JSON.stringify(resolveCapabilityInput(options.contract, {...options.input.parameters,...example}).declared) !== JSON.stringify(demonstrationParameters));
+  const demonstrationParameters = resolveCapabilityInput(contract, options.input.parameters).declared;
+  const groundingExamples = (options.groundingExamples || []).filter(example => JSON.stringify(resolveCapabilityInput(contract, {...options.input.parameters,...example}).declared) !== JSON.stringify(demonstrationParameters));
   const provenance = await promptProvenance(JAVASCRIPT_AUTHOR_PROMPT, config.model);
   let lastDraftObservation: unknown;
   let debugContext: {context: BrowserContext; page: Page} | undefined;
@@ -789,7 +797,7 @@ export async function authorJavaScriptCapability(options: {
         connectors: connectors.catalog,
         goal: options.goal,
         startUrl: startPage,
-        contract: options.contract,
+        contract: contract,
         demonstrationInput: demonstrationParameters,
         groundingExamples,
         stageManifest: manifest.stages,
@@ -803,10 +811,10 @@ export async function authorJavaScriptCapability(options: {
   const workspace = options.workspace || await CapabilityWorkspace.create();
   // The first draft is generated from the successful exploration; the model
   // starts from proven action stages and only authors the verification stage.
-  const seed = options.startingSource || seedCapabilitySource(manifest, options.explorationProgram, options.contract, addressOptions);
+  const seed = options.startingSource || seedCapabilitySource(manifest, options.explorationProgram, contract, addressOptions);
   await workspace.revision(seed);
   source = seed;
-  await workspace.write('task/authoring-input.json', {goal:options.goal,startUrl:options.startUrl,input:options.input,contract:options.contract,explorationProgram:options.explorationProgram,groundingExamples});
+  await workspace.write('task/authoring-input.json', {goal:options.goal,startUrl:options.startUrl,input:options.input,contract:contract,explorationProgram:options.explorationProgram,groundingExamples});
   await workspace.write('context/authoring-prompt.json', {provenance,messages});
   await workspace.write('context/tools.json', JAVASCRIPT_AUTHOR_TOOLS);
   await workspace.write('context/connectors.json', connectors.catalog);
@@ -850,7 +858,7 @@ export async function authorJavaScriptCapability(options: {
   /** Build the current source and replay every authoring example; shared by the tool loop and the budget wrap-up. */
   const acceptDraft = async (candidate: JavaScriptAuthorResult) => {
     await workspace.write('dist/program.json', candidate.program);
-    await workspace.write('dist/contract.json', options.contract);
+    await workspace.write('dist/contract.json', candidate.contract);
     await workspace.write('dist/capability.js', candidate.bundle, true);
     const {page: _page, ...receipt} = candidate.draft;
     await workspace.write('reports/author-draft.json', receipt);
@@ -875,7 +883,7 @@ export async function authorJavaScriptCapability(options: {
       if (!source) throw new Error("capability_source_missing;hint=src/capability.ts has not been written yet. Call write_file({ path: 'capability.ts', content }) with the full module first, then run_draft.");
       await options.onEvent?.({ phase: "Building", message: "building the module" });
       const bundle = await transpile(source);
-      const requiredInputPaths = Object.keys(record(record(options.contract.inputSchema).properties));
+      const requiredInputPaths = Object.keys(record(record(contract.inputSchema).properties));
       const validation = validateCapabilityJavaScriptSource(
         bundle,
         requiredInputPaths,
@@ -925,19 +933,19 @@ export async function authorJavaScriptCapability(options: {
         // Contract names, not the one exploration happened to start on.
         entry: entryPage
           ? { mode: "Navigate", url: entryPage }
-          : options.contract.scope?.kind === "site-global"
+          : contract.scope?.kind === "site-global"
             ? { mode: "CurrentPage" }
             : { mode: "Navigate", url: options.startUrl },
         stages: manifest.stages,
         parameterRoles: manifest.parameterRoles,
         targetBindings: manifest.targetBindings,
         promptProvenance: [...(options.explorationPromptProvenance || []), provenance],
-        ...(options.contract.inputAliases ? { inputAliases: options.contract.inputAliases } : {}),
+        ...(contract.inputAliases ? { inputAliases: contract.inputAliases } : {}),
         ...(validation.notes?.length ? { qualityNotes: validation.notes } : {}),
       };
       for (const note of validation.notes || []) await options.onEvent?.({ phase: "Quality", message: "quality note", payload: { code: note.code, message: note.message.slice(0, 400) } });
       await workspace.write('dist/program.json', program);
-      await workspace.write('dist/contract.json', options.contract);
+      await workspace.write('dist/contract.json', contract);
       await workspace.write('dist/capability.js', bundle, true);
       await closeDebug();
       lastDraftObservation = undefined;
@@ -979,7 +987,12 @@ export async function authorJavaScriptCapability(options: {
         // is refused now, with the reason. Issues on the Contract itself are
         // not the model's to fix and are left to the gate that already
         // reports them.
-        const quality = inspectCapabilityQuality(options.contract, program, {
+        // A draft that answered declares the capability's outputs by what it
+        // answered with; the rules below read the Contract as it will be frozen.
+        const frozen = draft.outcome === "Success" && draft.output
+          ? contractWithOutputs(contract, draft.output as JsonObject, program.stages.flatMap((stage) => stage.io?.writes?.output || []))
+          : contract;
+        const quality = inspectCapabilityQuality(frozen, program, {
           demonstrationParameters,
           validationCases: groundingExamples,
           source: bundle,
@@ -1010,12 +1023,14 @@ export async function authorJavaScriptCapability(options: {
         }
         const outputIdentityIssue = draftOutputIdentityIssue(draft.output);
         if (outputIdentityIssue) throw new Error(`draft_output_identity_invalid:${outputIdentityIssue}`);
+        contract = frozen;
+        await workspace.write('dist/contract.json', contract);
         // A Stage module can report Success while still leaving the page
         // in an intermediate state.  Draft Replay must satisfy the same
         // Contract success conditions as the later C3 replay before
         // the authoring loop accepts the source; otherwise a bad module
         // is materialized and only fails much later in the pipeline.
-        await evaluateResult(draft.page, options.goal, options.contract, draft.output, options.input, undefined, draft.observedText);
+        await evaluateResult(draft.page, options.goal, contract, draft.output, options.input, undefined, draft.observedText);
         // The demonstration is the proof of the answer as well as of the path.
         // A draft that reaches the right page and returns a number the visitor
         // was never told has not passed it: "Count quotes by tag" was proven
@@ -1026,7 +1041,7 @@ export async function authorJavaScriptCapability(options: {
           await workspace.event('replay.answer_disagrees', { ...lastCase, finding: disagreement });
           throw new Error(`draft_disagrees_with_demonstration:${describeAnswerDisagreement(disagreement, demonstrationParameters as JsonObject)}`);
         }
-        const passedDemonstration: JavaScriptAuthorResult = { source, bundle, program, draft, provenance };
+        const passedDemonstration: JavaScriptAuthorResult = { source, bundle, program, contract, draft, provenance };
         // What each run answered, to read together once all of them have.
         const answers: Array<{ input: JsonObject; output: JsonObject }> = [{ input: options.input.parameters as JsonObject, output: draft.output as JsonObject }];
         // Replay every evidence-backed grounding example before accepting
@@ -1037,7 +1052,7 @@ export async function authorJavaScriptCapability(options: {
         for (let exampleIndex = 0; exampleIndex < groundingExamples.length; exampleIndex += 1) {
           const groundingInput = {
             ...options.input,
-            parameters: resolveCapabilityInput(options.contract, { ...options.input.parameters, ...groundingExamples[exampleIndex] }).declared,
+            parameters: resolveCapabilityInput(contract, { ...options.input.parameters, ...groundingExamples[exampleIndex] }).declared,
           };
           const isolatedExample = await connectors.execution.createContext();
           try {
@@ -1062,7 +1077,7 @@ export async function authorJavaScriptCapability(options: {
               continue;
             }
             if (exampleReplay.outcome !== "Success") throw new Error(`${exampleReplay.outcome}:${exampleReplay.reason || ""}`);
-            await evaluateResult(isolatedExample.page, options.goal, options.contract, exampleReplay.output, groundingInput, undefined, exampleReplay.observedText);
+            await evaluateResult(isolatedExample.page, options.goal, contract, exampleReplay.output, groundingInput, undefined, exampleReplay.observedText);
             answers.push({ input: groundingInput.parameters as JsonObject, output: exampleReplay.output as JsonObject });
             await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example succeeded", payload: { example: exampleIndex + 1 } });
           } catch (error) {
@@ -1131,7 +1146,7 @@ export async function authorJavaScriptCapability(options: {
     } : {
       seededSource: "src/capability.ts",
       seedCheck,
-      instruction: "src/capability.ts 已按探索成功路径生成：动作阶段用 waitForTarget(探索目标) 定位、fill 写值、点击后等页面变化，它们已经在 seedCheck 里跑过一遍。只需补齐 stage_verify（读取结果页、按 outputSchema 返回 output 与 evidence），保留其余阶段原样；如果 seedCheck 在动作阶段就失败，按它给出的阶段和等待去修。",
+      instruction: "src/capability.ts 已按探索成功路径生成：动作阶段用 waitForTarget(探索目标) 定位、fill 写值、点击后等页面变化，它们已经在 seedCheck 里跑过一遍。只需补齐 stage_verify（读取结果页，返回 output 与 evidence；output 的字段就是这个能力的公开输出，按业务含义命名，契约按第一份通过的草稿冻结它们），保留其余阶段原样；如果 seedCheck 在动作阶段就失败，按它给出的阶段和等待去修。",
     }),
   });
   try {
@@ -1237,7 +1252,7 @@ export async function authorJavaScriptCapability(options: {
             code,
             error: failure.message.slice(0, 1_000),
             ...(call.function.name === "run_draft" && code === "BusinessRejection"
-              ? { contractSuccessConditions: options.contract.successConditions }
+              ? { contractSuccessConditions: contract.successConditions }
               : {}),
             repairable: !isTerminalAuthoringError(failure),
           },

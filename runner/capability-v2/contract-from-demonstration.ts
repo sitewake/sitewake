@@ -115,7 +115,9 @@ export function contractFromDemonstration(input: {
   return {
     intent: intentFromGoal(input.goal, input.parameters),
     inputSchema,
-    outputSchema: { type: "object", properties: {}, required: [], additionalProperties: false } as JsonObject,
+    // Open until a draft has answered: the quality rules read an empty,
+    // closed schema as a Contract with nothing to answer with.
+    outputSchema: { type: "object", properties: {}, required: [], additionalProperties: true } as JsonObject,
     preconditions: required.map((path) => ({ type: "inputExists", path })),
     successConditions: template ? [{ type: "urlTemplate", template }] : [],
     scope,
@@ -140,12 +142,14 @@ function outputProperty(value: JsonValue): JsonObject {
 /**
  * The Contract frozen on what the first passing draft answered with: every
  * field of its output is an output of the capability, and each one's
- * presence is a success condition.
+ * presence is a success condition. `declared` are the outputs the program's
+ * stages declare they write; a field the draft returned without declaring it
+ * (a harness can, the kernel refuses) is an output but not a required one.
  */
-export function contractWithOutputs(contract: CapabilityContract, output: JsonObject): CapabilityContract {
+export function contractWithOutputs(contract: CapabilityContract, output: JsonObject, declared?: string[]): CapabilityContract {
   const entries = Object.entries(output).filter(([, value]) => value !== undefined);
   const properties = Object.fromEntries(entries.map(([name, value]) => [name, { ...outputProperty(value), title: humanize(name) }]));
-  const required = entries.filter(([, value]) => value !== null).map(([name]) => name);
+  const required = entries.filter(([name, value]) => value !== null && (!declared || declared.includes(name))).map(([name]) => name);
   const kept = contract.successConditions.filter((condition) => !(condition && typeof condition === "object" && !Array.isArray(condition) && (condition as JsonObject).type === "outputExists"));
   return {
     ...contract,

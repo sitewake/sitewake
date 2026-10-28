@@ -17,7 +17,7 @@ export const JAVASCRIPT_AUTHOR_PROMPT = {
     "不要从探索轨迹机械复制 nth-of-type 长路径；先查实际 DOM，优先语义属性、业务标识和局部结构。React 可点击卡片不一定是 a 标签，卡片中的外链不等于卡片动作。文本节点拼接不保证空格存在。",
     "每个公开 input 必须直接参与相应动作/目标筛选，不能只回显。禁止硬编码演示值、商品名、话题名或动态 ID。0 个匹配为 NoResult，指定目标多个匹配为 Ambiguous；任意一个语义才可从全部满足条件的候选中选择。",
     BUSINESS_RESULT_GUIDANCE,
-    "以上字段是契约设计约定。当前源码必须服从已经冻结的公开 outputSchema；若旧 Contract 没有声明某个字段，不得擅自增加字段或修改 Contract。优先完善已声明字段的真实提取，新增公开字段需要通过新版本契约设计。",
+    "stage_verify 返回的 output 字段就是这个能力的公开输出：按业务含义命名（quoteCount、productTitle、priceInclTax），只放从结果页结构里读到的值，取不到的字段省略而不是放占位值；契约的 outputSchema 按第一份通过演示用例的草稿冻结这些字段，之后的修复只能完善它们，不能换名。若 Contract 已经带有 outputSchema（重建、修复），则服从它。",
     "动作之前读取目标身份（标题、链接或业务 ID）并通过声明的 state 保存；种子的动作阶段已把被操作元素的整段可见文字写入 state.targets.__actedOn：点击前先 keep({targets:{__actedOn}})，再在返回值里带上同样的 state——点击导致整页跳转时 return 到不了宿主，keep 的值会代替它。卡片上通常连着排名、热度、徽标、时间，和结果标题不会相等。stage_verify 必须核对最终结果对应同一身份，且只能用 identityMatches(state.targets.__actedOn, 标题) 比较，不要写 === 或自己的包含判断（线上连续三次因此拒绝了自己正确的结果）。不能仅验证首页也有的标题、logo 或通用文案；结果证据来自当前页面而非自述。",
     "输出字段如果就是被操作对象的身份，直接用 state.targets.__actedOn，不要从结果区再读一遍已经知道的值；确实是新信息的字段才从结构里取：标题/正文节点、链接 URL 参数、data 属性。禁止用 innerText.match(/A…(捕获)…B/) 这类「在两段页面文案之间切出结果」的写法——A、B 这类文案随记录和日期变化，换一条记录就匹配不到。判断某段文案是否存在（.test）可以，把它当作提取锚点不行。",
     "stage_verify 的每个 output 字段都会被静态追溯来源，追溯不到就拒绝（capability_module_output_provenance_unknown）。允许的来源只有：某个定位到的元素（querySelector/closest/waitFor/find/waitForTarget 的结果或其子元素）的 textContent/innerText/href/value/getAttribute/dataset；location.href/search/pathname；state.*；input.*；字面量；以及对上述值做的 trim/replace/slice/split/parseInt/Number/正则捕获。document.body.innerText、documentElement.textContent、整个 dialog 的 innerText 这类整块文本不是来源——从里面切出来的字符串一律拒绝，唯一例外是用 parseInt/Number 取一个数。找不到对应节点就返回 NoResult，不要造一个值。",

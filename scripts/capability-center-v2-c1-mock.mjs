@@ -124,6 +124,40 @@ function restoreEnvironment(snapshot) {
   }
 }
 
+/**
+ * The recording a visitor of the fixture site would have left: the query
+ * typed into the search box and submitted, ending on the results page. A
+ * generation task carries its own recording; the standalone fixture input
+ * carries only the parameters, so this stands in for it.
+ */
+function recordedSearch(task, startUrl) {
+  const origin = startUrl.replace(/\/$/u, "");
+  const query = String(task.runSpec.input.parameters.query ?? "");
+  const at = new Date().toISOString();
+  return {
+    schemaVersion: "1.0",
+    episodeId: "episode_notebook_fixture",
+    agentRunId: "run_notebook_fixture",
+    browserSessionId: "browser_notebook_fixture",
+    originalGoal: task.runSpec.goal,
+    outcome: "Success",
+    outcomeSummary: `Search results for "${query}"`,
+    answer: `Search results for "${query}"`,
+    startedAt: at,
+    endedAt: at,
+    startPage: { url: `${origin}/`, title: "Product search" },
+    // The fixture module reaches the results the way the PrestaShop-shaped
+    // original did (`controller=search&s=`); the mock site answers both.
+    endPage: { url: `${origin}/search?controller=search&s=${encodeURIComponent(query)}`, title: "Search results" },
+    actions: [{
+      action: "fill", rawAction: "input_text", input: { index: 1, text: `${query}\n` },
+      element: { tag: "input", role: "searchbox", accessibleName: "Search products", name: "query", landmark: "main" },
+      page: { url: `${origin}/`, title: "Product search" }, observedAt: at,
+    }],
+    output: {},
+  };
+}
+
 function taskInputFromGenerationTask(task, startUrl) {
   const seed = task.runSpec.input.capabilitySeed;
   return {
@@ -135,6 +169,7 @@ function taskInputFromGenerationTask(task, startUrl) {
     },
     interactions: [],
     trigger: {},
+    experience: task.runSpec.input.experience || recordedSearch(task, startUrl),
     ...(seed ? {
       candidateSummary: { name: seed.name, description: seed.description, aliases: seed.aliases },
     } : {}),
