@@ -28,12 +28,19 @@ export function compareReports(before, after) {
   for (const id of beforeItems.keys()) if (!afterItems.has(id)) changes.push({ id, kind: "gone" });
   const rates = {};
   let regressed = false;
+  // A rate that had nothing to count before (no reuse ask when nothing had
+  // published) is not compared: reuse beginning lowers the combined visitor
+  // rate while being the improvement itself, so that rate is read on first
+  // asks alone until both runs have reuse asks.
+  const reuseBegan = !before.rates.reuse.denominator && after.rates.reuse.denominator > 0;
   for (const name of ["firstAsk", "generation", "reuse", "visitor"]) {
-    const previous = ratio(before.rates[name]);
-    const current = ratio(after.rates[name]);
+    const left = name === "visitor" && reuseBegan ? before.rates.firstAsk : before.rates[name];
+    const right = name === "visitor" && reuseBegan ? after.rates.firstAsk : after.rates[name];
+    const previous = ratio(left);
+    const current = ratio(right);
     const fell = previous !== undefined && current !== undefined && current < previous;
     if (fell && !sameBuild) regressed = true;
-    rates[name] = { before: before.rates[name], after: after.rates[name], fell };
+    rates[name] = { before: before.rates[name], after: after.rates[name], fell, ...(name === "visitor" && reuseBegan ? { note: "reuse began in the later run; compared on first asks" } : {}) };
   }
   return {
     sameBuild,
@@ -55,7 +62,7 @@ export function renderComparison(result) {
     "",
     "| Rate | Before | After | |",
     "| --- | --- | --- | --- |",
-    ...Object.entries(result.rates).map(([name, value]) => `| ${name} | ${percent(value.before)} (${value.before.numerator}/${value.before.denominator}) | ${percent(value.after)} (${value.after.numerator}/${value.after.denominator}) | ${value.fell ? (result.sameBuild ? "lower this run" : "**REGRESSED**") : ""} |`),
+    ...Object.entries(result.rates).map(([name, value]) => `| ${name} | ${percent(value.before)} (${value.before.numerator}/${value.before.denominator}) | ${percent(value.after)} (${value.after.numerator}/${value.after.denominator}) | ${value.fell ? (result.sameBuild ? "lower this run" : "**REGRESSED**") : value.note || ""} |`),
     "",
   ];
   const list = (title, items, describe) => { if (items.length) lines.push(`## ${title}`, "", ...items.map(describe), ""); };

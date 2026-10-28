@@ -51,6 +51,12 @@ test("comparing two builds names regressions and fixes; the same build twice nam
   assert.deepEqual(across.regressions.map((change) => change.id), ["a#reuse"]);
   assert.equal(across.regressed, true, "the reuse rate fell");
   assert.equal(across.rates.firstAsk.fell, false);
+  // Reuse asks appear only once something has published: the combined
+  // visitor rate is then read on first asks, and a failed reuse is not a fall.
+  const noReuseBefore = buildReport(run({ runId: "r0", build: "abc", records: records.filter((record) => record.phase !== "reuse") }));
+  const reuseBegan = compareReports(noReuseBefore, buildReport(run({ runId: "r4", build: "def", records: records.map((record) => (record.phase === "reuse" ? { ...record, pass: false, fact: { status: "completed", capabilityUsed: true } } : record)) })));
+  assert.equal(reuseBegan.rates.visitor.fell, false);
+  assert.equal(reuseBegan.regressed, false, "reuse beginning is the improvement, not a fall");
   const rerun = compareReports(before, buildReport(run({ runId: "r3", build: "abc", records: afterRecords })));
   assert.equal(rerun.sameBuild, true);
   assert.deepEqual(rerun.unstable.map((change) => change.id).sort(), ["a#reuse", "b#first"]);
