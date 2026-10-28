@@ -34,7 +34,11 @@ export function classify(record) {
   if (record.harness) return { failureClass: "harness", stage: record.phase };
   if (record.phase === "generation") {
     const generation = record.generation || {};
-    if (generation.state === "not-generated") return { failureClass: "pipeline-contradiction", stage: "experience.intake", note: "a successful run with page actions produced no generation task" };
+    if (generation.state === "not-generated") {
+      const intake = generation.intake;
+      const stopped = intake?.lastError || intake?.reason;
+      return { failureClass: "pipeline-contradiction", stage: "experience.intake", note: stopped ? `the intake stopped on ${stopped}${intake.attempts ? ` (${intake.attempts} attempts)` : ""}` : intake?.status === "none" ? "the run's experience never reached the intake" : "a successful run with page actions produced no generation task" };
+    }
     if (generation.state === "timed-out") return { failureClass: "timeout", stage: `${generation.phase || "pipeline"}` };
     // The console attributed the task when it failed; that is the class.
     if (generation.failureClass && generation.failureClass !== "unclassified") return { failureClass: generation.failureClass, stage: generation.failureStage ? `generation.${String(generation.failureStage).toLowerCase()}` : "generation" };

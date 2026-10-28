@@ -26,7 +26,22 @@ export async function listTasks(client) {
  * state, or `not-generated` when no task named the run in time, or
  * `timed-out` when the pipeline did not finish in time.
  */
-export async function followGeneration(client, { runId, appearTimeoutMs = 3 * 60_000, finishTimeoutMs = 20 * 60_000, onEvent } = {}) {
+/**
+ * What the console's intake made of the run's experience: the outbox item
+ * that should have become the generation task, with the error it last
+ * stopped on. A run that produced no task in time is explained here — the
+ * intake was retrying `capability_experience_authority_rejected` for hours
+ * on a run whose id the redaction had mangled — or not at all.
+ */
+export async function intakeOf(client, siteId, runId) {
+  if (!siteId) return {};
+  const payload = await client.json(`/api/admin/capability-v2/experiences?siteId=${encodeURIComponent(siteId)}&runId=${encodeURIComponent(runId)}`).catch(() => ({}));
+  const item = (payload.intakes || []).find((intake) => intake.runId === runId) || (payload.intakes || [])[0];
+  if (!item) return { intake: { status: "none" } };
+  return { intake: { status: item.status, attempts: item.attempts, lastError: item.lastError, disposition: item.disposition, reason: item.reason, taskId: item.taskId } };
+}
+
+export async function followGeneration(client, { runId, siteId, appearTimeoutMs = 3 * 60_000, finishTimeoutMs = 20 * 60_000, onEvent } = {}) {
   const started = Date.now();
   let generation;
   while (!generation && Date.now() - started < appearTimeoutMs) {
@@ -34,7 +49,7 @@ export async function followGeneration(client, { runId, appearTimeoutMs = 3 * 60
     generation = tasks.find((task) => task.type === "Discovery" && task.sourceAgentRunId === runId);
     if (!generation) await sleep(10_000);
   }
-  if (!generation) return { state: "not-generated", elapsedMs: Date.now() - started };
+  if (!generation) return { state: "not-generated", elapsedMs: Date.now() - started, ...(await intakeOf(client, siteId, runId)) };
   onEvent?.(`generation task ${generation.id.slice(0, 8)} for run ${runId.slice(0, 12)}`);
   let last = "";
   let progress = {};

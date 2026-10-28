@@ -132,13 +132,14 @@ try {
       if (flags["no-generation"] || !first.pass || !first.runId || !hadPageActions(first.fact)) continue;
       const generationRecord = { taskId: task.id, site: site.slug, phase: "generation", pass: false, runId: first.runId, repro: first.repro };
       records.push(generationRecord); save();
-      follows.push({ task, record: generationRecord, promise: followGeneration(admin, { runId: first.runId, finishTimeoutMs: generationTimeoutMs, onEvent: (line) => log(`   ⟳ ${task.id}: ${line}`) }) });
+      follows.push({ task, record: generationRecord, promise: followGeneration(admin, { runId: first.runId, siteId: site.id, finishTimeoutMs: generationTimeoutMs, onEvent: (line) => log(`   ⟳ ${task.id}: ${line}`) }) });
     }
     for (const follow of follows) {
       const generation = await follow.promise.catch((error) => ({ state: "error", message: error.message }));
       follow.record.generation = generation;
       follow.record.pass = /^(Published|AlreadyPublished)$/i.test(generation.state || "");
-      follow.record.detail = follow.record.pass ? `published capability ${generation.capabilityId || ""}` : `${generation.state}${generation.code ? ` ${generation.code}` : ""}${generation.message ? `: ${String(generation.message).slice(0, 200)}` : ""}`;
+      const intake = generation.intake ? ` (intake ${generation.intake.status}${generation.intake.attempts ? ` ×${generation.intake.attempts}` : ""}${generation.intake.lastError ? `: ${generation.intake.lastError}` : generation.intake.reason ? `: ${generation.intake.reason}` : ""})` : "";
+      follow.record.detail = follow.record.pass ? `published capability ${generation.capabilityId || ""}` : `${generation.state}${generation.code ? ` ${generation.code}` : ""}${generation.message ? `: ${String(generation.message).slice(0, 200)}` : ""}${intake}`;
       log(`${follow.record.pass ? "✓" : "✗"} ${follow.task.id} [generation] ${follow.record.detail} (${Math.round((generation.elapsedMs || 0) / 1000)}s)`);
       save();
     }
