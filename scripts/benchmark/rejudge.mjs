@@ -24,9 +24,13 @@ for (const runId of flags._) {
   const results = JSON.parse(readFileSync(resultsPath, "utf8"));
   let rejudged = 0;
   let dropped = 0;
+  // A first ask a published capability served owed no generation; its
+  // "not generated" record is the benchmark's error, not the module's.
+  const servedByCapability = new Set(results.records.filter((record) => record.phase === "first" && record.fact?.capabilityUsed).map((record) => record.taskId));
   const records = results.records.flatMap((record) => {
     const task = tasks.get(record.taskId);
     if (!task) { dropped += 1; return []; }
+    if (record.phase === "generation" && servedByCapability.has(record.taskId) && record.generation?.state === "not-generated") { dropped += 1; return []; }
     if (record.harness || record.phase === "generation") return [record];
     const expect = record.phase === "reuse" ? task.reuse?.expect : task.expect;
     if (!expect || expect.type === "site-state" || typeof record.drive?.answer !== "string") return [record];

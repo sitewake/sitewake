@@ -85,6 +85,60 @@ a validation that produced no result for `ps-open-detail-price`. The last two
 are the next class: validation cases drawn from page text that is not a value
 of the input's kind.
 
+## Iteration 1, second step — build `d38922de`, run `2026-10-28T08-52-20`
+
+The detail-transition guard demoted from an ended run to a note on the stage
+receipt (it had ended three generations in the first step because the
+authoring manifest marks every clicking stage as a write), and the five
+demo-shaped authoring hints replaced by one site-neutral hint.
+
+| Rate | Baseline run 2 (v2) | Iteration 1 (`9faf423f`) | Second step (`d38922de`) |
+| --- | --- | --- | --- |
+| First ask | 15 / 18 (83.3%) | 15 / 18 (83.3%) | 16 / 18 (88.9%) |
+| Generation published | 0 / 14 (0%) | 3 / 12 (25%) | 2 / 9 (22.2%) |
+| Reuse | 0 / 0 | 1 / 2 (50%) | 0 / 2 (0%) |
+| Failures by class | contradiction 3 · budget 6 · site 5 | gate-false-reject 4 · navigation-lost 3 · timeout 3 · wrong-answer 3 | gate-false-reject 5 · wrong-answer 3 · site-changed 2 · contradiction 1 |
+
+Against the baseline no rate fell, `pipeline-contradiction` went 3 → 1 and
+`navigation-lost` stayed at 0 (3 → 0 against iteration 1). Against iteration 1
+the compare flags generation and reuse as lower; read task by task, two
+generations flipped to published (`ps-add-cushion`, which the first step ended
+on a wait that never settled; `quotes-tag-count`, which it ended on the
+guard), none flipped to failed, and the three the first step had published
+were never attempted: the run began with those capabilities still live, so
+their first asks were answered through them and left no demonstration. Those
+three records are left out of the generation denominator (the `report.v2`
+beside the run is the re-judged one), and from this commit on a run disables
+the live capabilities of its sites before it starts. `gate-false-reject` did
+not fall (4 → 5): the three guard refusals are gone and five different
+refusals took their place (below), so the second step does not meet its own
+bar on that class.
+
+**Reuse 0 / 2 — both published programs ran and returned a wrong result.**
+"Count quotes by tag" asked for `life` answered 3 quotes on 3 pages (the tag
+has 13 on 2 pages); "Add product to cart" asked for the Mountain fox cushion
+walked nine pages and ended with "cart has no row matching". Both had passed
+validation, which checked that a result of the right shape came back, not
+that it was the page's own count or the cart's own row. That is a class of
+its own: a read capability's validation never compares the program's number
+with the count the page states.
+
+**What ended the seven generations**, from the console's records:
+
+| Cause | Attempts | Class |
+| --- | --- | --- |
+| `draft_business_outcome` — the draft reached the right category page (`…/poetry_23/`) and its own verify stage then declared "category page does not match the requested category"; three attempts, the same code each time (`books-count-poetry`, `books-most-expensive-travel`) | 2 | gate-false-reject |
+| `capability_module_target_first_candidate_forbidden` — the module check forbidding "first similar candidate" target resolution rejected every attempt; before it, the contract step had refused the demonstration's end on the product page as "completion evidence missing" because the address did not carry `action` (`ps-add-mug-quantity`) | 1 | gate-false-reject |
+| `capability_control_flow_timeout` at the verify stage waiting for quote cards on an author page that has none, then `required_input_does_not_parameterize`, then the budget (`quotes-by-author`) | 1 | gate-false-reject |
+| review `Rejected` (`books-cheapest-travel-zh`) | 1 | gate-false-reject |
+| `page_changed` ← `locator_not_found:step_1` — the replay could not find the demonstration's first element (`books-cheapest-travel`) | 1 | site-changed |
+| `target_ambiguous:step_1:scope` (`ps-open-detail-price`) | 1 | site-changed |
+| no run record for a first ask the page agent answered (`ps-search-count`), so no generation could be followed | 1 | pipeline-contradiction |
+
+**First-ask failures:** `ps-search-count` (the count missing from the
+reply), `ps-add-notebook-zh` (the agent added twice — two cart rows where the
+task expects one; unstable since the baseline).
+
 ## Live demo, 2026-10-22 → 2026-10-27 (for comparison)
 
 Not a benchmark run: the demo console's own records over the days the fixes

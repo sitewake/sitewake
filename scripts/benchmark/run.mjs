@@ -3,7 +3,7 @@
 // never two asks on one site at once. Writes the report under
 // .artifacts/benchmark/runs/<id>/.
 //
-//   npm run benchmark -- [--site <slug>] [--task <id>] [--quick] [--limit <s>] [--generation-timeout <min>] [--no-reuse] [--no-generation]
+//   npm run benchmark -- [--site <slug>] [--task <id>] [--quick] [--limit <s>] [--generation-timeout <min>] [--no-reuse] [--no-generation] [--keep-capabilities]
 //
 // From the host this re-runs itself inside the stack's driver container, where
 // the sites and the console have their network names; BENCH_DRIVER=host runs
@@ -74,8 +74,9 @@ async function runFact(siteId, visitorRunId) {
 // demonstration to learn from; only a completed run with page actions is
 // expected to generate.
 // Only a successful run that moved through the site leaves an Experience to
-// generate from; a one-page answer, a no-result or a failure does not.
-const hadPageActions = (fact) => Boolean(fact && fact.status === "completed" && fact.outcomeStatus === "success" && (fact.pageCount ?? 0) > 1);
+// generate from; a one-page answer, a no-result or a failure does not, and
+// neither does a run a published capability already served.
+const hadPageActions = (fact) => Boolean(fact && fact.status === "completed" && fact.outcomeStatus === "success" && (fact.pageCount ?? 0) > 1 && !fact.capabilityUsed);
 
 async function ask(browser, site, task, phase) {
   const spec = phase === "reuse" ? task.reuse : task;
@@ -106,11 +107,23 @@ async function ask(browser, site, task, phase) {
   }
 }
 
+// The stack keeps its capabilities between runs, so a run would otherwise be
+// answered by what the run before it published and generate nothing. Each run
+// starts from no live capability on its sites unless told to keep them.
+async function disableLiveCapabilities(admin, site) {
+  const payload = await admin.json("/api/admin/capability-v2/capabilities").catch(() => ({}));
+  const live = (payload.capabilities || []).filter((capability) => capability.status === "Active");
+  for (const capability of live) await admin.request(`/api/admin/capability-v2/capabilities/${encodeURIComponent(capability.id)}/disable`, { method: "POST", body: {} }).catch(() => undefined);
+  if (live.length) log(`   ${site.slug}: ${live.length} live capabilit${live.length === 1 ? "y" : "ies"} from earlier runs disabled`);
+  return live.length;
+}
+
 const browser = await launchBrowser();
 try {
   for (const set of plan) {
     const site = set.site;
     const admin = adminClient(site.id, state.consoleCookie || "");
+    if (!flags["keep-capabilities"]) notes.push(`${site.slug}: ${await disableLiveCapabilities(admin, site)} earlier capability(ies) disabled before the run`);
     log(`── ${site.slug} (${siteBaseUrl(site)}) — ${set.tasks.length} task(s)`);
     const follows = [];
     for (const task of set.tasks) {
