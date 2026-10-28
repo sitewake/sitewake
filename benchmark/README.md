@@ -78,6 +78,15 @@ Each site is a directory under `benchmark/sites/<slug>/`:
 - `node scripts/benchmark/tasks.mjs --validate` checks every file and names
   the field that is wrong.
 
+## Task set history
+
+- **v2** — saucedemo retired: its shop sits entirely behind a login the page
+  agent will not type credentials for, so its tasks measured that policy.
+  Books, quotes and PrestaShop remain; the v2 baseline is runs 1–2 of v1 with
+  saucedemo's asks left out (no task changed otherwise).
+- **v1** — books, quotes, saucedemo, PrestaShop; the demo shop registered but
+  unconfigured.
+
 ## Versioning
 
 `benchmark/VERSION` names the task set. Changing a task's goal or expectation,

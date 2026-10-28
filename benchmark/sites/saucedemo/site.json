@@ -2,6 +2,8 @@
   "id": "bench-saucedemo",
   "name": "Swag Labs (benchmark mirror)",
   "kind": "mirror",
+  "configured": false,
+  "note": "Retired in task set v2: every page of the shop sits behind a login, and the page agent will not type credentials, even the demo ones printed on the page. It measured that policy, not the capability module.",
   "internalUrl": "http://saucedemo.bench:8103/",
   "hostUrl": "http://localhost:8103/",
   "mirror": {
@@ -9,6 +11,8 @@
     "marker": "Swag Labs"
   },
   "crawl": {
-    "limits": { "maxRenders": 20 }
+    "limits": {
+      "maxRenders": 20
+    }
   }
 }
