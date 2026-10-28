@@ -21,10 +21,20 @@ export function numbersIn(text) {
 }
 
 /** The ways a fact may be written in a reply: as given, and without a trailing parenthetical such as a series name. */
+// A title is stated by its own words: a reply may leave off the series in
+// parentheses, and the subtitle after a colon — "The Road to Little
+// Dribbling" for "The Road to Little Dribbling: Adventures of an American in
+// Britain (Notes From a Small Island #2)" — as the page itself does when it
+// cuts the title short. A main title of fewer than three words proves
+// nothing on its own and is not a variant.
 export function factVariants(fact) {
   const text = String(fact);
+  const variants = [text];
   const trimmed = text.replace(/\s*\([^()]*\)\s*$/, "").trim();
-  return trimmed && trimmed !== text && trimmed.length >= 8 ? [text, trimmed] : [text];
+  if (trimmed && trimmed !== text && trimmed.length >= 8) variants.push(trimmed);
+  const main = trimmed.split(/\s*[:：]\s+/)[0].trim();
+  if (main && main !== trimmed && main.split(/\s+/).length >= 3) variants.push(main);
+  return variants;
 }
 
 /** Every fact appears in the reply. */
