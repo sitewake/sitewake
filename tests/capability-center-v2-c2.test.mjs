@@ -295,6 +295,8 @@ test("C2 requires one case to omit each optional defaulted input", async () => {
       },
     ],
   });
+  // C2's own invariant over the suite it derives, not the quality rule of the
+  // same name: a suite without the omission case is a C2 defect.
   assert.throws(
     () => compileCapabilityCaseGeneration(input, model, discovery),
     /default_omission_validation_required:limit/,

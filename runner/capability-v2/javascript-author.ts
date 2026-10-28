@@ -10,6 +10,7 @@ import type { BrowserContext, Page } from "playwright";
 import { getModelConfig } from "../../lib/model-config";
 import {
   CAPABILITY_V2_MAX_MODULE_BYTES,
+  type CapabilityQualityNote,
   inspectCapabilityJavaScriptProgram,
   validateCapabilityJavaScriptSource,
 } from "../../lib/capability-center-v2/javascript-runtime";
@@ -41,7 +42,7 @@ import { JAVASCRIPT_AUTHOR_PROMPT, JAVASCRIPT_AUTHOR_TOOLS } from "./prompts/jav
 import { parseAndValidateToolArguments, requestToolCallingTurn, type ToolCallingMessage, type ToolDefinition } from "./tool-calling";
 import { isTerminalAuthoringError } from "./module-delivery";
 import { inspectCapabilityQuality, type CapabilityQualityReport } from "../../lib/capability-center-v2/quality";
-import { assertContractConsistent } from "../../lib/capability-center-v2/contract-consistency";
+import { inspectContractConsistency } from "../../lib/capability-center-v2/contract-consistency";
 import { capabilityEntryPage } from "../../lib/capability-center-v2/entry-page";
 
 export type JavaScriptAuthorResult = {
@@ -757,9 +758,11 @@ export async function authorJavaScriptCapability(options: {
   };
   const manifest = authoringManifest(options.explorationProgram, contract, addressOptions);
   if (!manifest.stages.length) throw new Error("javascript_author_stage_manifest_empty");
-  // The Contract and the Stage I/O it implies must agree before any budget is
-  // spent: a predicate on a field no Stage may write is unrepairable by code.
-  assertContractConsistent(contract, manifest.stages);
+  // What the Contract and the Stage I/O it implies disagree on is recorded
+  // with the version; the Contract is the demonstration's and the outputs are
+  // frozen from the first passing draft, so nothing here is the model's to fix.
+  const contractNotes: CapabilityQualityNote[] = inspectContractConsistency(contract, manifest.stages).map(({ code, message }) => ({ code, message }));
+  for (const note of contractNotes) await options.onEvent?.({ phase: "Quality", message: "quality note", payload: { code: note.code, message: note.message.slice(0, 400) } });
   // The invariant every gate in this file serves: a draft the post-loop
   // quality gate would refuse is refused before or inside the loop, never
   // after it. Rules about the program run inside run_draft, where the model
@@ -962,7 +965,6 @@ export async function authorJavaScriptCapability(options: {
         targetBindings: manifest.targetBindings,
         promptProvenance: [...(options.explorationPromptProvenance || []), provenance],
         ...(contract.inputAliases ? { inputAliases: contract.inputAliases } : {}),
-        ...(validation.notes?.length ? { qualityNotes: validation.notes } : {}),
       };
       for (const note of validation.notes || []) await options.onEvent?.({ phase: "Quality", message: "quality note", payload: { code: note.code, message: note.message.slice(0, 400) } });
       await workspace.write('dist/program.json', program);
@@ -1024,6 +1026,11 @@ export async function authorJavaScriptCapability(options: {
           const issue = repairable[0];
           throw new Error(`capability_quality_rejected:${issue.code}${issue.path ? `@${issue.path}` : ""}:${issue.message};hint=${qualityRepairHint(issue)}`);
         }
+        // Every finding of a demoted check, from the Contract, the source and
+        // the program: kept with the version, blocking nothing.
+        const qualityNotes = [...contractNotes, ...(validation.notes || []), ...quality.notes.map(({ code, message }) => ({ code, message }))];
+        for (const note of quality.notes) await options.onEvent?.({ phase: "Quality", message: "quality note", payload: { code: note.code, message: note.message.slice(0, 400) } });
+        if (qualityNotes.length) program = { ...program, qualityNotes };
         if (draft.outcome !== "Success") {
           // Show the model every stage's result. With only the last four lifecycle
           // rows it concluded "only stage_2 and stage_verify ran", treated the

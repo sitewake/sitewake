@@ -611,42 +611,23 @@ test("repair budget exhaustion retains the last root cause", async () => {
   );
 });
 
-test("a Contract whose predicate no Stage may write is rejected before the first model call", async () => {
-  const requests = [];
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (_url, init) => { requests.push(init); throw new Error("model must not be called"); };
-  let stageCalls = 0;
-  globalThis.__CAPABILITY_V2_AUTHOR_STAGE_RUN__ = async () => { stageCalls += 1; throw new Error("stage must not run"); };
-  try {
-    await assert.rejects(
-      () => author.authorJavaScriptCapability({
-        explorationPage: {},
-        startUrl: "https://target.test/start",
-        goal: "search",
-        input: { parameters: { query: "cushion" }, context: {} },
-        contract: {
-          inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
-          outputSchema: { type: "object", properties: { targetTitle: { type: "string" } }, required: ["targetTitle"], additionalProperties: false },
-          // The exploration envelope key that hardening once copied into the Contract.
-          successConditions: [{ type: "outputExists", path: "pageUrl" }],
-        },
-        explorationProgram: { schemaVersion: "2.0", runtime: "BrowserDSL", entry: { mode: "Navigate", url: "https://target.test/start" }, steps: [], promptProvenance: [] },
-        groundingExamples: [],
-        createDraftContext: async () => ({ context: { close: async () => undefined }, page: { goto: async () => undefined } }),
-        persistModule: async () => ({ contentHash: "a".repeat(64), moduleUrl: "/m", exportName: "capability" }),
-        absoluteModuleUrl: (moduleUrl) => moduleUrl,
-      }),
-      (error) => {
-        assert.equal(error.code, "capability_contract_inconsistent");
-        assert.match(error.message, /condition_output_undeclared@contract\.successConditions\.0/);
-        return true;
-      },
-    );
-    assert.equal(requests.length, 0, "no model call was spent");
-    assert.equal(stageCalls, 0, "no draft was replayed");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+test("a Contract whose predicate no Stage may write is recorded as a note; authoring proceeds", async () => {
+  // The pageUrl contradiction (2026-09-20) used to be refused before the first
+  // model call. The Contract is the demonstration's now and its outputs are
+  // frozen from the draft, so the finding is kept with the version instead.
+  const turns = [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")];
+  const completed = await runAuthor({
+    turns,
+    stageRun: async () => successfulDraft(),
+    contract: {
+      outputSchema: { type: "object", properties: { targetTitle: { type: "string" } }, required: ["targetTitle"], additionalProperties: false },
+      // The exploration envelope key that hardening once copied into the
+      // Contract, beside a condition the replay can evaluate on its own.
+      successConditions: [{ type: "textTemplate", template: "{{query}}" }, { type: "outputExists", path: "pageUrl" }],
+    },
+  });
+  assert.equal(completed.result.draft.outcome, "Success");
+  assert.ok(completed.result.program.qualityNotes.some((note) => note.code === "condition_output_undeclared"), JSON.stringify(completed.result.program.qualityNotes));
 });
 
 test("the same draft failure twice in a row stops the loop instead of spending the rest of the budget", async () => {
@@ -920,46 +901,29 @@ test("a model that stops calling tools right after write_file still gets that dr
   assert.equal(completed.stageCalls, 1);
 });
 
-test("a manifest the post-loop gate would refuse comes back to the model while it can still repair", async () => {
-  // 查看指定日期微博热搜榜: authored, replayed, frozen, then refused after the loop
-  // for stage_io_state_read_unavailable — its verify stage declared it reads
-  // state.targets and nothing produced it. The model never heard about it.
+test("a manifest finding of a demoted check is a note on the program; the draft is accepted on its first replay", async () => {
+  // 查看指定日期微博热搜榜: refused after the loop for stage_io_state_read_unavailable
+  // — its verify stage declared it reads state.targets and nothing produced
+  // it — and later refused inside the loop. The check has no recorded defect
+  // behind it (benchmark/GATES.md); the replays decide, and the finding is kept.
   const verify = { id: "stage_verify", title: "verify", purpose: "verify", effect: "read", resumePolicy: "skip-completed", navigation: "none" };
   const unproduced = [{ ...verify, io: { reads: { input: ["query"], state: ["targets"] }, writes: { state: [], output: ["ok"] } } }];
-  const produced = [{ ...verify, io: { reads: { input: ["query"], state: [] }, writes: { state: [], output: ["ok"] } } }];
-  const turns = [
-    toolTurn(1, "write_file", { path: "capability.ts", content: source }),
-    toolTurn(2, "run_draft"),
-    toolTurn(3, "write_file", { path: "capability.ts", content: `${source}\n// corrected` }),
-    toolTurn(4, "run_draft"),
-  ];
-  const completed = await runAuthor({
-    turns,
-    stageRun: async (_options, attempt) => ({ ...successfulDraft(), stageManifest: attempt === 1 ? unproduced : produced }),
-  });
+  const turns = [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")];
+  const completed = await runAuthor({ turns, stageRun: async () => ({ ...successfulDraft(), stageManifest: unproduced }) });
   assert.equal(completed.result.draft.outcome, "Success");
-  assert.equal(completed.stageCalls, 2);
-  const feedback = JSON.parse(completed.requests[2].messages.findLast((message) => message.role === "tool").content);
-  assert.equal(feedback.ok, false);
-  assert.equal(feedback.code, "capability_quality_rejected");
-  assert.equal(feedback.repairable, true, "the manifest is the model's to fix");
-  assert.match(feedback.error, /stage_io_state_read_unavailable/);
-  assert.match(feedback.error, /REPAIR REQUIRED/);
-  assert.match(feedback.error, /writes\.state/);
-  assert.match(feedback.error, /no acted-on identity/);
+  assert.equal(completed.stageCalls, 1);
+  assert.ok(completed.result.program.qualityNotes.some((note) => note.code === "stage_io_state_read_unavailable"), JSON.stringify(completed.result.program.qualityNotes));
 });
 
 /**
- * The invariant, stated as tests that do not name one rule: whatever rule a
- * program-path issue trips, it comes back to the model inside the loop; and
- * whatever rule a Contract-path issue trips, it is refused before a model
- * call is spent. Adding a rule to the quality gate cannot reopen the
- * "refused after the loop it just passed" failure without failing these.
+ * Whatever demoted rule a program-path finding trips, it is a note on the
+ * program and the draft is accepted on its first replay; a rule that blocks
+ * does so only with a recorded defect behind it (benchmark/GATES.md).
  */
 const verifyStage = { id: "stage_verify", title: "verify", purpose: "verify", effect: "read", resumePolicy: "skip-completed", navigation: "none" };
 const cleanVerify = { ...verifyStage, io: { reads: { input: ["query"], state: [] }, writes: { state: [], output: ["ok"] } } };
 
-test("every program-path quality rule comes back to the model inside the loop, whichever rule it is", async () => {
+test("every program-path finding of a demoted check is a note, whichever rule it is", async () => {
   const drafts = {
     stage_io_state_read_unavailable: [{ ...verifyStage, io: { reads: { input: ["query"], state: ["targets"] }, writes: { state: [], output: ["ok"] } } }],
     stage_io_output_undeclared: [{ ...verifyStage, io: { reads: { input: ["query"], state: [] }, writes: { state: [], output: ["ok", "invented"] } } }],
@@ -970,23 +934,11 @@ test("every program-path quality rule comes back to the model inside the loop, w
     ],
   };
   for (const [code, manifest] of Object.entries(drafts)) {
-    const turns = [
-      toolTurn(1, "write_file", { path: "capability.ts", content: source }),
-      toolTurn(2, "run_draft"),
-      toolTurn(3, "write_file", { path: "capability.ts", content: `${source}\n// corrected` }),
-      toolTurn(4, "run_draft"),
-    ];
-    const completed = await runAuthor({
-      turns,
-      stageRun: async (_options, attempt) => ({ ...successfulDraft(), stageManifest: attempt === 1 ? manifest : [cleanVerify] }),
-    });
-    assert.equal(completed.result.draft.outcome, "Success", `${code}: a corrected draft succeeds`);
-    const feedback = JSON.parse(completed.requests[2].messages.findLast((message) => message.role === "tool").content);
-    assert.equal(feedback.ok, false, `${code}: refused`);
-    assert.equal(feedback.code, "capability_quality_rejected", `${code}: as a quality refusal`);
-    assert.equal(feedback.repairable, true, `${code}: repairable inside the loop`);
-    assert.match(feedback.error, new RegExp(code), `${code}: names the rule`);
-    assert.match(feedback.error, /REPAIR REQUIRED/, `${code}: says what to change`);
+    const turns = [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")];
+    const completed = await runAuthor({ turns, stageRun: async () => ({ ...successfulDraft(), stageManifest: manifest }) });
+    assert.equal(completed.result.draft.outcome, "Success", `${code}: accepted`);
+    assert.equal(completed.stageCalls, 1, `${code}: on the first replay`);
+    assert.ok(completed.result.program.qualityNotes.some((note) => note.code === code), `${code}: recorded as a note`);
   }
 });
 
@@ -1072,72 +1024,31 @@ test("a module whose stages differ from the manifest is told what the manifest f
   assert.match(hint, /cannot be added, removed, renamed or reordered/);
 });
 
-test("an input that selects the page must be navigated: refused inside the loop with the repair, and a navigating draft passes", async () => {
+test("an input that selects the page and is never navigated to is a note on the program", async () => {
   // A by-date archive was demonstrated on `/daily/2026-03-11` with a single
-  // verify stage and no navigation; it read that page for every date and was
-  // caught only by the third independent case, three stages later. The
-  // demonstration value is part of the address the draft starts on, so the
-  // gate holds the draft to navigating — inside the loop, where it is repaired.
-  const navigate = { id: "stage_open", title: "open", purpose: "open the page for the input", effect: "read", resumePolicy: "skip-completed", navigation: "required", io: { reads: { input: ["query"], state: [] }, writes: { state: [], output: [] } } };
-  const turns = [
-    toolTurn(1, "write_file", { path: "capability.ts", content: source }),
-    toolTurn(2, "run_draft"),
-    toolTurn(3, "write_file", { path: "capability.ts", content: `${source}
-// navigates` }),
-    toolTurn(4, "run_draft"),
-  ];
+  // verify stage and no navigation; it read that page for every date. The
+  // replays on the values the site offers beside the demonstrated one are
+  // what catch that now; the static finding is kept with the version.
+  const turns = [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")];
   const completed = await runAuthor({
     turns,
     startUrl: "https://target.test/search/cushion",
-    stageRun: async (_options, attempt) => ({ ...successfulDraft(), stageManifest: attempt === 1 ? [cleanVerify] : [navigate, cleanVerify] }),
+    stageRun: async () => ({ ...successfulDraft(), stageManifest: [cleanVerify] }),
   });
   assert.equal(completed.result.draft.outcome, "Success");
-  const feedback = JSON.parse(completed.requests[2].messages.findLast((message) => message.role === "tool").content);
-  assert.equal(feedback.ok, false);
-  assert.equal(feedback.code, "capability_quality_rejected");
-  assert.equal(feedback.repairable, true);
-  assert.match(feedback.error, /page_selecting_input_not_navigated/);
-  assert.match(feedback.error, /REPAIR REQUIRED: input 'query' selects which page to read/);
-  assert.match(feedback.error, /navigation "required"/);
+  assert.ok(completed.result.program.qualityNotes.some((note) => note.code === "page_selecting_input_not_navigated"), JSON.stringify(completed.result.program.qualityNotes));
 });
 
-test("a Contract-path quality rule is refused before the first model call, not after the loop", async () => {
-  const requests = [];
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (_url, init) => { requests.push(init); throw new Error("model must not be called"); };
-  let stageCalls = 0;
-  globalThis.__CAPABILITY_V2_AUTHOR_STAGE_RUN__ = async () => { stageCalls += 1; throw new Error("stage must not run"); };
-  try {
-    await assert.rejects(
-      () => author.authorJavaScriptCapability({
-        explorationPage: {},
-        startUrl: "https://target.test/start",
-        goal: "search",
-        input: { parameters: { query: "cushion" }, context: {} },
-        contract: {
-          // A default on a required input: a Contract defect only the quality gate names.
-          inputSchema: { type: "object", properties: { query: { type: "string", default: "cushion" } }, required: ["query"] },
-          outputSchema: { type: "object", properties: { ok: { type: "boolean" } } },
-          preconditions: [],
-          successConditions: ["search completed", { type: "textTemplate", template: "{{query}}" }],
-        },
-        explorationProgram: { schemaVersion: "2.0", runtime: "BrowserDSL", entry: { mode: "Navigate", url: "https://target.test/start" }, steps: [], promptProvenance: [] },
-        groundingExamples: [],
-        createDraftContext: async () => ({ context: { close: async () => undefined }, page: { goto: async () => undefined } }),
-        persistModule: async () => ({ contentHash: "a".repeat(64), moduleUrl: "/m", exportName: "capability" }),
-        absoluteModuleUrl: (moduleUrl) => moduleUrl,
-      }),
-      (error) => {
-        assert.equal(error.code, "capability_quality_rejected");
-        assert.match(error.message, /default_input_must_be_optional@contract\.inputSchema/);
-        return true;
-      },
-    );
-    assert.equal(requests.length, 0, "no model call was spent");
-    assert.equal(stageCalls, 0, "no draft was replayed");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+test("a Contract-path finding of a demoted check is a note; authoring proceeds", async () => {
+  // A default on a required input: a Contract defect only the quality gate names.
+  const turns = [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")];
+  const completed = await runAuthor({
+    turns,
+    stageRun: async () => successfulDraft(),
+    contract: { inputSchema: { type: "object", properties: { query: { type: "string", default: "cushion" } }, required: ["query"] } },
+  });
+  assert.equal(completed.result.draft.outcome, "Success");
+  assert.ok(completed.result.program.qualityNotes.some((note) => note.code === "default_input_must_be_optional"), JSON.stringify(completed.result.program.qualityNotes));
 });
 
 test("the capability states how the address writes an input, and the caller writes it that way", () => {

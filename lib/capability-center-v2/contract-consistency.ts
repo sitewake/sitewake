@@ -1,19 +1,30 @@
 import type { CapabilityContract, CapabilityStageManifest, JsonValue } from "./model";
 
 /**
- * A Contract is frozen by several independently written rule sets: the model
- * designs it, evidence alignment prunes it, hardening adds predicates, the
- * authoring manifest derives Stage I/O from it. Each rule is locally sound;
- * together they can still demand something no Stage may deliver, and then the
- * authoring loop burns its whole repair budget on a contradiction the model
- * cannot resolve (seen in production: `outputExists pageUrl` against an
- * outputSchema of `{targetTitle, targetUrl}`).
- *
- * This module states the invariants every frozen Contract must satisfy and is
- * consulted at each boundary that could break them: when the Contract is
- * assembled, before authoring spends a model call, and in the quality gate.
+ * The invariants a frozen Contract and the Stage I/O derived from it should
+ * satisfy. A model used to design the Contract, and several rule sets then
+ * pruned and hardened it; together they could demand something no Stage may
+ * deliver (seen in production: `outputExists pageUrl` against an outputSchema
+ * of `{targetTitle, targetUrl}`), and authoring burned its budget on it. The
+ * Contract is now stated by the demonstration and frozen on what the first
+ * passing draft answered, so the contradiction has no author left; the
+ * invariants are still inspected, and what they find is a note on the version.
  */
 export type ContractConsistencyIssue = { code: string; path: string; message: string };
+
+/**
+ * Every code this inspector reports. None blocks: a check earns the right to
+ * block by a recorded module it refuses or a benchmark failure it produced
+ * (benchmark/GATES.md), and none of these had either.
+ */
+export const DEMOTED_CONTRACT_CHECKS: Record<string, string> = {
+  condition_input_undeclared: "a condition or the intent references an undeclared input",
+  condition_output_undeclared: "a success condition names an output the schema does not declare",
+  condition_output_unwritable: "a success condition names an output no Stage declares it writes",
+  deterministic_success_condition_required: "no success condition is executable",
+  required_input_undeclared: "a required input is not declared",
+  required_output_undeclared: "a required output is not declared",
+};
 
 const EXECUTABLE_CONDITION_TYPES = ["urlIncludes", "urlTemplate", "textIncludes", "textTemplate", "inputExists", "outputExists", "outputEquals"];
 
@@ -89,22 +100,4 @@ export function inspectContractConsistency(
   // yet; its conditions arrive with the outputs, when they are frozen.
   if (!executable && !output.open) issues.push({ code: "deterministic_success_condition_required", path: "contract.successConditions", message: "At least one executable success condition is required." });
   return issues;
-}
-
-export class ContractInconsistentError extends Error {
-  readonly code = "capability_contract_inconsistent";
-  /** Nothing the authoring model writes can satisfy a contradictory Contract. */
-  readonly authorRepairable = false;
-  readonly taskRetryable = true;
-
-  constructor(readonly issues: ContractConsistencyIssue[]) {
-    super(`capability_contract_inconsistent:${issues.map((issue) => `${issue.code}@${issue.path}`).join(",")}`);
-    this.name = "ContractInconsistentError";
-  }
-}
-
-/** Throw the first contradiction found; the message names each rule and where it bites. */
-export function assertContractConsistent(contract: CapabilityContract, stages?: CapabilityStageManifest[]) {
-  const issues = inspectContractConsistency(contract, stages);
-  if (issues.length) throw new ContractInconsistentError(issues);
 }

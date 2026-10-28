@@ -14,7 +14,7 @@ async function load(entry) {
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 }
 
-const { inspectContractConsistency, assertContractConsistent, ContractInconsistentError } = await load("../lib/capability-center-v2/contract-consistency.ts");
+const { inspectContractConsistency, DEMOTED_CONTRACT_CHECKS } = await load("../lib/capability-center-v2/contract-consistency.ts");
 
 const contract = (overrides = {}) => ({
   intent: "我想看{{keyword}}热搜",
@@ -30,7 +30,6 @@ const codes = (issues) => issues.map((issue) => issue.code);
 test("a consistent Contract has no issues, with or without Stages", () => {
   assert.deepEqual(inspectContractConsistency(contract()), []);
   assert.deepEqual(inspectContractConsistency(contract(), [stage("stage_1", []), stage("stage_verify", ["targetTitle", "targetUrl"])]), []);
-  assert.doesNotThrow(() => assertContractConsistent(contract()));
 });
 
 test("a success condition on an output the schema does not declare is the pageUrl contradiction", () => {
@@ -39,14 +38,6 @@ test("a success condition on an output the schema does not declare is the pageUr
   assert.deepEqual(codes(issues), ["condition_output_undeclared"]);
   assert.equal(issues[0].path, "contract.successConditions.1");
   assert.match(issues[0].message, /pageUrl/);
-  assert.throws(() => assertContractConsistent(frozen), (error) => {
-    assert.ok(error instanceof ContractInconsistentError);
-    assert.equal(error.code, "capability_contract_inconsistent");
-    assert.equal(error.authorRepairable, false, "no source change can satisfy it");
-    assert.equal(error.taskRetryable, true);
-    assert.match(error.message, /condition_output_undeclared@contract\.successConditions\.1/);
-    return true;
-  });
   // outputEquals and nested paths are judged by their root field.
   assert.deepEqual(codes(inspectContractConsistency(contract({ successConditions: [{ type: "outputEquals", path: "pageUrl.href", value: "x" }] }))), ["condition_output_undeclared"]);
 });
@@ -80,4 +71,15 @@ test("required fields must be declared and at least one success condition must b
   assert.deepEqual(codes(inspectContractConsistency(contract({ outputSchema: { type: "object", properties: { a: { type: "string" } }, required: ["b"] }, successConditions: [{ type: "outputExists", path: "a" }] }))), ["required_output_undeclared"]);
   assert.deepEqual(codes(inspectContractConsistency(contract({ successConditions: [{ type: "modelGoal", goal: "looks done" }] }))), ["deterministic_success_condition_required"]);
   assert.deepEqual(inspectContractConsistency(contract({ successConditions: ["search completed"] })), []);
+});
+
+test("every code the inspector reports is a note, and the table says so", () => {
+  const reported = new Set([
+    ...codes(inspectContractConsistency(contract({ inputSchema: { type: "object", properties: {}, required: ["keyword"] } }))),
+    ...codes(inspectContractConsistency(contract({ outputSchema: { type: "object", properties: { a: { type: "string" } }, required: ["b"] }, successConditions: [{ type: "outputExists", path: "a" }] }))),
+    ...codes(inspectContractConsistency(contract({ successConditions: [{ type: "modelGoal", goal: "looks done" }] }))),
+    ...codes(inspectContractConsistency(contract({ successConditions: [{ type: "outputExists", path: "pageUrl" }] }))),
+    ...codes(inspectContractConsistency(contract(), [stage("stage_verify", ["targetTitle"])])),
+  ]);
+  assert.deepEqual([...reported].sort(), Object.keys(DEMOTED_CONTRACT_CHECKS).sort());
 });

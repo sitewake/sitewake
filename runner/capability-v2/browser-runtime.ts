@@ -13,7 +13,7 @@ import { promptProvenance, type VersionedPrompt } from "../../lib/capability-cen
 import type { CapabilityContract, CapabilityDslProgram, CapabilityInputAliases, CapabilityPromptProvenance, CapabilityScope, CapabilityTaskInput, JsonObject, JsonValue, LocatorStrategy, LocatorValue, ProgramStep, ProgramValue } from "../../lib/capability-center-v2/model";
 import { RESULT_JUDGE_PROMPT } from "./prompts/result-judge";
 import { diagnoseBlockedPage } from "./failure-diagnostics";
-import { ContractInconsistentError, inspectContractConsistency } from "../../lib/capability-center-v2/contract-consistency";
+import { inspectContractConsistency } from "../../lib/capability-center-v2/contract-consistency";
 import { analyzeCapabilitySemanticsDetailed, projectCapabilityScope, withoutSemanticDependencies } from "../../lib/capability-center-v2/semantic-analyzer";
 
 type PageElement = {
