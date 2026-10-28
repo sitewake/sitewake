@@ -93,6 +93,8 @@ test("the acted-on identity is the record a link or card opened, not the control
     "#card": { innerText: "Mira Pendant\nSmoke  glass · Dimmable $219", closest: () => null, click() {} },
     "#variant": { innerText: "Opal glass", closest: (selector) => (selector.includes("label") ? {} : null), click() {} },
     "#add": { innerText: "Add to cart — $219", closest: (selector) => (selector.includes("button") ? {} : null), click() {} },
+    // A page turn is a control whatever the site calls it, not the object.
+    "#next": { innerText: "Next →", closest: () => null, click() {} },
   };
   const trace = { steps: Object.keys(elements).map((css, index) => ({ id: `click_${index}`, action: "click", target: { strategies: [{ kind: "css", value: css }] } })) };
   const contract = {
