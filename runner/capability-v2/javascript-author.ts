@@ -233,30 +233,10 @@ function stageIO(readsInput: string[], readsState: string[] = [], writesState: s
  * says what to change.
  */
 export function qualityRepairHint(issue: CapabilityQualityReport["issues"][number]) {
-  const stage = /Stage '([^']+)'/u.exec(issue.message)?.[1] || /program\.stages\.([^.]+)/u.exec(issue.path || "")?.[1] || "the stage";
-  const quoted = [...issue.message.matchAll(/'([^']+)'/gu)].map((match) => match[1]);
-  if (issue.code === "stage_io_state_read_unavailable") {
-    const path = quoted[1] || "that path";
-    return `REPAIR REQUIRED: ${stage} declares io.reads.state "${path}" but no earlier Stage declares it in io.writes.state. Either the Stage that produces it must list it in writes.state and set it in the state it returns, or remove it from ${stage}.io.reads.state and stop reading state.${path}. state.targets.__actedOn exists only when an earlier Stage clicked, checked or pressed an element; when the only actions fill a field or navigate there is no acted-on identity, and ${stage} must locate the result itself.`;
-  }
-  if (issue.code === "stage_io_terminal_output_missing") {
-    return `REPAIR REQUIRED: stage_verify.io.writes.output must list every required output of the Contract, and the stage must return each of them in output.`;
-  }
-  if (issue.code === "stage_io_input_undeclared" || issue.code === "stage_io_output_undeclared") {
-    return `REPAIR REQUIRED: ${stage} declares a field the Contract does not: io.reads.input may name only inputSchema properties and io.writes.output only outputSchema properties. Remove the undeclared field; the public Contract cannot be changed here.`;
-  }
-  if (issue.code === "page_selecting_input_not_navigated") {
-    const input = quoted[0] || "the input";
-    return `REPAIR REQUIRED: input '${input}' selects which page to read — its value is part of the address the capability was demonstrated on — but no Stage navigates, so the program can only ever read that one page. Add a Stage before stage_verify with navigation "required" that opens the page for the input (for example location.assign(\`/daily/\${input.${input}}\`) with the address pattern of the demonstrated page), list the input in that Stage's io.reads.input, and let stage_verify read the page it lands on.`;
-  }
-  if (issue.code === "required_input_does_not_parameterize") {
-    return "REPAIR REQUIRED: a required input is declared by no Stage that acts on the page, so the program acts the same way whatever its value is. The acting Stage must list it in io.reads.input and use it to choose what it acts on — the nth item, the matching row, the query it sends.";
-  }
+  // The quality rules that still block with a program or source path
+  // (benchmark/GATES.md); a demoted rule's finding is a note and never arrives here.
   if (issue.code === "demonstration_value_leaked") {
     return "REPAIR REQUIRED: the demonstration value is written into executable code. Read the value from input.* instead; a literal copied from the example works for one input only.";
-  }
-  if (issue.code === "write_stage_reconciliation_required") {
-    return `REPAIR REQUIRED: ${stage} has effect "write" and must declare resumePolicy "reconcile-before-retry".`;
   }
   return `REPAIR REQUIRED: ${issue.message}`;
 }
@@ -920,27 +900,11 @@ export async function authorJavaScriptCapability(options: {
         manifest.targetBindings.map((binding) => binding.inputPath),
       );
       if (!validation.ok) {
-        const repairHint = validation.code === "capability_module_target_first_candidate_forbidden"
-          ? "REPAIR REQUIRED: remove every candidate/match/result/product/link/selection collection [0], at(0), first, or incomplete .find predicate. This includes allLinks.find(link => link.href/name), which can silently choose the first product link. Build one record per visible product/card with matchesAllInputs (every public target/facet input matches the card or its detail evidence) and enabledAction (the intended action is visible and enabled), then use .find(candidate => candidate.matchesAllInputs && candidate.enabledAction); return NoResult when none and Ambiguous when multiple remain. Do not replace the collection name or keep a global link fallback to evade this rule."
-          : validation.code === "capability_module_verification_text_slicing"
-            ? "REPAIR REQUIRED: stop slicing the result out of a text blob between literal page phrases — those labels are editorial copy that other records and other days do not carry, so the capability breaks as soon as the page shows a different one. state.targets.__actedOn already holds the identity the action stage acted on: confirm the result belongs to it, and read each output from structure — a heading/title node, a link's URL parameter, a data attribute. Use execute_js on the failing page to find that node before writing the code."
-            : validation.code.startsWith("capability_module_input_unused:")
-            ? "REPAIR REQUIRED: read the exact Contract input property in the real search/filter/action/verification logic; do not delete or rename the property. Unicode keys must use input['原字段名']; if you normalize an envelope, use const params = input?.parameters ?? input and then read params['原字段名']."
-            : validation.code === "capability_module_fixed_cart_success_text"
-              ? "REPAIR REQUIRED: delete every literal cart/bag success sentence containing a fixed number, including fallback branches and comments. Do not compare document.body text to a frozen demonstration sentence, and do not copy any example wording from this error back into capability.ts. In stage_verify read an actual visible dialog/status, item identity, cart badge/count transition, or cart-row structure; derive count from current DOM and/or the before-click state, and return the observed values only as evidence."
-              : validation.code.startsWith("capability_module_input_not_verified:")
-                ? "REPAIR REQUIRED: stage_verify must directly read every named input (use input['原字段名'] or a safe params alias) and compare it with final business-region evidence; a generic toast alone is insufficient."
-                : validation.code === "capability_module_target_input_not_reused"
-                  ? "REPAIR REQUIRED: read the named target/facet input in both target resolution and candidate selection. Filter candidates by the full target identity and facet, then choose only an enabled executable match."
-                  : validation.code === "capability_module_related_variant_navigation"
-                    ? "REPAIR REQUIRED: remove document-wide color/variant link navigation. Scope the variant control to the selected primary business object; related cards must never change the target."
-                    : validation.code === "capability_module_related_add_to_cart_fallback"
-                      ? "REPAIR REQUIRED: remove document-wide Add-to-cart fallback. Scope the action to the primary business region, reject disabled/customization-required candidates, and select another matching executable object or return NoResult."
-                      : validation.code === "capability_module_search_form_submit_unsafe"
-                        ? "REPAIR REQUIRED: replace searchForm.submit() with an input-driven same-origin navigation URL; navigation must be the last action of that Stage and the next Stage must inspect the settled result page."
-                        : validation.code === "capability_module_invented_customization"
-                          ? "REPAIR REQUIRED: never invent textarea/customization text. Consume a user-provided customization input or skip the non-executable object and select another matching object."
-                          : "REPAIR REQUIRED: modify the source according to the validation code before calling run_draft again.";
+        // The checks that still refuse a module (benchmark/GATES.md) and what
+        // to change; a demoted check's finding is a note and never arrives here.
+        const repairHint = validation.code === "capability_module_verification_text_slicing"
+          ? "REPAIR REQUIRED: stop slicing the result out of a text blob between literal page phrases — those labels are editorial copy that other records and other days do not carry, so the capability breaks as soon as the page shows a different one. state.targets.__actedOn already holds the identity the action stage acted on: confirm the result belongs to it, and read each output from structure — a heading/title node, a link's URL parameter, a data attribute. Use execute_js on the failing page to find that node before writing the code."
+          : "REPAIR REQUIRED: modify the source according to the validation code before calling run_draft again.";
         throw new Error(`${validation.code}:${validation.message};hint=${repairHint}`);
       }
       const moduleRef = await options.persistModule(bundle);
