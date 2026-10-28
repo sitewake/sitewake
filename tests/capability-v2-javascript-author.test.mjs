@@ -161,7 +161,7 @@ function toolTurn(index, name, args = {}) {
   };
 }
 
-async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [], draftPage, startingSource, persisted = [], contract = {}, experience }) {
+async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [], discoveryRegions, draftPage, startingSource, persisted = [], contract = {}, experience }) {
   const requests = [];
   const events = [];
   const originalFetch = globalThis.fetch;
@@ -203,6 +203,7 @@ async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraf
       },
       validationCases: [],
       groundingExamples,
+      ...(discoveryRegions ? { discoveryRegions } : {}),
       startingSource,
       createDraftContext: async () => ({
         context: { close: async () => undefined },
@@ -340,6 +341,37 @@ test("an authoring example the site has no data for is recorded, not a reason to
   });
   assert.equal(completed.result.draft.outcome, "Success");
   assert.ok(completed.events.some((event) => event.message === "draft grounding example returned no result" && event.payload?.reason === "Order not found"));
+});
+
+test("a sibling value the site lists beside the demonstrated one is a failure to find nothing for, and such a draft is not handed on", async () => {
+  // "Count books in category" was proven with Poetry; its draft opened the
+  // Poetry page for Mystery too and said the page was not Mystery. Mystery is
+  // in the same list as Poetry, so that is the program failing, said to the
+  // model while it can still fix it — and never accepted on Poetry alone.
+  const turns = [
+    toolTurn(1, "write_file", { path: "capability.ts", content: source }),
+    toolTurn(2, "run_draft"),
+    toolTurn(3, "write_file", { path: "capability.ts", content: `${source}\n// still Poetry` }),
+    toolTurn(4, "run_draft"),
+  ];
+  await assert.rejects(
+    () => runAuthor({
+      turns, maxToolCalls: 8, maxDraftRuns: 4,
+      groundingExamples: [{ query: "pillow" }],
+      discoveryRegions: [{ regionId: "region_1", url: "https://target.test/start", kind: "choice-list", text: "cushion, pillow, lamp", observedValues: ["cushion", "pillow", "lamp"] }],
+      stageRun: async (options) => (options.input.query === "pillow"
+        ? { page: successfulDraft().page, outcome: "NoResult", reason: "page shows cushion, not pillow", output: {}, state: {}, evidence: [], receipts: [] }
+        : successfulDraft()),
+    }),
+    (error) => {
+      assert.equal(error.code, "javascript_author_repeated_failure");
+      assert.match(error.cause?.message, /draft_grounding_example_failed:example_1:offered_input_no_result:query="pillow":page shows cushion, not pillow/);
+      const feedback = error.authorTestState.requests[2].messages.findLast((message) => message.role === "tool");
+      assert.match(feedback.content, /lists this value beside the demonstrated one/);
+      assert.ok(!error.authorTestState.events.some((event) => /draft that passed the demonstration/.test(event.message || "")), "a draft that fails an offered value is not accepted on the demonstration");
+      return true;
+    },
+  );
 });
 
 test("an authoring example that fails outright still goes back for repair", async () => {

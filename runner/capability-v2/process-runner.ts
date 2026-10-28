@@ -34,6 +34,7 @@ import {
   type CapabilityExplorationTraceEvent,
 } from "./browser-runtime";
 import { traceFromExperience } from "./recording-trace";
+import { harvestStartPage, type CapabilityCaseDiscoverySnapshot } from "./case-discovery";
 import { contractFromDemonstration } from "./contract-from-demonstration";
 import { addressOpenedInputs, authorJavaScriptCapability } from "./javascript-author";
 import { bootstrapAuthentication } from "./auth-bootstrap";
@@ -776,6 +777,7 @@ export async function performC1Authoring(
   const authoringBaselineStorageState =
     baselineStorageState || (await page.context().storageState());
   if (!spec.browser.startUrl) throw new Error("exploration_start_url_required");
+  let startPageSnapshot: CapabilityCaseDiscoverySnapshot | undefined;
   // The visitor's recording is the trace, and the Contract is what the
   // demonstration states; no agent walks the path again to find out what
   // the recording already holds, and no model writes a page's wording into
@@ -822,7 +824,31 @@ export async function performC1Authoring(
       explored.demonstrationParameters,
     ),
   };
-  const groundingExamples = withDefaultOmissionExamples(summary.contract, explored.groundingExamples);
+  // The start page, read once: the lists the demonstrated values were chosen
+  // from give the authoring loop the sibling values to replay on, and case
+  // generation the page it would otherwise browse for again.
+  const harvestPage = await isolatedValidationPage(page, spec, authoringBaselineStorageState);
+  let harvested: Awaited<ReturnType<typeof harvestStartPage>> | undefined;
+  try {
+    await harvestPage.page.goto(spec.browser.startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await harvestPage.page.waitForTimeout(200);
+    harvested = await harvestStartPage(harvestPage.page, { generationTaskId: spec.taskId, siteId: spec.siteId, parameters: explored.demonstrationParameters });
+  } catch (error) {
+    await helpers.onEvent("Specification", "start page could not be harvested; authoring proves the demonstration alone", { reason: error instanceof Error ? error.message.slice(0, 200) : String(error) });
+  } finally {
+    await harvestPage.context.close().catch(() => undefined);
+  }
+  const siblingExamples = Object.entries(harvested?.siblings || {})
+    .flatMap(([path, values]) => values.slice(0, 2).map((value) => ({ [path]: value })));
+  if (harvested) {
+    await helpers.onEvent("Specification", "start page harvested", {
+      lists: harvested.snapshot.regions.filter((region) => region.kind === "choice-list").length,
+      regions: harvested.snapshot.regions.length,
+      siblings: Object.fromEntries(Object.entries(harvested.siblings).map(([path, values]) => [path, values.slice(0, 6)])),
+    });
+  }
+  startPageSnapshot = harvested?.snapshot;
+  const groundingExamples = withDefaultOmissionExamples(summary.contract, [...siblingExamples, ...explored.groundingExamples]);
   const authored = await authorJavaScriptCapability({
     explorationPage: page,
     workspace: helpers.workspace,
@@ -832,6 +858,7 @@ export async function performC1Authoring(
     contract: summary.contract,
     explorationProgram: explored.program,
     groundingExamples,
+    discoveryRegions: harvested?.snapshot.regions,
     startingSource: resume?.source,
     summary,
     explorationPromptProvenance: explored.promptProvenance,
@@ -933,6 +960,8 @@ export async function performC1Authoring(
     targetEvidence: authored.draft.evidence,
     promptProvenance: authored.program.promptProvenance,
     artifactRefs: [],
+    // The start page as read before authoring, for case generation to read instead of browsing again.
+    startPageSnapshot,
   };
 }
 
@@ -1023,13 +1052,7 @@ async function perform(
         workspace: helpers.workspace,
         browser,
         storageState: baselineStorageState,
-        onEnrichmentUnavailable: async (reason) => {
-          await helpers.onEvent(
-            "CaseGeneration",
-            "case enrichment skipped; using derived inputs",
-            { ai: true, enrichment: "unavailable", reason },
-          );
-        },
+        snapshot: authored.startPageSnapshot,
         persistEvidence: async (bytes) => {
           caseDiscoveryEvidenceArtifact = await helpers.saveArtifact(
             "CaseDiscoveryEvidence",

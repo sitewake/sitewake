@@ -1,6 +1,7 @@
 import { countsIgnoringTheirList, demonstrationAnswerDisagreement, describeAnswerDisagreement, describeCountIgnoringList } from "../../lib/capability-center-v2/output-consistency";
 import { createAuthoringConnectors, type AuthoringConnectors } from "./connectors";
 import { contractWithOutputs } from "./contract-from-demonstration";
+import { offeredInputPaths } from "../../lib/capability-center-v2/case-generation";
 import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
 import { DEFAULT_CAPABILITY_TOTAL_TIMEOUT_MS } from "../../lib/capability-center-v2/control-flow";
 import { CapabilityWorkspace } from "./workspace";
@@ -16,6 +17,7 @@ import { resolveCapabilityInput } from "../../lib/capability-center-v2/run-resol
 import { pageSelectingInputs } from "../../lib/capability-center-v2/quality";
 import { promptProvenance } from "../../lib/capability-center-v2/prompt";
 import type {
+  CapabilityCaseDiscoveryRegion,
   CapabilityContract,
   CapabilityDslProgram,
   CapabilityModuleRef,
@@ -706,6 +708,12 @@ export async function authorJavaScriptCapability(options: {
   contract: CapabilityContract;
   explorationProgram: CapabilityDslProgram;
   groundingExamples: Array<Record<string, JsonValue>>;
+  /**
+   * What the start page offered, as harvested before authoring: an example
+   * whose value sits in one of these lists beside the demonstrated value is
+   * one the site has, and a draft that finds nothing for it has failed.
+   */
+  discoveryRegions?: CapabilityCaseDiscoveryRegion[];
   /** Source a prior run authored; it replaces the seed as the first draft and meets every check the seed does. */
   startingSource?: string;
   /** The candidate's name, description and aliases, for the rules that read them. */
@@ -1072,6 +1080,15 @@ export async function authorJavaScriptCapability(options: {
             // demonstration's result here, never "not found", so this cannot
             // hide hardcoding. Independent validation applies the same rule.
             if (exampleReplay.outcome === "NoResult") {
+              // Except for a value the site lists beside the demonstrated
+              // one: the category list says Mystery is a category, so a draft
+              // that finds no category for it has not answered, it has failed
+              // — and the model is told so while it can still fix it.
+              const offered = offeredInputPaths(groundingInput.parameters as JsonObject, options.discoveryRegions || []);
+              if (offered.length) {
+                const path = offered[0];
+                throw new Error(`offered_input_no_result:${path}=${JSON.stringify(groundingInput.parameters[path])}:${exampleReplay.reason || "no_result"};hint=The site lists this value beside the demonstrated one, so the capability is for it too. Locate by the input — the link, card or option named by its value — never by the demonstrated page or item, and read the result from the page that opens for it.`);
+              }
               await workspace.event('replay.no_result', {caseId:`example_${exampleIndex + 1}`,input:groundingInput.parameters,reason:exampleReplay.reason || ""});
               await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example returned no result", payload: { example: exampleIndex + 1, reason: exampleReplay.reason || "" } });
               continue;
@@ -1086,7 +1103,9 @@ export async function authorJavaScriptCapability(options: {
             debugContext = isolatedExample;
             await workspace.event('replay.failure', {...lastCase, observation:lastDraftObservation, error:String(error)});
             const message = error instanceof Error ? error.message : String(error);
-            demonstrated = passedDemonstration;
+            // A draft that finds nothing for a value the site offers has not
+            // passed; it does not go on when the repairs run out.
+            if (!/^offered_input_no_result:/u.test(message)) demonstrated = passedDemonstration;
             throw new Error(`draft_grounding_example_failed:example_${exampleIndex + 1}:${message}`);
           } finally {
             if (debugContext !== isolatedExample) await isolatedExample.context.close().catch(() => undefined);
