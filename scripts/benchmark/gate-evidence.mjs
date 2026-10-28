@@ -20,6 +20,8 @@ const SOURCES = [
   { family: "review claim", file: "lib/capability-center-v2/review-adjudication.ts", pattern: /case "([a-z_]+)":/g },
 ];
 
+// Checks already demoted to notes (lib/capability-center-v2/javascript-runtime.ts DEMOTED_CHECKS).
+const demoted = new Set([...read("lib/capability-center-v2/javascript-runtime.ts").matchAll(/^\s{2}([a-z_]+): "/gm)].map((match) => match[1]));
 const checks = [];
 for (const source of SOURCES) {
   const text = read(source.file);
@@ -46,7 +48,7 @@ const rows = checks.map((check) => {
   const fixtures = fixtureByCode[check.code] || [];
   const benchmark = [...new Set(benchmarkByCode[check.code] || [])];
   const evidence = fixtures.length && benchmark.length ? "fixture + benchmark" : fixtures.length ? "fixture" : benchmark.length ? "benchmark" : "none";
-  return { ...check, evidence, fixtures, benchmark };
+  return { ...check, evidence: demoted.has(check.code) ? `${evidence} → note (demoted)` : evidence, fixtures, benchmark };
 });
 const counts = rows.reduce((acc, row) => ({ ...acc, [row.evidence]: (acc[row.evidence] || 0) + 1 }), {});
 

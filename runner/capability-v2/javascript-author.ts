@@ -923,7 +923,9 @@ export async function authorJavaScriptCapability(options: {
         targetBindings: manifest.targetBindings,
         promptProvenance: [...(options.explorationPromptProvenance || []), provenance],
         ...(options.contract.inputAliases ? { inputAliases: options.contract.inputAliases } : {}),
+        ...(validation.notes?.length ? { qualityNotes: validation.notes } : {}),
       };
+      for (const note of validation.notes || []) await options.onEvent?.({ phase: "Quality", message: "quality note", payload: { code: note.code, message: note.message.slice(0, 400) } });
       await workspace.write('dist/program.json', program);
       await workspace.write('dist/contract.json', options.contract);
       await workspace.write('dist/capability.js', bundle, true);

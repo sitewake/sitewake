@@ -2046,11 +2046,16 @@ export function cleanParameterPlan(raw: Record<string, unknown>, goal: string, i
   };
 }
 
-function assertGoalTargetGrounded(plan: ParameterPlan, goal: string, demonstrationEvidence = "") {
+export function assertGoalTargetGrounded(plan: ParameterPlan, goal: string, demonstrationEvidence = "") {
   const inferred = inferGoalFacet(goal);
   if (!inferred) return;
   const target = plan.parameters.find((parameter) => targetIdentityPath(parameter.name));
   if (!target) return;
+  // "Brown bear cushion" is a name, not a brown cushion. When the
+  // demonstration's own evidence shows the whole phrase, the colour word is
+  // part of the target and there is no separate facet to ground; refusing
+  // here ended every add-to-cart generation on that shop.
+  if (demonstrationEvidence && comparableText(demonstrationEvidence).includes(comparableText(`${inferred.modifier} ${inferred.noun}`))) return;
   const mapped = plan.inputAliases?.[target.name]?.[inferred.noun];
   // The canonical term must be learned from this demonstration's observed
   // target region. Do not maintain a site/product-specific noun dictionary:
@@ -3112,6 +3117,19 @@ function repairPressAction(action: ExplorerAction, input: CapabilityTaskInput): 
   return { ...action, action: "fail", reason: "model_press_key_invalid" };
 }
 
+/**
+ * An `extract` that names no element is the model reading a value off the
+ * page — a result count, a heading — rather than acting on it. The page it
+ * is on is the demonstration's result, and the authoring stage reads such
+ * values from the page itself; the explorer used to end the whole generation
+ * on it (`exploration_element_invalid`, reported as `page_changed`), six
+ * times out of six in the benchmark.
+ */
+export function extractWithoutElementAsDone(action: ExplorerAction): ExplorerAction {
+  if (action.action !== "extract" || action.index !== undefined) return action;
+  return { action: "done", reason: action.reason || `extract_without_element:${action.saveAs || "value"}` };
+}
+
 export function groundExplorerAction(action: ExplorerAction, snapshot: Awaited<ReturnType<typeof inspectPage>>, input: CapabilityTaskInput): ExplorerAction {
   action = repairPressAction(action, input);
   if (action.index === undefined || !["click", "fill", "select", "check", "press", "hover", "waitFor", "extract"].includes(action.action)) return action;
@@ -3668,6 +3686,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
       }
     }
     let action = freshSignals.length ? proposedAction : overrideRepeatedAction(groundedAction, snapshot, history);
+    action = extractWithoutElementAsDone(action);
     const searchGuarded = guardSearchResultDetailClick(action, snapshot, goal, effectiveInput, history);
     if (searchGuarded !== action) {
       action = searchGuarded;

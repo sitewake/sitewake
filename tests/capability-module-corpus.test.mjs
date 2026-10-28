@@ -45,12 +45,16 @@ for (const [name, { expected, about, requiredInputs }] of Object.entries(verdict
 /**
  * The point of the provenance rule is that it does not need to have seen a
  * shape before. None of these is named by any specific rule; every one of
- * them is a way of guessing a title out of a text blob, and every one must be
- * refused. Below them, novel *legitimate* readings must be accepted.
+ * them is a way of guessing a title out of a text blob, and every one is
+ * found. Found, not refused: the rule is demoted (DEMOTED_CHECKS) since it
+ * refused three correct modules in the benchmark and never a recorded bad
+ * one, so its finding is a note on the version and the demonstration and the
+ * independent validation decide. Below them, novel *legitimate* readings must
+ * be accepted without a note.
  */
 const stage = (body) => `export const capability={version:2,stages:[{id:"stage_verify",async run({input,state,waitFor,identityMatches}){${body}}}]};`;
 
-test("a shape no specific rule names is still refused when it comes from a blob", () => {
+test("a shape no specific rule names is still found when it comes from a blob, and recorded as a note", () => {
   const refused = [
     ["indexing into the split blob", `const lines=document.body.innerText.split("\\n");const title=lines[2];return{outcome:"Success",output:{title}}`],
     ["substring between two indexOf positions", `const t=document.querySelector('[role="dialog"]').innerText;const title=t.substring(t.indexOf("Close")+5,t.indexOf("热度"));return{outcome:"Success",output:{title}}`],
@@ -69,8 +73,8 @@ test("a shape no specific rule names is still refused when it comes from a blob"
   ];
   for (const [label, body] of refused) {
     const verdict = validateCapabilityJavaScriptSource(stage(body), []);
-    assert.equal(verdict.ok, false, `${label}: should be refused`);
-    assert.match(verdict.code, /^capability_module_output_provenance_unknown:title$/, `${label}: ${verdict.code}`);
+    assert.equal(verdict.ok, true, `${label}: a demoted check does not refuse`);
+    assert.match(verdict.notes?.[0]?.code || "", /^capability_module_output_provenance_unknown:title$/, `${label}: ${JSON.stringify(verdict.notes)}`);
   }
 });
 

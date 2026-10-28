@@ -681,6 +681,8 @@ export type CapabilityProgram = {
   targetBindings: CapabilityTargetBinding[];
   promptProvenance: CapabilityPromptProvenance[];
   inputAliases?: CapabilityInputAliases;
+  /** Findings of quality checks that no longer block (DEMOTED_CHECKS), kept with the version. */
+  qualityNotes?: Array<{ code: string; message: string }>;
 };
 
 export type Capability = {
