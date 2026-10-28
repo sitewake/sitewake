@@ -276,3 +276,23 @@ test("a value fused into a longer label is not hardcoded; a value used as data i
   assert.deepEqual(hardcodedDemonstrationInputs('go(`/shop?type=Floor lamp`);', { productType: "Floor lamp" }, ["productType"]), ["productType"]);
   assert.deepEqual(hardcodedDemonstrationInputs('const note = "Brassware";', { finish: "Brass" }, ["finish"]), []);
 });
+
+// capability-center/generation: a review's rejection must cite facts that
+// check out. "Case 2 returned an empty list" when case 2's record passed with
+// its list is not a fact; the rejection does not stand and the candidate
+// publishes with the review's words kept as an advisory. A defect the record
+// does show — case 3 failed on an input the site offers — still blocks.
+test("a rejection citing a fact the records do not hold is overturned; one they do hold stands", () => {
+  const results = [
+    { caseId: "case_1", resolvedInput: { category: "Travel" } },
+    { caseId: "case_2", resolvedInput: { category: "Poetry" }, output: { books: new Array(16).fill({ title: "x" }) } },
+    { caseId: "case_3", resolvedInput: { category: "Mystery" }, failureReason: "capability_stage_output_invalid:stage_verify" },
+  ];
+  const ctx = { ...lampCtx, demonstrationParameters: { category: "Travel" }, validationResults: results };
+  const invented = [{ kind: "validation_case_failed", caseId: "case_2", detail: "case 2 returned an empty list" }];
+  assert.deepEqual(verifyReviewClaims(invented, ctx), [], "a passed case is not a failed one, whatever the review says");
+  assert.equal(rejectionIsUnsubstantiated(invented, verifyReviewClaims(invented, ctx)), true, "the rejection does not stand");
+  const genuine = [{ kind: "validation_case_failed", caseId: "case_3" }];
+  assert.equal(verifyReviewClaims(genuine, ctx).length, 1);
+  assert.equal(rejectionIsUnsubstantiated(genuine, verifyReviewClaims(genuine, ctx)), false, "a reproducible defect blocks");
+});
