@@ -246,6 +246,23 @@ spent on the cart modal, one ambiguous target); `quotes-tag-count` ended on a
 page turn renamed as the acted-on object (fixed after the run, above);
 `quotes-by-author` spent 48 tool calls without writing a draft.
 
+**The iteration's head** (`f1f75a3e`, run `2026-10-28T12-54-49`, with the
+three changes made after the first run): first ask 14 / 18, generation
+2 / 12, reuse 1 / 1. `books-count-poetry` validated on Poetry, Travel and
+Mystery — all three passed — and its reuse ask for Mystery was answered
+through the capability in 19 s, the first reuse on books that a published
+program answered correctly. `books-price-named` validated on three titles
+from the same list. `ps-category-count`, which the first run had published
+to answer every category with the demonstrated one, was refused with the
+reason named (`no_result_for_offered_input:category="CLOTHES"`): the rate
+counts it as a loss, the visitor is better off. The denominator grew to 12
+because every passing first ask left a finished run record this time; the
+other nine ended on the classes already listed — the Contract's
+`textIncludes "results."` (`books-cheapest-travel`), the cart modal's wait
+and the authoring budget on PrestaShop, an ambiguous target, a page turn
+(the fix for it is in this head but `quotes-tag-count` failed three drafts
+on a different identity check), and `quotes-by-author`.
+
 **First-ask failures across the two runs** come from the page agent, not
 the module: `books-five-star-mystery` (one page of two, every run),
 `ps-search-count` (answered from the index), `books-cheapest-travel` (a
