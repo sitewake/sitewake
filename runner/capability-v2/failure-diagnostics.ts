@@ -110,33 +110,33 @@ export function diagnoseRunnerFailure(error: unknown, page?: RunnerPageSummary):
     return diagnosis("authoring_budget_exhausted", true, rootCause(error));
   }
   if (/repeated_click_without_page_progress/i.test(rawMessage)) {
-    return diagnosis("exploration_no_progress", false);
+    return diagnosis("exploration_no_progress", false, rootCause(error));
   }
   if (/external_link_outside_exploration_scope/i.test(rawMessage)) {
-    return diagnosis("exploration_target_outside_site", false);
+    return diagnosis("exploration_target_outside_site", false, rootCause(error));
   }
   if (/popup_transition_requires_page_handoff/i.test(rawMessage)) {
-    return diagnosis("exploration_popup_transition", false);
+    return diagnosis("exploration_popup_transition", false, rootCause(error));
   }
   const blocked = page ? diagnoseBlockedPage(page) : undefined;
   if (blocked) return blocked;
   if (/interaction_timeout/i.test(rawMessage)) {
-    return diagnosis("interaction_timeout", true);
+    return diagnosis("interaction_timeout", true, rootCause(error));
   }
   if (/capability_model_timeout|tool_calling_model_timeout/i.test(rawMessage)) {
-    return diagnosis("model_timeout", true);
+    return diagnosis("model_timeout", true, rootCause(error));
   }
   if (/validation_runner_model_credentials_present/i.test(rawMessage)) {
     return diagnosis("validation_runner_isolation_failed", true, rootCause(error));
   }
   if (/structured_model|tool_calling_protocol|tool_call_(?:type|id|name|required|unknown)|tool_argument|javascript_author_tool_unknown/i.test(rawMessage)) {
-    return diagnosis("model_protocol_error", true);
+    return diagnosis("model_protocol_error", true, rootCause(error));
   }
   if (/^auth(?:entication|_)/i.test(rawMessage)) {
     return diagnosis("authentication_failed", true, rootCause(error));
   }
   if (/target_ambiguous/i.test(rawMessage)) {
-    return diagnosis("target_ambiguous", false);
+    return diagnosis("target_ambiguous", false, rootCause(error));
   }
   // The site itself cannot be opened over HTTPS (expired or invalid certificate).
   // Nothing about the recording or the generated code is at fault, and the
@@ -146,7 +146,7 @@ export function diagnoseRunnerFailure(error: unknown, page?: RunnerPageSummary):
     return diagnosis("site_certificate_invalid", true, rootCause(error));
   }
   if (/locator_not_found|element|selector|playwright.*timeout|waiting for locator/i.test(rawMessage)) {
-    return diagnosis("page_changed", true);
+    return diagnosis("page_changed", true, rootCause(error));
   }
   return diagnosis("runner_execution_failed", true, rootCause(error));
 }

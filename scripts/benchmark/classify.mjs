@@ -12,10 +12,10 @@ export const FAILURE_CLASSES = [
 ];
 
 const RULES = [
-  ["model-protocol", /model_protocol|provider_|json_schema|reasoning_content|tool_choice|forced_tool|model_not_configured/i],
+  ["model-protocol", /model_protocol|provider_|json_schema|reasoning_content|tool_choice|forced_tool|model_not_configured|model_failed|non_json|_invalid$/i],
   ["model-budget", /budget|exhausted|turn_limit|repeated_failure/i],
   ["site-auth", /authentication|login_required|auth_bootstrap/i],
-  ["site-unreachable", /unreachable|net::ERR|ENOTFOUND|ECONNREFUSED|navigation_timeout|browser_unavailable/i],
+  ["site-unreachable", /unreachable|net::ERR|ENOTFOUND|ECONNREFUSED|navigation_timeout|browser_unavailable|runner_execution_failed|runner_start_retry|load_failed/i],
   ["site-changed", /page_changed|precondition_(url|text)|target_absent|select_option_missing|element_not_found/i],
   ["pipeline-contradiction", /scope_mismatch|contract_inconsistent|manifest_mismatch|episode_rejected|authority_rejected|source_version_changed|checkpoint_module_mismatch/i],
   ["gate-false-reject", /quality_rejected|review_rejected|capability_module_|control_flow_invalid|validation_no_case|noresult/i],
@@ -54,6 +54,9 @@ export function classify(record) {
   const code = String(fact.outcomeCode || "");
   if (drive.outcome === "widget_missing") return { failureClass: "site-unreachable", stage: "runtime.load", note: "the widget never appeared on the page" };
   if (drive.timedOut || drive.outcome === "still_busy") return { failureClass: "timeout", stage: "runtime" };
+  // The widget showed an end the console never recorded: two parts of the
+  // product disagree about whether the run happened.
+  if (!record.fact && record.runId && drive.outcome === "ended") return { failureClass: "pipeline-contradiction", stage: "run.finish", note: `no run record for ${record.runId}` };
   if (record.phase === "reuse" && fact.status === "completed" && fact.capabilityUsed === false) return { failureClass: "pipeline-contradiction", stage: "capability.search", note: "the published capability was not chosen" };
   if (record.phase === "reuse" && fact.capabilityUsed && fact.status !== "completed") return { failureClass: "host-difference", stage: "runtime.stage", note: `validated capability failed in the widget: ${code}` };
   if (fact.status === "completed" && !record.pass) return { failureClass: "wrong-answer", stage: record.phase === "reuse" ? "runtime.output" : "page-agent" };

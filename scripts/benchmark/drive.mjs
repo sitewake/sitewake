@@ -56,13 +56,17 @@ export async function driveGoal({ context, siteBase, startUrl, goal, limitMs = 3
   const navigations = [];
   let runId = "";
   page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text().slice(0, 200)); });
+  const httpErrors = [];
+  page.on("response", (response) => {
+    if (response.status() >= 400 && /\/api\//.test(response.url()) && httpErrors.length < 20) httpErrors.push(`${response.status()} ${response.request().method()} ${response.url().replace(/^https?:\/\/[^/]+/, "").slice(0, 120)}`);
+  });
   page.on("framenavigated", (frame) => { if (frame === page.mainFrame()) navigations.push(frame.url()); });
   page.on("request", (request) => {
     const match = request.url().match(/\/api\/agent-runs\/(run_[A-Za-z0-9-]+)/) || request.url().match(/\/sessions\/(run_[A-Za-z0-9-]+)/);
     if (match && !runId) runId = match[1];
   });
   const started = Date.now();
-  const result = { goal, startUrl, runId: "", seconds: 0, timedOut: false, outcome: "", finalStatus: "", answer: "", messages: "", navigations, consoleErrors, timeline: [] };
+  const result = { goal, startUrl, runId: "", seconds: 0, timedOut: false, outcome: "", finalStatus: "", answer: "", messages: "", navigations, consoleErrors, httpErrors, timeline: [] };
   try {
     await page.goto(`${siteBase}${startUrl}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     try {

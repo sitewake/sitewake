@@ -56,7 +56,9 @@ log(`benchmark ${runId}: ${plan.reduce((sum, set) => sum + set.tasks.length, 0)}
 
 async function runFact(siteId, visitorRunId) {
   if (!visitorRunId) return undefined;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  // The record is written when the widget hands in its episode, which can
+  // trail the end it shows the visitor by a while.
+  for (let attempt = 0; attempt < 24; attempt += 1) {
     const payload = await console_.json(`/api/site-agents/${encodeURIComponent(siteId)}/session-history/${encodeURIComponent(visitorRunId)}`).catch(() => ({}));
     const fact = payload.detail?.fact;
     if (fact && ["completed", "failed", "cancelled"].includes(fact.status)) {
@@ -68,7 +70,12 @@ async function runFact(siteId, visitorRunId) {
   return undefined;
 }
 
-const hadPageActions = (fact) => Boolean(fact && ((fact.pageCount ?? 0) > 1 || fact.completionMethod === "exploration" || fact.outcomeCode === "agent_completed"));
+// A run that ended with "nothing to show" or a plain answer produced no
+// demonstration to learn from; only a completed run with page actions is
+// expected to generate.
+// Only a successful run that moved through the site leaves an Experience to
+// generate from; a one-page answer, a no-result or a failure does not.
+const hadPageActions = (fact) => Boolean(fact && fact.status === "completed" && fact.outcomeStatus === "success" && (fact.pageCount ?? 0) > 1);
 
 async function ask(browser, site, task, phase) {
   const spec = phase === "reuse" ? task.reuse : task;
@@ -79,7 +86,7 @@ async function ask(browser, site, task, phase) {
     log(`▶ ${task.id} [${phase}] ${spec.goal}`);
     const drive = await driveGoal({ context, siteBase, startUrl: task.startUrl, goal: spec.goal, limitMs, onLine: (line) => log(`   ${line}`) });
     record.runId = drive.runId;
-    record.drive = { seconds: drive.seconds, timedOut: drive.timedOut, outcome: drive.outcome, finalStatus: drive.finalStatus, navigations: drive.navigations.slice(-6), consoleErrors: drive.consoleErrors.slice(0, 6), answer: drive.answer.slice(0, 1200) };
+    record.drive = { seconds: drive.seconds, timedOut: drive.timedOut, outcome: drive.outcome, finalStatus: drive.finalStatus, navigations: drive.navigations.slice(-6), consoleErrors: drive.consoleErrors.slice(0, 6), httpErrors: drive.httpErrors.slice(0, 8), answer: drive.answer.slice(0, 1200) };
     if (drive.outcome === "widget_missing") { record.detail = "the widget did not appear"; return record; }
     const verdict = await judge(spec.expect, { answer: drive.answer, context, siteBase });
     record.detail = verdict.detail;

@@ -7,6 +7,8 @@ test("a reply passes when every fact is in it, however it is punctuated or cased
   assert.deepEqual(answerContains(reply, ["The Road to Little Dribbling: Adventures of an American in Britain (Notes From a Small Island #2)", "23.21"]), { pass: true, missing: [] });
   assert.deepEqual(answerContains("There are 19 books in Poetry.", ["19"]).pass, true);
   assert.deepEqual(answerContains("Price: $1,299.00", ["1299"]).pass, true);
+  assert.equal(answerContains("The cheapest accessory is the Mug at $11.90.", ["11.9"]).pass, true, "a price is a value, not a spelling");
+  assert.equal(answerContains("The most expensive Travel book is A Year in Provence at £56.88.", ["A Year in Provence (Provence #1)", "56.88"]).pass, true, "a title may drop its series suffix");
 });
 
 test("a reply fails when a fact is missing, and a bare number is not found inside a longer one", () => {

@@ -15,15 +15,28 @@ export function normalizeText(text) {
     .trim();
 }
 
+/** The numbers a reply states, as numbers: "$11.90" and "11.9" are the same fact. */
+export function numbersIn(text) {
+  return [...normalizeText(text).matchAll(/(?<![\d.])(\d+(?:\.\d+)?)(?![\d])/g)].map((match) => Number(match[1]));
+}
+
+/** The ways a fact may be written in a reply: as given, and without a trailing parenthetical such as a series name. */
+export function factVariants(fact) {
+  const text = String(fact);
+  const trimmed = text.replace(/\s*\([^()]*\)\s*$/, "").trim();
+  return trimmed && trimmed !== text && trimmed.length >= 8 ? [text, trimmed] : [text];
+}
+
 /** Every fact appears in the reply. */
 export function answerContains(answer, facts) {
   const haystack = ` ${normalizeText(answer)} `;
+  const numbers = numbersIn(answer);
   const missing = facts.filter((fact) => {
     const needle = normalizeText(fact);
     if (!needle) return false;
-    // A bare number must stand on its own: "19" is not found inside "2019".
-    if (/^\d+(?:\.\d+)?$/.test(needle)) return !new RegExp(`(?<![\\d.])${needle.replace(".", "\\.")}(?![\\d])`).test(haystack);
-    return !haystack.includes(needle);
+    // A number is a value, not a spelling: 11.9 is stated by "$11.90", and "19" is not inside "2019".
+    if (/^\d+(?:\.\d+)?$/.test(needle)) return !numbers.some((value) => Math.abs(value - Number(needle)) < 1e-9);
+    return !factVariants(fact).some((variant) => haystack.includes(normalizeText(variant)));
   });
   return { pass: missing.length === 0, missing };
 }

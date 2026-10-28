@@ -22,7 +22,7 @@ export function buildReport({ runId, startedAt, finishedAt, build, model, taskSe
   const failures = counted.filter((record) => !record.pass).map((record) => ({
     taskId: record.taskId, site: record.site, phase: record.phase, failureClass: record.failureClass, stage: record.stage, note: record.note,
     detail: record.detail, runId: record.runId, generationTaskId: record.generation?.generationTaskId, validationTaskId: record.generation?.validationTaskId,
-    repro: record.repro,
+    httpErrors: record.drive?.httpErrors, repro: record.repro,
   }));
   const byClass = {};
   for (const failure of failures) byClass[failure.failureClass] = (byClass[failure.failureClass] || 0) + 1;
@@ -41,7 +41,7 @@ export function buildReport({ runId, startedAt, finishedAt, build, model, taskSe
     items: attributed.map((record) => ({
       taskId: record.taskId, site: record.site, phase: record.phase, pass: record.pass, harness: Boolean(record.harness),
       failureClass: record.failureClass, stage: record.stage, detail: record.detail, runId: record.runId, seconds: record.drive?.seconds,
-      outcomeCode: record.fact?.outcomeCode, capabilityUsed: record.fact?.capabilityUsed, generationState: record.generation?.state, capabilityId: record.generation?.capabilityId,
+      outcomeCode: record.fact?.outcomeCode || (record.phase !== "generation" && record.runId && !record.fact ? "(no run record)" : undefined), capabilityUsed: record.fact?.capabilityUsed, generationState: record.generation?.state, capabilityId: record.generation?.capabilityId,
     })),
     notes,
   };
