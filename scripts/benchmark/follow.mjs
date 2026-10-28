@@ -41,6 +41,40 @@ export async function intakeOf(client, siteId, runId) {
   return { intake: { status: item.status, attempts: item.attempts, lastError: item.lastError, disposition: item.disposition, reason: item.reason, taskId: item.taskId } };
 }
 
+/** Every event of a task, page by page. */
+async function taskEvents(client, taskId) {
+  const events = [];
+  let after = 0;
+  for (let page = 0; page < 50; page += 1) {
+    const payload = await client.json(`/api/admin/capability-v2/tasks/${taskId}/events?afterSequence=${after}&limit=1000`).catch(() => ({}));
+    const batch = payload.events || [];
+    events.push(...batch);
+    if (!payload.hasMore || !batch.length) break;
+    after = batch.at(-1).sequence;
+  }
+  return events;
+}
+
+/**
+ * The tasks a generation's work went through, in order: the generation, its
+ * validation, the one repair a rejection may have started, and that repair's
+ * validation. Each with the model calls its events record ("model turn" is
+ * one authoring request).
+ */
+export async function generationChain(client, generation) {
+  const chain = [];
+  let task = generation;
+  for (let hop = 0; task && hop < 6; hop += 1) {
+    const events = await taskEvents(client, task.id);
+    chain.push({ task, modelCalls: events.filter((event) => event.payload?.message === "model turn").length });
+    const next = task.type === "Validation"
+      ? events.findLast((event) => event.eventType === "RepairScheduled")?.payload?.repairTaskId
+      : task.result?.validationTaskId || events.findLast((event) => event.eventType === "CandidateFrozen")?.payload?.validationTaskId;
+    task = next ? (await client.json(`/api/admin/capability-v2/tasks/${next}`).catch(() => ({}))).task : undefined;
+  }
+  return chain;
+}
+
 export async function followGeneration(client, { runId, siteId, appearTimeoutMs = 3 * 60_000, finishTimeoutMs = 20 * 60_000, onEvent } = {}) {
   const started = Date.now();
   let generation;
@@ -69,7 +103,19 @@ export async function followGeneration(client, { runId, siteId, appearTimeoutMs 
     capabilityId = validation?.result?.capabilityId || capabilityId;
     versionId = validation?.result?.versionId || versionId;
   }
+  const chain = await generationChain(client, task);
+  const last = chain.at(-1);
+  if (last) {
+    capabilityId = last.task.result?.capabilityId || capabilityId;
+    versionId = last.task.result?.versionId || versionId;
+  }
   return {
+    // From the generation task's creation to the end of the last task of its
+    // chain (validation, one repair, its validation); the model calls are the
+    // authoring turns of every generation in the chain.
+    durationMs: last ? Math.max(0, Date.parse(last.task.finishedAt || last.task.updatedAt) - Date.parse(task.createdAt)) : undefined,
+    modelCalls: chain.reduce((sum, item) => sum + item.modelCalls, 0),
+    repaired: chain.some((item) => item.task.input?.context?.__autoRepairOfTaskId),
     state: TERMINAL.test(String(progress.state || "")) ? progress.state : "timed-out",
     phase: progress.phase,
     code: progress.code || task.error?.code,

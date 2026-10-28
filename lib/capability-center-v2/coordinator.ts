@@ -4,10 +4,12 @@ import {
   createCapabilityTask,
   findLiveCapabilityByName,
   getCapability,
+  getLatestTaskPublicationEvent,
   getTask,
   getTaskMaintenance,
   getGenerationPublication,
   getVersion,
+  listTaskEvents,
   listTasks,
   publishValidatedCapability,
   recordCapabilityTaskPublication,
@@ -15,6 +17,7 @@ import {
   supersedeGeneration,
 } from "../../db/capability-center-v2-store";
 import type { CapabilityContract, CapabilityPublishResult, CapabilityTask, JsonValue, ValidatedCapabilityPackage } from "./model";
+import { projectProductionStatus, type CapabilityProductionStatus } from "./production-status";
 import { inspectCapabilityQuality, demonstrationParametersOf } from "./quality";
 import { decodeC2CaseGenerationOutput } from "./case-generation";
 import { REVIEW_DEMONSTRATION_CASE_FAILED, REVIEW_DEMONSTRATION_CASE_NO_RESULT, REVIEW_OFFERED_INPUT_NO_RESULT, validationVerdict, type ValidationVerdict } from "./review-adjudication";
@@ -313,4 +316,50 @@ export async function advanceTaskById(siteId: string, taskId: string) {
   const task = await getTask(siteId, taskId, true);
   if (!task) throw new Error("task_not_found");
   return advanceCompletedTask(task);
+}
+
+/** The validation task a frozen candidate was handed to, as recorded by the CandidateFrozen audit event. */
+async function validationTaskIdFromEvents(siteId: string, taskId: string) {
+  const frozen = (await listTaskEvents(siteId, taskId)).filter((event) => event.eventType === "CandidateFrozen").at(-1);
+  const id = frozen?.payload.validationTaskId;
+  return typeof id === "string" && id ? id : undefined;
+}
+
+/**
+ * Where a task's work really is. A generation task hands its frozen
+ * candidate to a separate validation task, and the verdict and publication
+ * happen on that one; a rejected validation may hand on to one repair, a
+ * generation of its own. Left alone, the record the user opened stays on
+ * "authoring" forever while the work moves on, so the chain is followed to
+ * the task doing the work, and that task's state is reported under the
+ * opened record's id.
+ */
+export async function productionProgress(siteId: string, task: CapabilityTask): Promise<CapabilityProductionStatus> {
+  if (task.status === "Succeeded" && task.input.context.__pipelineVersion === "2.0" && !task.result?.capabilityId) {
+    const generationId = task.type === "Validation" && task.result?.buildResult?.outcome === "Validated" ? task.result.buildResult.package.artifact.generationTaskId : task.id;
+    const published = await getGenerationPublication(siteId, generationId);
+    // Only a publication this generation made is its own; a superseded one
+    // is told by its PublicationSuperseded event below, in its own words.
+    if (published?.outcome === "Published") task = { ...task, result: { ...task.result!, capabilityId: published.capability.id, versionId: published.version.id } };
+  }
+  const latest = task.type === "Validation" && task.status === "Succeeded" ? await getLatestTaskPublicationEvent(siteId, task.id) : undefined;
+  const own = projectProductionStatus(task, latest ? [latest] : []);
+  if (own.state !== "Published" && task.type !== "Validation" && !["Failed", "Cancelled", "Deleted", "WaitingInput"].includes(task.status)) {
+    const validationTaskId = task.result?.validationTaskId || await validationTaskIdFromEvents(siteId, task.id);
+    const validation = validationTaskId ? await getTask(siteId, validationTaskId, true) : undefined;
+    if (validation) {
+      const downstream = await productionProgress(siteId, validation);
+      return { ...downstream, taskId: task.id, nextTaskId: validation.id };
+    }
+  }
+  // The verdict rejected this validation and one repair was started: the
+  // work is on that generation now.
+  if (task.type === "Validation" && own.messageKey === "repairScheduled" && own.nextTaskId) {
+    const repair = await getTask(siteId, own.nextTaskId, true);
+    if (repair) {
+      const downstream = await productionProgress(siteId, repair);
+      return { ...downstream, taskId: task.id, nextTaskId: repair.id };
+    }
+  }
+  return own;
 }

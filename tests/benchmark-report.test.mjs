@@ -62,3 +62,24 @@ test("comparing two builds names regressions and fixes; the same build twice nam
   assert.deepEqual(rerun.unstable.map((change) => change.id).sort(), ["a#reuse", "b#first"]);
   assert.equal(rerun.regressed, false, "instability on one build is not a regression");
 });
+
+test("each generation carries its cost: the chain's wall-clock seconds and the authoring's model calls, with medians over the run", () => {
+  const costed = [
+    { taskId: "a", site: "s", phase: "generation", pass: true, generation: { state: "Published", capabilityId: "cap_a", durationMs: 600_000, modelCalls: 9 } },
+    { taskId: "b", site: "s", phase: "generation", pass: true, generation: { state: "Published", capabilityId: "cap_b", durationMs: 300_000, modelCalls: 5, repaired: true } },
+    { taskId: "c", site: "s", phase: "generation", pass: false, generation: { state: "Rejected", phase: "Review", durationMs: 900_000, modelCalls: 12 } },
+    // A generation the follower could not measure has no cost and is not in the medians.
+    { taskId: "d", site: "s", phase: "generation", pass: false, generation: { state: "not-generated" } },
+  ];
+  const report = buildReport(run({ records: costed }));
+  assert.deepEqual(report.generationCost, { medianSeconds: 600, medianModelCalls: 9, measured: 3 });
+  const items = Object.fromEntries(report.items.map((item) => [item.taskId, item]));
+  assert.equal(items.a.seconds, 600);
+  assert.equal(items.a.modelCalls, 9);
+  assert.equal(items.b.repaired, true);
+  assert.equal(items.d.seconds, undefined);
+  const markdown = renderMarkdown(report);
+  assert.match(markdown, /Generation cost \(median over 3\): 600 s, 9 model calls/);
+  assert.match(markdown, /\| Task \| Phase \| Result \| Outcome \| Seconds \| Model calls \| Capability \|/);
+  assert.match(markdown, /\| b \| generation \| pass \| Published \(repaired once\) \| 300 \| 5 \|/);
+});

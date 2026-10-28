@@ -87,6 +87,7 @@ const {
   parseAndValidateToolArguments,
   parseCapabilityExperienceAbstraction,
   parseStructuredModelJson,
+  productionProgress,
   projectProductionStatus,
   REVIEW_APPROVED_ON_VALIDATION,
   REVIEW_NO_CASE_PASSED,
@@ -5099,11 +5100,19 @@ test("a rejection the verdict names a case for is followed by one repair that st
   assert.equal(status.state, "Running");
   assert.equal(status.messageKey, "repairScheduled");
   assert.equal(status.nextTaskId, repair.id, "the record runs on, into the repair");
+  // The record the visitor's run opened follows the chain into the repair.
+  const followed = await productionProgress(siteId, await getTask(siteId, generation.id, true));
+  assert.equal(followed.taskId, generation.id);
+  assert.equal(followed.state, "Queued", "the repair is waiting for a runner");
+  assert.equal(followed.nextTaskId, first.validationTaskId, "the next hop is the validation that scheduled the repair");
   // The repair's candidate passes on both values and is published; the chain holds one repair.
   const second = await generationReadyForPublish(repair, "repair-second", name);
   const published = await advanceCompletedTask(await getTask(siteId, second.validationTaskId, true));
   assert.equal(published.review.outcome, "Published");
   assert.equal(published.nextTask, undefined);
+  const done = await productionProgress(siteId, await getTask(siteId, generation.id, true));
+  assert.equal(done.state, "Published", "the original record shows the repair's publication");
+  assert.equal(done.capabilityId, published.review.capability.id);
   // The marker travels into the repair's own validation task with the rest of its context; the authoring tasks are what is counted.
   const repairs = (await listTasks(siteId, { includeDeleted: true, includeArchived: true })).tasks.filter((task) => task.type !== "Validation" && task.input.context.__autoRepairOfTaskId === generation.id);
   assert.equal(repairs.length, 1);
