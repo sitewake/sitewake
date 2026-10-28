@@ -73,6 +73,7 @@ test("the click stage records what it acted on, and the verification stage may r
   const seed = author.seedCapabilitySource(manifest, trace, contract);
   assert.match(seed, /const actedOn = \(element\.innerText \|\| element\.textContent \|\| ""\)/, "the identity is read before the click");
   assert.match(seed, /state: \{ targets: \{ __actedOn: actedOn \} \}/);
+  assert.match(seed, /keep\(\{ targets: \{ __actedOn: actedOn \} \}\);\n\s*const hrefBefore/, "the identity is kept before the click, for a document the click may unload");
   assert.match(seed, /identityMatches\(state\.targets\.__actedOn, title\)/, "the stub names the one comparison to use");
   assert.match(seed, /do not re-read from the result region what\n\s*\/\/ was already known/, "the stub says the identity is already known");
   assert.match(seed, /waitUntil must wait for the value about to be read, not for its/, "the stub says what to wait for");
@@ -106,16 +107,19 @@ test("the acted-on identity is the record a link or card opened, not the control
   globalThis.document = { body: { innerText: "" } };
   try {
     const state = {};
+    const kept = {};
     for (const stage of capability.stages.filter((item) => item.id !== "stage_verify")) {
       const result = await stage.run({
         input: {},
         waitForTarget: async (locator) => elements[locator.strategies[0].value],
         waitUntil: async () => true,
         settle: async () => undefined,
+        keep: (partial) => Object.assign(kept, partial),
       });
       if (result.state) Object.assign(state, result.state);
     }
     assert.equal(state.targets.__actedOn, "Mira Pendant Smoke glass · Dimmable $219", "the card names the object; whitespace collapses and every letter s survives");
+    assert.equal(kept.targets.__actedOn, state.targets.__actedOn, "the same identity was kept before the click, for a document the click may unload");
   } finally {
     globalThis.location = previous.location;
     globalThis.document = previous.document;
@@ -154,7 +158,7 @@ function toolTurn(index, name, args = {}) {
   };
 }
 
-async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [], draftPage, startingSource, persisted = [], contract = {} }) {
+async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraftRuns, startUrl = "https://target.test/start", groundingExamples = [], draftPage, startingSource, persisted = [], contract = {}, experience }) {
   const requests = [];
   const events = [];
   const originalFetch = globalThis.fetch;
@@ -177,7 +181,7 @@ async function runAuthor({ turns, stageRun, maxToolCalls = turns.length, maxDraf
       explorationPage: {},
       startUrl,
       goal: "search for cushion",
-      input: { parameters: { query: "cushion" }, context: {} },
+      input: { parameters: { query: "cushion" }, context: {}, ...(experience ? { experience } : {}) },
       contract: {
         inputSchema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
         outputSchema: { type: "object", properties: { ok: { type: "boolean" } } },
@@ -421,6 +425,45 @@ test("a count that never moved while its list did goes back to the model with wh
   // Repairs ran out on it; the draft that passed the demonstration still goes on.
   assert.equal(result.source, source);
   assert.ok(events.some((event) => /draft that passed the demonstration/.test(event.message)));
+});
+
+test("a draft whose output states none of the numbers the visitor was told goes back to the model, and is not accepted when repairs run out", async () => {
+  // "Count quotes by tag" was proven with twelve quotes; the draft counted the
+  // two on the tag's last page, passed every structural check and was
+  // published to tell every visitor the count of one page.
+  const turns = [
+    toolTurn(1, "write_file", { path: "capability.ts", content: source }),
+    toolTurn(2, "run_draft"),
+    toolTurn(3, "write_file", { path: "capability.ts", content: `${source}\n// still counts one page` }),
+    toolTurn(4, "run_draft"),
+  ];
+  const answer = "There are 12 quotes tagged 'humor' in total. Page 1 lists 10 and page 2 lists the remaining 2.";
+  await assert.rejects(
+    () => runAuthor({
+      turns, maxToolCalls: 8, maxDraftRuns: 4,
+      experience: { originalGoal: "How many quotes are tagged 'humor'?", outcomeSummary: answer, answer },
+      stageRun: async () => ({ ...successfulDraft(), output: { ok: true, quoteCount: 2, pageCount: 2 } }),
+    }),
+    (error) => {
+      assert.equal(error.code, "javascript_author_repeated_failure");
+      assert.match(error.cause?.message, /draft_disagrees_with_demonstration:the demonstration answered "There are 12 quotes tagged 'humor' in total" for \{"query":"cushion"\}, which states 12; the draft's output for the same input states 2 \(quoteCount\), 2 \(pageCount\)/);
+      const feedback = error.authorTestState.requests[2].messages.findLast((message) => message.role === "tool");
+      assert.match(feedback.content, /none of them agree/, "the model was told what the visitor was told and what the draft returned");
+      assert.ok(!error.authorTestState.events.some((event) => /draft that passed the demonstration/.test(event.message || "")), "a draft that contradicts the demonstration never passed it");
+      return true;
+    },
+  );
+});
+
+test("a draft that states what the visitor was told, among other numbers, is in agreement", async () => {
+  const turns = [toolTurn(1, "write_file", { path: "capability.ts", content: source }), toolTurn(2, "run_draft")];
+  const answer = "The Brown bear cushion has been added to your cart. Your cart now shows 1 item at $18.90, with a total of $25.90.";
+  const { result } = await runAuthor({
+    turns,
+    experience: { originalGoal: "Add the cushion to my cart", outcomeSummary: answer, answer },
+    stageRun: async () => ({ ...successfulDraft(), output: { ok: true, cartItemName: "Brown bear cushion", cartItemQuantity: 1 } }),
+  });
+  assert.equal(result.draft.output.cartItemQuantity, 1);
 });
 
 test("a rerun's source that passes every current check is handed on without a model call", async () => {

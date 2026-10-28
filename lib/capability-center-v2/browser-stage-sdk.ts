@@ -1,3 +1,28 @@
+/**
+ * Where a stage keeps the state it would return, before an action that may
+ * unload its document. Both hosts read it from the next document of the same
+ * origin and apply it only when the stage's return never arrived; the kernel
+ * repeats the literal because it cannot reference this constant.
+ */
+export const CAPABILITY_KEPT_STATE_KEY = "sitewake:capability-v2:kept-state";
+
+/**
+ * The state a stage kept for the document that followed its action, as the
+ * host reads it back: the stage it belongs to and what it kept. Nothing, or
+ * anything but an object, is nothing kept.
+ */
+export function parseKeptStageState(raw: unknown): { stageId: string; state: Record<string, unknown> } | undefined {
+  if (typeof raw !== "string" || !raw) return undefined;
+  try {
+    const kept = JSON.parse(raw) as { stageId?: unknown; state?: unknown };
+    if (!kept || typeof kept !== "object" || typeof kept.stageId !== "string") return undefined;
+    if (!kept.state || typeof kept.state !== "object" || Array.isArray(kept.state)) return undefined;
+    return { stageId: kept.stageId, state: kept.state as Record<string, unknown> };
+  } catch {
+    return undefined;
+  }
+}
+
 /** Shared execution kernel used by the website SDK and the Playwright host.
  * Keep this function self-contained: Playwright serializes it into the page.
  * Host navigation, grants and checkpoints stay outside this kernel.
@@ -303,11 +328,25 @@ export async function executeBrowserCapabilityStage(payload: string | {
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
     }
   };
+  // A click that unloads the document ends the stage before it can return,
+  // and the host resumes on the next document with nothing the stage meant to
+  // hand on: the identity it read off the card it clicked was lost with it,
+  // and the verify stage then compared the result against nothing. What a
+  // later stage needs is kept here before the action, on this origin's own
+  // session storage, and the host takes it as the stage's state when the
+  // return never arrives. A stage that does return still returns the same
+  // state; the kept copy is then dropped. The key is repeated literally in
+  // the hosts (CAPABILITY_KEPT_STATE_KEY): this kernel is serialized into
+  // the page and can reference nothing outside itself.
+  const keep = (state: Record<string, unknown>) => {
+    if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error(`capability_stage_kept_state_invalid:${stageId}`);
+    try { sessionStorage.setItem('sitewake:capability-v2:kept-state', JSON.stringify({ stageId, state })); } catch { /* an origin without storage keeps nothing; the return still carries the state */ }
+  };
   const timer = setTimeout(() => abort.abort(new Error(pendingWait ? `capability_control_flow_timeout:${stageId}:pending=${pendingWait}` : `capability_control_flow_timeout:${stageId}`)), remaining);
   try {
     return await Promise.race([Promise.resolve().then(() => {
       if (abort.signal.aborted) throw abort.signal.reason;
-      return run({input:scopeJson(args.input,inputPaths,'input'),state:scopeJson(args.state,statePaths,'state'),signal:abort.signal,deadlineAt:args.deadlineAt,waitFor,waitUntil,settle,identityMatches,fill,find,waitForTarget});
+      return run({input:scopeJson(args.input,inputPaths,'input'),state:scopeJson(args.state,statePaths,'state'),signal:abort.signal,deadlineAt:args.deadlineAt,waitFor,waitUntil,settle,identityMatches,fill,find,waitForTarget,keep});
     }),cancelled]);
   } finally { clearTimeout(timer); args.signal?.removeEventListener('abort',propagate); abort.signal.removeEventListener('abort',rejectAbort); }
 }

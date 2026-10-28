@@ -3,7 +3,7 @@ import { capabilityCompletionText } from "../lib/capability-center-v2/result-pre
 export { capabilityCompletionText } from "../lib/capability-center-v2/result-presentation";
 import { RuntimeReleaseClient, AgentStartupError } from './runtime-release-client';
 import { capabilityNavigationKind } from "../lib/capability-center-v2/navigation";
-import { executeBrowserCapabilityStage, settleCapabilityPage } from "../lib/capability-center-v2/browser-stage-sdk";
+import { CAPABILITY_KEPT_STATE_KEY, executeBrowserCapabilityStage, parseKeptStageState, settleCapabilityPage } from "../lib/capability-center-v2/browser-stage-sdk";
 import {
   SITE_AGENT_SCHEMA_VERSION,
   defaultAgentConfig,
@@ -241,6 +241,21 @@ type CapabilityV2StageModule = {
     }>;
   };
 };
+
+/**
+ * The state a stage kept before the action that unloaded its document, read
+ * off this document and cleared; nothing when nothing was kept or this origin
+ * has no storage.
+ */
+function takeKeptStageState() {
+  try {
+    const raw = sessionStorage.getItem(CAPABILITY_KEPT_STATE_KEY);
+    sessionStorage.removeItem(CAPABILITY_KEPT_STATE_KEY);
+    return parseKeptStageState(raw);
+  } catch {
+    return undefined;
+  }
+}
 
 type CapabilityV2StageReceipt = {
   stageId: string;
@@ -4109,6 +4124,13 @@ export class AgentPort {
         } else if (location.href !== pendingReceipt.urlBefore) {
           const resumeStageId = pendingStage?.id || controlCursor.currentStageId;
           if (runtime.program.controlFlow || pendingStage?.transitions) throw new Error(`capability_control_flow_resume_signal_missing:${resumeStageId}`);
+          // The stage's click unloaded its document before it could return;
+          // what it kept for this document is the state it would have returned.
+          const kept = takeKeptStageState();
+          if (kept && pendingStage && kept.stageId === pendingStage.id) {
+            const keptResult = normalizeCapabilityV2StageResult({ outcome: "Continue", state: kept.state }, pendingStage);
+            if (keptResult.state) Object.assign(state, keptResult.state);
+          }
           controlCursor = resolveCapabilityStageTransition(runtime.program, controlCursor, resumeStageId, "next", state);
           stageReceipts.push({ ...pendingReceipt, status: "Completed", urlAfter: location.href, outcome: "Continue", signal: "next", completedAt: new Date().toISOString() });
         } else {
@@ -4255,6 +4277,8 @@ export class AgentPort {
           this.capabilityStageNavigates = false;
         }
         const result = normalizeCapabilityV2StageResult(rawResult, stage);
+        // The stage returned, so what it kept for a document that never came is dropped.
+        takeKeptStageState();
         // V2 authored Stages communicate navigation as data. A direct DOM
         // navigation or the legacy observer hook is a protocol violation:
         // it can tear down this document before state, cursor, receipt and

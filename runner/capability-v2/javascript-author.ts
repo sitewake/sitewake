@@ -1,4 +1,4 @@
-import { countsIgnoringTheirList, describeCountIgnoringList } from "../../lib/capability-center-v2/output-consistency";
+import { countsIgnoringTheirList, demonstrationAnswerDisagreement, describeAnswerDisagreement, describeCountIgnoringList } from "../../lib/capability-center-v2/output-consistency";
 import { createAuthoringConnectors, type AuthoringConnectors } from "./connectors";
 import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
 import { DEFAULT_CAPABILITY_TOTAL_TIMEOUT_MS } from "../../lib/capability-center-v2/control-flow";
@@ -627,7 +627,7 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
         ? "true"
         : `!element.closest(${JSON.stringify(CONTROL_SELECTOR)})`;
       return `${header}
-      async run({ input, waitForTarget, waitUntil, settle }) {
+      async run({ input, waitForTarget, waitUntil, settle, keep }) {
         void input;
         const element = await waitForTarget(${target});
         // Read the identity of the object being acted on before the page changes;
@@ -636,6 +636,9 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
         const actedOn = (element.innerText || element.textContent || "").replace(/\\s+/gu, " ").trim().slice(0, 240);
         // A link or card names the object; a control keeps the identity an earlier stage recorded.
         const namesObject = ${namesObject};
+        // The click may unload this document before this stage can return; the
+        // identity is kept now and reaches the next stage either way.
+        if (namesObject) keep({ targets: { __actedOn: actedOn } });
         const hrefBefore = location.href; const textBefore = document.body.innerText;
         element.click();
         // A click either navigates (the host resumes on the new document) or changes the page in place.
@@ -1006,6 +1009,16 @@ export async function authorJavaScriptCapability(options: {
         // the authoring loop accepts the source; otherwise a bad module
         // is materialized and only fails much later in the pipeline.
         await evaluateResult(draft.page, options.goal, options.contract, draft.output, options.input, undefined, draft.observedText);
+        // The demonstration is the proof of the answer as well as of the path.
+        // A draft that reaches the right page and returns a number the visitor
+        // was never told has not passed it: "Count quotes by tag" was proven
+        // with twelve quotes, counted the two on its last page, and was
+        // published to tell every visitor the count of one page.
+        const disagreement = demonstrationAnswerDisagreement(draft.output as JsonObject, options.input.experience?.answer);
+        if (disagreement) {
+          await workspace.event('replay.answer_disagrees', { ...lastCase, finding: disagreement });
+          throw new Error(`draft_disagrees_with_demonstration:${describeAnswerDisagreement(disagreement, demonstrationParameters as JsonObject)}`);
+        }
         const passedDemonstration: JavaScriptAuthorResult = { source, bundle, program, draft, provenance };
         // What each run answered, to read together once all of them have.
         const answers: Array<{ input: JsonObject; output: JsonObject }> = [{ input: options.input.parameters as JsonObject, output: draft.output as JsonObject }];

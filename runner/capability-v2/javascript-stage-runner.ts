@@ -1,6 +1,6 @@
 import { applyCapabilityInputAliases as applyAliases } from "../../lib/capability-center-v2/run-resolution";
 import { capabilityNavigationKind } from "../../lib/capability-center-v2/navigation";
-import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
+import { CAPABILITY_KEPT_STATE_KEY, executeBrowserCapabilityStage, parseKeptStageState } from "../../lib/capability-center-v2/browser-stage-sdk";
 import type { BrowserContext, Frame, Page } from "playwright";
 import type {
   CapabilityProgram,
@@ -389,6 +389,24 @@ function destroyedContext(error: unknown) {
   return /execution context was destroyed|target page, context or browser has been closed|frame was detached/i.test(error instanceof Error ? error.message : String(error));
 }
 
+/**
+ * The state the stage kept for the document after its action, read off that
+ * document and cleared there; a page without storage, or with nothing kept,
+ * yields nothing.
+ */
+async function takeKeptStageState(page: Page) {
+  const raw = await page.evaluate((key) => {
+    try {
+      const value = sessionStorage.getItem(key);
+      sessionStorage.removeItem(key);
+      return value;
+    } catch {
+      return null;
+    }
+  }, CAPABILITY_KEPT_STATE_KEY).catch(() => null);
+  return parseKeptStageState(raw);
+}
+
 async function moduleShape(page: Page, moduleUrl: string) {
   const result = await page.evaluate(async (url) => {
     // Some site bundles and esbuild-transformed snippets reference the small
@@ -692,7 +710,17 @@ export async function runCapabilityJavaScriptStages(options: {
     if (transitioned && isSuspiciousDetailTransition(urlBefore, page.url(), manifest.id, manifest.effect)) {
       started.notes = [...(started.notes || []), `related_target_navigation_suspected:${urlBefore} -> ${page.url()}`];
     }
-    let result = lostContext ? ({ outcome: "Continue" } satisfies CapabilityStageResult) : normalizeStageResult(rawResult, manifest);
+    // What the stage kept before the action that unloaded its document is
+    // its state: the return it could not make. A stage that did return has
+    // delivered the same state, and its kept copy is only cleared.
+    const kept = await takeKeptStageState(page);
+    let result: CapabilityStageResult;
+    if (lostContext) {
+      result = kept?.stageId === manifest.id ? normalizeStageResult({ outcome: "Continue", state: kept.state }, manifest) : { outcome: "Continue" };
+      if (kept?.stageId === manifest.id) started.notes = [...(started.notes || []), `state_kept_through_navigation:${Object.keys(kept.state).join(",")}`];
+    } else {
+      result = normalizeStageResult(rawResult, manifest);
+    }
     // Continue means "go on to the next stage", so it is not an answer the
     // last stage may give. The recoveries below exist to carry an unfinished
     // search forward; applied to the final stage they turned the program's own
