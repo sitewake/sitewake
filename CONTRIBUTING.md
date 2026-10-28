@@ -45,6 +45,8 @@ node scripts/benchmark/compare.mjs .artifacts/benchmark/runs/<before>/report.jso
 
 The PR description carries the comparison's rate table and its regressions/fixed/unstable lists. A rate that fell blocks the merge; an unstable task (differs between two runs of one build) needs a line explaining why. `benchmark/README.md` describes the sites, the task format and the report.
 
+The pipeline has three steps: the visitor's recording, the authoring, the independent validation. A new judgment about a capability goes into the validation floor (`lib/capability-center-v2/review-adjudication.ts`), with the defect it caught as its evidence, never into a new stage or a model review; a check with no such evidence is a note on the version, not a gate (`benchmark/GATES.md`).
+
 ## Names
 
 The product is **SiteWake**, and every identifier a user or operator sees carries that name:
