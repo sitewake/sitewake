@@ -109,13 +109,16 @@ async function ask(browser, site, task, phase) {
 
 // The stack keeps its capabilities between runs, so a run would otherwise be
 // answered by what the run before it published and generate nothing. Each run
-// starts from no live capability on its sites unless told to keep them.
-async function disableLiveCapabilities(admin, site) {
+// starts from no capability on its sites unless told to keep them. They are
+// deleted, not disabled: a generation attaches to a capability of the same
+// name whatever its status, and a version published onto a disabled one
+// left it disabled — the reuse asks then found nothing to call.
+async function retireEarlierCapabilities(admin, site) {
   const payload = await admin.json("/api/admin/capability-v2/capabilities").catch(() => ({}));
-  const live = (payload.capabilities || []).filter((capability) => capability.status === "Active");
-  for (const capability of live) await admin.request(`/api/admin/capability-v2/capabilities/${encodeURIComponent(capability.id)}/disable`, { method: "POST", body: {} }).catch(() => undefined);
-  if (live.length) log(`   ${site.slug}: ${live.length} live capabilit${live.length === 1 ? "y" : "ies"} from earlier runs disabled`);
-  return live.length;
+  const earlier = (payload.capabilities || []).filter((capability) => capability.status !== "Deleted");
+  for (const capability of earlier) await admin.request(`/api/admin/capability-v2/capabilities/${encodeURIComponent(capability.id)}`, { method: "DELETE" }).catch(() => undefined);
+  if (earlier.length) log(`   ${site.slug}: ${earlier.length} capabilit${earlier.length === 1 ? "y" : "ies"} from earlier runs retired`);
+  return earlier.length;
 }
 
 const browser = await launchBrowser();
@@ -123,7 +126,7 @@ try {
   for (const set of plan) {
     const site = set.site;
     const admin = adminClient(site.id, state.consoleCookie || "");
-    if (!flags["keep-capabilities"]) notes.push(`${site.slug}: ${await disableLiveCapabilities(admin, site)} earlier capability(ies) disabled before the run`);
+    if (!flags["keep-capabilities"]) notes.push(`${site.slug}: ${await retireEarlierCapabilities(admin, site)} earlier capability(ies) retired before the run`);
     log(`── ${site.slug} (${siteBaseUrl(site)}) — ${set.tasks.length} task(s)`);
     const follows = [];
     for (const task of set.tasks) {
