@@ -269,6 +269,48 @@ the module: `books-five-star-mystery` (one page of two, every run),
 different book), `ps-add-notebook-zh` (added nothing). They cap the visitor
 rate below 90% whatever the module does, and are the other half of the work.
 
+## Reduced pipeline — recording, authoring, validation
+
+Measured on build `143899d3` (the benchmark driver at `59da2da5`), run
+`2026-10-28T23-14-20`. The pipeline is the three steps that carry evidence:
+the recording is the trace and states the Contract, authoring replays the
+draft on the demonstrated input and on the values the start page lists
+beside it, validation decides publication by its own record, and one repair
+follows a rejection that names a case. The explorer, the parameter planner,
+the contract designer, the case enrichment and the model review are gone;
+45 checks with no recorded defect behind them are notes.
+
+| Rate | Iteration 3 head (`f1f75a3e`) | Reduced (`143899d3`) |
+| --- | --- | --- |
+| First ask | 14 / 18 (77.8%) | 15 / 18 (83.3%) |
+| Generation published | 2 / 12 (16.7%) | 3 / 10 (30%) |
+| Reuse | 1 / 1 | 2 / 2 |
+| Visitor (first + reuse) | 15 / 19 (78.9%) | 17 / 20 (85%) |
+| Generation, median time followed | 493 s | 100 s |
+| Generation, median model calls | not recorded | 22 |
+
+Every books generation published, in 70–80 s and 7–14 model calls:
+`books-cheapest-travel` (refused in every earlier run on the Contract's
+`textIncludes "results."`), `books-count-poetry`, `books-price-named`; both
+reuse asks were answered through the published programs. No rate fell; the
+two first-ask regressions (`ps-open-detail-price`, `quotes-tag-count`) are
+page-agent answers, outside the pipeline.
+
+What is left, by class:
+
+- **Authoring on PrestaShop and quotes** (5): the cart modal and the
+  quantity control (`ps-add-cushion` 47 calls, `ps-add-mug-quantity`
+  control-flow timeout, `ps-add-notebook-zh` the same failure twice,
+  `ps-cheapest-accessory` 46 calls) and `quotes-by-author` (46 calls). The
+  budget is spent inside the loop, now without a model turn anywhere else.
+- **A demonstration with no actions** (`ps-category-count`): the visitor
+  opened the Art category page and read it, so the recording has no step to
+  author from (`capability_recording_without_actions`). A read-only
+  demonstration needs a trace that opens the page for the input.
+- **Intake matched the wrong capability** (`books-most-expensive-travel`):
+  the classification took "most expensive" for the published "cheapest" and
+  created no generation.
+
 ## Live demo, 2026-10-22 → 2026-10-27 (for comparison)
 
 Not a benchmark run: the demo console's own records over the days the fixes
