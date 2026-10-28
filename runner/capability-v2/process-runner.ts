@@ -56,6 +56,7 @@ import {
 } from "./module-delivery";
 import { resolveCapabilityInputDefaults } from "../../lib/capability-center-v2/input-template";
 import { projectCapabilityContract } from "../../lib/capability-center-v2/semantic-analyzer";
+import { capabilityEntryPage } from "../../lib/capability-center-v2/entry-page";
 import { runCapabilityCaseGeneration } from "./case-generation";
 import {
   capabilityCandidateHash,
@@ -436,6 +437,10 @@ async function performCandidateValidation(
   const artifactRefs: UploadedArtifact[] = [];
   const caseStartUrl = () => {
     const explored = spec.browser.startUrl || spec.input.context.startUrl;
+    // A version published before its entry followed the Contract still
+    // starts each case on the page the Contract binds it to.
+    const entryPage = capabilityEntryPage(candidate.contract, explored);
+    if (entryPage) return entryPage;
     const siteEntry = candidate.contract.scope?.kind === "site-global"
       ? (() => { try { return new URL(explored!).origin + "/"; } catch { return explored; } })()
       : explored;
@@ -1097,10 +1102,10 @@ async function perform(
     };
     try {
       validateContractInput(spec.contract, caseInput);
+      const explored = spec.browser.startUrl || spec.input.context.startUrl;
       const startUrl =
-        replay.entry.mode === "Navigate"
-          ? replay.entry.url
-          : spec.browser.startUrl || spec.input.context.startUrl;
+        capabilityEntryPage(spec.contract, explored)
+        || (replay.entry.mode === "Navigate" ? replay.entry.url : explored);
       if (startUrl) {
         await isolated.page.goto(startUrl, {
           waitUntil: "domcontentloaded",

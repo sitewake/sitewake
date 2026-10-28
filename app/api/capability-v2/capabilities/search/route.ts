@@ -1,6 +1,7 @@
 import { withRequestTiming } from "@/lib/http/request-timing";
 import { listCapabilities } from "@/db/capability-center-v2-store";
 import { scopeMatchesRequest } from "@/lib/capability-center-v2/semantic-analyzer";
+import { capabilityRunPage } from "@/lib/capability-center-v2/entry-page";
 import type { JsonValue } from "@/lib/capability-center-v2/model";
 import { capabilityAgentAuthorized, capabilityJson, capabilityOptions, siteIdFromRequest, errorResponse } from "../../http";
 
@@ -18,7 +19,9 @@ async function handlePOST(request: Request) {
     const terms = queries.map((item) => item.toLocaleLowerCase("zh-CN").trim()).filter(Boolean);
     const requestInput = body.input && typeof body.input === "object" && !Array.isArray(body.input) ? body.input as Record<string, JsonValue> : {};
     const items = capabilities.filter((item) => item.status === "Active").flatMap((item) => {
-      const scopeMatch = scopeMatchesRequest(item.contract.scope, { goal: body.goal || queries.join(" "), input: requestInput, currentUrl: typeof body.currentUrl === "string" ? body.currentUrl : undefined });
+      // Judged on the page it would run on, as the runtime judges it.
+      const runPage = capabilityRunPage(item.contract, typeof body.currentUrl === "string" ? body.currentUrl : undefined);
+      const scopeMatch = scopeMatchesRequest(item.contract.scope, { goal: body.goal || queries.join(" "), input: requestInput, currentUrl: runPage.url });
       // Retrieval is not invocation: missing inputs can be bound by the Agent,
       // and page scope can be reached by navigation. Runtime enforces the scope.
       // Return the constraint with the contract rather than hiding the tool.
