@@ -104,16 +104,16 @@ export async function followGeneration(client, { runId, siteId, appearTimeoutMs 
     versionId = validation?.result?.versionId || versionId;
   }
   const chain = await generationChain(client, task);
-  const last = chain.at(-1);
-  if (last) {
-    capabilityId = last.task.result?.capabilityId || capabilityId;
-    versionId = last.task.result?.versionId || versionId;
+  const end = chain.at(-1);
+  if (end) {
+    capabilityId = end.task.result?.capabilityId || capabilityId;
+    versionId = end.task.result?.versionId || versionId;
   }
   return {
     // From the generation task's creation to the end of the last task of its
     // chain (validation, one repair, its validation); the model calls are the
     // authoring turns of every generation in the chain.
-    durationMs: last ? Math.max(0, Date.parse(last.task.finishedAt || last.task.updatedAt) - Date.parse(task.createdAt)) : undefined,
+    durationMs: end ? Math.max(0, Date.parse(end.task.finishedAt || end.task.updatedAt) - Date.parse(task.createdAt)) : undefined,
     modelCalls: chain.reduce((sum, item) => sum + item.modelCalls, 0),
     repaired: chain.some((item) => item.task.input?.context?.__autoRepairOfTaskId),
     state: TERMINAL.test(String(progress.state || "")) ? progress.state : "timed-out",
