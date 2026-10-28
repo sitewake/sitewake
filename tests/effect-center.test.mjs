@@ -126,6 +126,10 @@ test("effect facts and summaries connect user outcomes to capability and knowled
 
   const failedFact = await store.effectFactFromAgentRun(failure);
   assert.equal(failedFact.failureCategory, "page-drift");
+  // The failure's class and stage are written with the fact; a success carries none.
+  assert.equal(failedFact.failureClass, "site-changed");
+  assert.equal(failedFact.failureStage, "runtime.stage");
+  assert.equal(fact.failureClass, undefined);
 
   await store.persistEffectRun(success);
   await store.persistEffectRun(failure);

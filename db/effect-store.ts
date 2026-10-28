@@ -1,3 +1,4 @@
+import { attributeRunFailure } from "../lib/capability-center-v2/failure-class";
 import { getCapabilityExperienceOutboxItem } from "./capability-experience-outbox-store";
 import { getD1Binding, type D1DatabaseLike, type D1PreparedStatementLike } from "./index";
 import { ensureSiteAgentV3Schema } from "./site-agent-schema";
@@ -477,7 +478,11 @@ function assessAgentRun(run: AgentRun, capabilityUsed: boolean) {
   };
 }
 
-function legacyAssessment(fact: EffectRunFact): EffectRunFact {
+function legacyAssessment(stored: EffectRunFact): EffectRunFact {
+  // A fact written before failures were attributed gets its class when read.
+  const fact: EffectRunFact = stored.status === "failed" && !stored.failureClass
+    ? { ...stored, ...attributeRunFailure({ outcomeCode: stored.outcomeCode, summary: stored.outcomeSummary, capabilityUsed: stored.capabilityUsed }) }
+    : stored;
   if (fact.assessmentStatus) return fact;
   const completionVerdict: EffectCompletionVerdict =
     fact.status === "cancelled"
@@ -595,6 +600,9 @@ export async function effectFactFromAgentRun(
       capabilityUsed,
       humanHandoff,
     }),
+    ...(status === "failed"
+      ? attributeRunFailure({ outcomeCode, summary: outcomeSummary, evidence: run.outcome?.evidence as Record<string, unknown> | undefined, capabilityUsed })
+      : {}),
     durationMs: Math.max(
       0,
       Date.parse(run.updatedAt) - Date.parse(run.createdAt),
@@ -798,6 +806,9 @@ export async function effectFactFromEpisode(
       capabilityUsed: Boolean(episode.capabilityId),
       humanHandoff,
     }),
+    ...(status === "failed"
+      ? attributeRunFailure({ outcomeCode: episode.outcome.code, summary: episode.outcome.summary, evidence: episode.outcome.evidence as Record<string, unknown> | undefined, capabilityUsed: Boolean(episode.capabilityId) })
+      : {}),
     durationMs: Math.max(
       0,
       Date.parse(episode.endedAt) - Date.parse(episode.startedAt),

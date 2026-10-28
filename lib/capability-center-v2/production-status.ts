@@ -1,3 +1,4 @@
+import { attributeTaskFailure, classifyFailure, type FailureClass } from './failure-class';
 import type { CapabilityTask, CapabilityTaskEvent } from './model';
 
 /**
@@ -47,6 +48,8 @@ export type CapabilityProductionStatus = {
    */
   detail?: string;
   code?: string;
+  failureClass?: FailureClass;
+  failureStage?: string;
   nextTaskId?: string;
   capabilityId?: string;
   versionId?: string;
@@ -79,7 +82,10 @@ export function projectProductionStatus(task: CapabilityTask, events: Capability
   if (task.status === 'WaitingInput') return { ...base, state: 'WaitingInput', messageKey: 'waitingInput', recovery: 'ProvideInput' };
   // The failure's own code is what the console words; `message` carries the
   // code too, so there is nothing here worth passing through as detail.
-  if (task.status === 'Failed') return { ...base, state: 'Failed', messageKey: 'failed', code: task.error?.code, recovery: phase === 'Validation' ? 'RetryValidation' : 'RetryProduction' };
+  if (task.status === 'Failed') {
+    const attribution = task.error ? { failureClass: task.error.failureClass, failureStage: task.error.failureStage, ...(task.error.failureClass ? {} : attributeTaskFailure(task)) } : undefined;
+    return { ...base, state: 'Failed', messageKey: 'failed', code: task.error?.code, ...attribution, recovery: phase === 'Validation' ? 'RetryValidation' : 'RetryProduction' };
+  }
   if (task.status === 'Running') {
     const lastPhase = [...events].sort((a, b) => a.sequence - b.sequence).filter(e => e.eventType === 'PhaseChanged').at(-1);
     const stage = String(lastPhase?.payload.phase || '');
@@ -94,8 +100,11 @@ export function projectProductionStatus(task: CapabilityTask, events: Capability
   // Another generation of the same capability published first: what the user
   // asked for is available, so this is the done state, not a failure.
   if (last?.eventType === 'PublicationSuperseded') return { ...base, phase: 'Publication', state: 'Published', messageKey: 'publishedSuperseded', detail: text(last.payload.capabilityName), capabilityId: text(last.payload.capabilityId), versionId: text(last.payload.versionId) };
-  if (last?.eventType === 'PublicationFailed') return { ...base, phase: 'Publication', state: 'Failed', messageKey: 'publicationFailed', detail: reason, code: String(last.payload.code || 'publication_failed'), recovery: last.payload.conflict === true ? 'InspectConflict' : 'RetryReview' };
-  if (last?.eventType === 'ReviewFailed') return { ...base, phase: 'Review', state: 'Failed', messageKey: 'reviewUnavailable', detail: reason, recovery: 'RetryReview' };
+  if (last?.eventType === 'PublicationFailed') {
+    const code = String(last.payload.code || 'publication_failed');
+    return { ...base, phase: 'Publication', state: 'Failed', messageKey: 'publicationFailed', detail: reason, code, failureClass: classifyFailure({ code, message: reason }), failureStage: 'Publication', recovery: last.payload.conflict === true ? 'InspectConflict' : 'RetryReview' };
+  }
+  if (last?.eventType === 'ReviewFailed') return { ...base, phase: 'Review', state: 'Failed', messageKey: 'reviewUnavailable', detail: reason, failureClass: classifyFailure({ code: 'review_failed', message: reason }), failureStage: 'Review', recovery: 'RetryReview' };
   if (last?.eventType === 'ReviewCompleted' && last.payload.decision !== 'Approved') return { ...base, phase: 'Review', state: 'Rejected', messageKey: 'reviewRejected', detail: reason, recovery: 'RetryProduction' };
   const stalled = now - Date.parse(last?.createdAt || task.finishedAt || task.updatedAt) > 10 * 60_000;
   return { ...base, phase: last?.eventType === 'PublicationStarted' || last?.payload.decision === 'Approved' ? 'Publication' : 'Review', state: stalled ? 'NeedsAttention' : 'Running', messageKey: stalled ? 'reviewStalled' : 'reviewRunning', recovery: stalled ? 'RetryReview' : 'None' };

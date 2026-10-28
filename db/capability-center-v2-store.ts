@@ -1,3 +1,4 @@
+import { attributeTaskFailure } from "../lib/capability-center-v2/failure-class";
 import { getArtifactBinding, getD1Binding, type D1DatabaseLike, type D1PreparedStatementLike } from "./index";
 import { ensureCapabilityCenterV2Schema } from "./capability-center-v2-schema";
 import {
@@ -282,7 +283,7 @@ function versionFromRow(row: Record<string, unknown>): CapabilityVersion {
   };
 }
 function taskFromRow(row: Record<string, unknown>): CapabilityTask {
-  return {
+  return withFailureAttribution({
     id: text(row.id),
     siteId: text(row.site_id),
     versionId: text(row.version_id),
@@ -309,7 +310,7 @@ function taskFromRow(row: Record<string, unknown>): CapabilityTask {
     finishedAt: text(row.finished_at) || undefined,
     archivedAt: text(row.archived_at) || undefined,
     deletedAt: text(row.deleted_at) || undefined,
-  };
+  });
 }
 function runnerFromRow(row: Record<string, unknown>): RunnerInstance {
   return {
@@ -3678,7 +3679,17 @@ export async function recordCapabilityTaskPublication(
   });
 }
 
-async function saveTaskFull(task: CapabilityTask) {
+/**
+ * A failed task carries its class and stage from the moment its terminal
+ * state is written; a row written before this existed gets them when read.
+ */
+function withFailureAttribution(task: CapabilityTask): CapabilityTask {
+  if (task.status !== "Failed" || !task.error || task.error.failureClass) return task;
+  return { ...task, error: { ...task.error, ...attributeTaskFailure(task) } };
+}
+
+async function saveTaskFull(input: CapabilityTask) {
+  const task = withFailureAttribution(input);
   const database = db();
   if (!database) {
     memory.tasks.set(task.id, task);

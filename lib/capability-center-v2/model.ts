@@ -1,3 +1,4 @@
+import type { FailureClass } from "./failure-class";
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
@@ -862,6 +863,9 @@ export type CapabilityTaskError = {
   retryable: boolean;
   stepId?: string;
   cause?: { code: string; message: string };
+  /** The failure's class and stage (lib/capability-center-v2/failure-class.ts), written with the terminal state. */
+  failureClass?: FailureClass;
+  failureStage?: string;
 };
 
 export type CapabilityTaskEvent = {

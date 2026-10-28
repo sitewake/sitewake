@@ -1,3 +1,4 @@
+import type { FailureClass } from "../capability-center-v2/failure-class";
 import type {
   AgentRunActivity,
   AgentRunConversationTurn,
@@ -109,6 +110,9 @@ export type EffectRunFact = {
   repair: boolean;
   humanHandoff: boolean;
   failureCategory: EffectFailureCategory;
+  /** The failure's class and stage (lib/capability-center-v2/failure-class.ts); absent on a successful run. */
+  failureClass?: FailureClass;
+  failureStage?: string;
   durationMs: number;
   pageCount: number;
   releaseId?: string;
