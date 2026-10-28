@@ -241,7 +241,13 @@ export async function PATCH(request: Request, context: Context) {
   const path = await segments(context); let body: Record<string, unknown>; try { body = await bodyOf(request); } catch { return capabilityJson({ error: "invalid_json" }, 400); }
   const siteId = siteIdFromRequest(request, body); if (!siteId) return capabilityJson({ error: "site_id_required" }, 400);
   try {
-    if (path[0] === "settings" && path[1]) return capabilityJson(await upsertSetting(siteId, path[1], (body.settingValue || {}) as never, String(body.updatedBy || "administrator")));
+    if (path[0] === "settings" && path[1]) {
+      const saved = await upsertSetting(siteId, path[1], (body.settingValue || {}) as never, String(body.updatedBy || "administrator"));
+      // The review prompt once steered a model review between validation and
+      // publication. Publication is decided by the validation record now; the
+      // setting is kept for the records that cite it and steers nothing.
+      return capabilityJson(path[1] === "review.prompt" ? { ...saved, applied: false, note: "review.prompt is no longer applied: publication is decided by the validation record" } : saved);
+    }
     if (path[0] === "capabilities" && path[1]) return capabilityJson(await updateCapability(siteId, path[1], { name: typeof body.name === "string" ? body.name : undefined, description: typeof body.description === "string" ? body.description : undefined, aliases: Array.isArray(body.aliases) ? body.aliases.filter((item): item is string => typeof item === "string") : undefined, searchText: typeof body.searchText === "string" ? body.searchText : undefined }));
     if (path[0] === "tasks" && path[1]) return capabilityJson(await patchPendingTask(siteId, path[1], { goal: typeof body.goal === "string" ? body.goal : undefined, guidance: typeof body.guidance === "string" ? body.guidance : undefined, input: body.input as never }));
     return capabilityJson({ error: "admin_capability_v2_route_not_found" }, 404);

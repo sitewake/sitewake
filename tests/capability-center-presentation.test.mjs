@@ -91,15 +91,14 @@ test("the progress feed shows a superseded publication and drops the review it m
   const events = [
     at(1, "PhaseChanged", { phase: "Validating", message: "validation case passed", payload: { caseId: "case_1" } }),
     at(2, "ReviewStarted", { phase: "Reviewing" }),
-    at(3, "PhaseChanged", { phase: "Reviewing", message: "ai review started" }),
-    at(4, "ReviewCompleted", { phase: "Reviewing", decision: "Rejected", reason: "违反程序不能完整满足成功条件的规则……" }),
-    at(5, "PublicationSuperseded", { phase: "Published", capabilityId: "cap", capabilityName: "查询记录", message: "publication superseded" }),
+    at(3, "ReviewCompleted", { phase: "Reviewing", decision: "Rejected", reason: "review rejected: no validation case passed", deterministic: true }),
+    at(4, "PublicationSuperseded", { phase: "Published", capabilityId: "cap", capabilityName: "查询记录", message: "publication superseded" }),
   ];
   const feed = progressActivity(events);
-  assert.deepEqual(feed.map((event) => event.sequence), [5, 1], "the superseded outcome leads; the moot review is gone; validation stays");
+  assert.deepEqual(feed.map((event) => event.sequence), [4, 1], "the superseded outcome leads; the moot verdict is gone; validation stays");
   assert.equal(String(feed[0].payload.message), "publication superseded", "the feed carries a marker the console words");
-  // Without a superseding publication the review history is shown as before.
-  assert.deepEqual(progressActivity(events.slice(0, 4)).map((event) => event.sequence), [4, 3, 2, 1]);
+  // Without a superseding publication the verdict history is shown as before.
+  assert.deepEqual(progressActivity(events.slice(0, 3)).map((event) => event.sequence), [3, 2, 1]);
 });
 
 test("the console says what each validation case came to, and names the one refusal plainly", async () => {
