@@ -311,6 +311,63 @@ What is left, by class:
   the classification took "most expensive" for the published "cheapest" and
   created no generation.
 
+## Iteration 5 — the defects the reduced pipeline's records showed
+
+Measured on build `bd07bb7e`, run `2026-10-29T02-08-38`, against the
+reduced pipeline (`143899d3`, run `2026-10-28T23-14-20`). Every change below
+came from a failed task's own records.
+
+- The seed's control selector had unquoted attribute values with spaces:
+  every seed that acted by a click threw before the model wrote a line.
+- The model, fixing it, doubled the backslashes of a regex and sent the
+  same edit thirty times. An edit is found through runs of backslashes and
+  whitespace when that names one place; a miss shows the closest lines; the
+  third unchanged repeat ends the loop.
+- After an add to cart the runner went back in history (PrestaShop disables
+  the button while its confirmation is open), so the verify stage ran on
+  `about:blank`. That recovery now runs only before anything is written.
+- The trace binds a quantity typed as "2" to the numeric input; opens from
+  the home page by the input's link when the run began on the page the input
+  chooses (`/9-art`, `/6-accessories`), which gives a read-only demonstration
+  a trace; finds a link named alike in every entry ("(about)") by the entry
+  that names the input; and drops what came before a return by the back
+  button.
+- The duplicate check is told that a different selection criterion is a
+  different capability ("most expensive" is not "cheapest").
+- Validation rejects a case that failed in any way on a value the site lists,
+  not only one that found nothing (two programs that timed out on every other
+  category had been published); the harvest names list items by their
+  document text, not as CSS draws them ("CLOTHES"); a generation that adds an
+  input to a name already live or in flight is named for what it adds
+  ("Add product to cart (with quantity)").
+
+| Rate | Reduced (`143899d3`) | Iteration 5 (`bd07bb7e`) |
+| --- | --- | --- |
+| First ask | 15 / 18 | 15 / 18 |
+| Generation published | 3 / 10 | 6 / 9 |
+| Reuse | 2 / 2 | 5 / 5 |
+| Visitor (first + reuse) | 17 / 20 (85%) | 20 / 23 (87%) |
+| Generation, median | 100 s | 196 s, 14 model calls |
+
+Published and correct on reuse with a value other than the demonstrated one:
+the three books capabilities, `ps-add-cushion` (the Mountain fox cushion),
+`ps-add-mug-quantity` (three mugs, under its own name) and
+`ps-open-detail-price`. `books-most-expensive-travel` and
+`ps-add-notebook-zh` were answered on the first ask through a published
+capability, so nothing was generated.
+
+An intermediate run (`fa633ecf`, run `2026-10-29T01-13-58`) published 9 of
+10 but three of those answered wrong on reuse (5 / 8): the category count
+and the cheapest item had timed out on every other category during
+validation, and the mug's capability had been set aside for the cushion's.
+The last three fixes above are for those; this run refuses the category
+count instead of publishing it.
+
+What is left: `ps-category-count` (authoring repeats a failure on the other
+categories), `quotes-tag-count` and `quotes-by-author` (authoring budget),
+and three first asks the page agent answers wrong (`books-five-star-mystery`,
+`ps-search-count`, `ps-search-no-result`).
+
 ## Live demo, 2026-10-22 → 2026-10-27 (for comparison)
 
 Not a benchmark run: the demo console's own records over the days the fixes
