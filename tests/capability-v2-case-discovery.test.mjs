@@ -167,3 +167,28 @@ test("a card grid is a list named by its headings, and a longer list on a linked
     server.close();
   }
 });
+
+test("a longer list on a linked page that leaves out some of the start page's values is not the whole list", async () => {
+  // PrestaShop's home page shows eight popular products from several
+  // categories; its Accessories page lists eleven, none of them clothes.
+  const card = (name) => `<article><a href="/p/${name.toLowerCase().replace(/ /g, "-")}"><h3>${name}</h3></a></article>`;
+  const home = `<!doctype html><title>Shop</title><nav><a href="/accessories">Accessories</a></nav><main><div>${["Mug", "T-shirt", "Cushion"].map(card).join("")}</div></main>`;
+  const accessories = `<!doctype html><title>Accessories</title><nav><a href="/accessories">Accessories</a></nav><main><div>${["Mug", "Cushion", "Notebook", "Poster", "Lamp"].map(card).join("")}</div></main>`;
+  const server = createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(request.url === "/" ? home : accessories);
+  });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const browser = await launchTestBrowser();
+  try {
+    const tab = await browser.newPage();
+    await tab.goto(`${origin}/`);
+    const { snapshot, siblings } = await discovery.harvestStartPage(tab, { generationTaskId: "generation_1", siteId: "site_1", parameters: { productName: "Mug" } });
+    assert.deepEqual(siblings.productName, ["T-shirt", "Cushion"], "the start page's own list stands");
+    assert.equal(snapshot.regions.find((region) => region.kind === "choice-list").url, `${origin}/`);
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});

@@ -1,6 +1,6 @@
 import { countsIgnoringTheirList, demonstrationAnswerDisagreement, describeAnswerDisagreement, describeCountIgnoringList } from "../../lib/capability-center-v2/output-consistency";
 import { createAuthoringConnectors, type AuthoringConnectors } from "./connectors";
-import { contractWithOutputs } from "./contract-from-demonstration";
+import { contractWithOutputs, withOptionalOutputs } from "./contract-from-demonstration";
 import { offeredInputPaths } from "../../lib/capability-center-v2/case-generation";
 import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
 import { DEFAULT_CAPABILITY_TOTAL_TIMEOUT_MS } from "../../lib/capability-center-v2/control-flow";
@@ -1135,6 +1135,16 @@ export async function authorJavaScriptCapability(options: {
               continue;
             }
             if (exampleReplay.outcome !== "Success") throw new Error(`${exampleReplay.outcome}:${exampleReplay.reason || ""}`);
+            // A field the demonstrated item had and this listed item answers
+            // without is optional, not a failure (see withOptionalOutputs).
+            const requiredOutputs = Array.isArray((contract.outputSchema as JsonObject).required) ? ((contract.outputSchema as JsonObject).required as JsonValue[]).map(String) : [];
+            const answered = (exampleReplay.output || {}) as JsonObject;
+            const lacking = requiredOutputs.filter((name) => answered[name] === undefined || answered[name] === null);
+            if (lacking.length && Object.keys(answered).length) {
+              contract = withOptionalOutputs(contract, lacking);
+              await workspace.write('dist/contract.json', contract);
+              await options.onEvent?.({ phase: "DraftReplay", message: "an output another listed value does not have is optional", payload: { fields: lacking.join(","), example: exampleIndex + 1 } });
+            }
             await evaluateResult(isolatedExample.page, options.goal, contract, exampleReplay.output, groundingInput, undefined, exampleReplay.observedText);
             answers.push({ input: groundingInput.parameters as JsonObject, output: exampleReplay.output as JsonObject });
             await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example succeeded", payload: { example: exampleIndex + 1 } });
@@ -1166,7 +1176,8 @@ export async function authorJavaScriptCapability(options: {
           demonstrated = passedDemonstration;
           throw new Error(`draft_grounding_example_failed:answers_together:${describeCountIgnoringList(stuck[0], answers.map((answer) => answer.input))}`);
         }
-        await acceptDraft(passedDemonstration);
+        // The examples may have made an output optional since the demonstration passed.
+        await acceptDraft({ ...passedDemonstration, contract });
         draftResult = { ok: true, outcome: draft.outcome, output: draft.output, evidence: draft.evidence, receipts: draft.receipts };
         await options.onEvent?.({ phase: "DraftReplay", message: "draft replay succeeded" });
       } catch (error) {

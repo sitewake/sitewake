@@ -1314,6 +1314,7 @@ export const en: ConsoleCopy = {
         activityMessage: {
           "trace taken from the recording": "The trace is taken from the visitor's recording",
           "the program starts on the page that lists every value": "The capability starts on the page that lists every value it can be asked for",
+          "an output another listed value does not have is optional": "An output another listed value does not have is now optional",
           "start page harvested": "Start page read: its lists and the values beside the demonstrated ones",
           "start page could not be harvested; authoring proves the demonstration alone": "The start page could not be read; authoring is proven on the demonstrated input alone",
           "model turn": (data) => `Authoring turn ${data.turn ?? ""}`,

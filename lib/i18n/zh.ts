@@ -1397,6 +1397,7 @@ export const zh = {
         activityMessage: {
           "trace taken from the recording": "已从访客的录制取得操作轨迹",
           "the program starts on the page that lists every value": "能力从列出全部可选值的页面开始",
+          "an output another listed value does not have is optional": "列表中另一个值没有的输出字段已改为可选",
           "start page harvested": "已读取起始页：其中的列表与演示值旁边的值",
           "start page could not be harvested; authoring proves the demonstration alone": "起始页无法读取；撰写只以演示输入为证",
           "model turn": (data) => `编写第 ${data.turn ?? ""} 轮`,

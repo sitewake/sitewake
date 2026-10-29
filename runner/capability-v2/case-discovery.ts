@@ -891,9 +891,14 @@ async function widenListsFromLinkedPages(
   for (const value of demonstrationValues) {
     const holds = (region: CapabilityCaseDiscoveryRegion) => region.kind === "choice-list" && region.observedValues.some((item) => sameText(item, value));
     const local = regions.find(holds);
-    const wider = found.filter(holds).sort((left, right) => right.observedValues.length - left.observedValues.length)[0];
-    if (!wider || (local && wider.observedValues.length <= local.observedValues.length)) continue;
+    // Only a list that holds every value the start page shows is the whole
+    // of it. A shop's Accessories page lists more products than its home
+    // page's popular eight, but not the clothes among them: starting there
+    // would narrow the capability, not widen it.
     const shown = local?.observedValues || [];
+    const covers = (region: CapabilityCaseDiscoveryRegion) => shown.every((item) => region.observedValues.some((other) => sameText(other, item)));
+    const wider = found.filter((region) => holds(region) && covers(region)).sort((left, right) => right.observedValues.length - left.observedValues.length)[0];
+    if (!wider || (local && wider.observedValues.length <= local.observedValues.length)) continue;
     const unseen = wider.observedValues.filter((item) => !shown.some((other) => sameText(other, item)));
     const merged = { ...wider, observedValues: [...unseen, ...wider.observedValues.filter((item) => !unseen.includes(item))] };
     const at = local ? regions.indexOf(local) : -1;
