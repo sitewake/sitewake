@@ -52,8 +52,13 @@ function sameOrigin(url: string, origin: string) {
   try { return new URL(url).origin === origin; } catch { return false; }
 }
 
+/** A recorded name without icon-font glyphs (private-use characters), as the kernel matches it. */
+function cleanName(value: string | undefined) {
+  return (value || "").replace(/\p{Co}/gu, "").replace(/\s+/gu, " ").trim();
+}
+
 function nameOf(element: RecordedElement | undefined) {
-  return (element?.accessibleName || element?.label || element?.name || element?.placeholder || "").replace(/\s+/gu, " ").trim();
+  return cleanName(element?.accessibleName || element?.label || element?.name || element?.placeholder);
 }
 
 function signature(action: RecordedAction) {
@@ -89,8 +94,8 @@ function pageElement(element: RecordedElement | undefined, index: number) {
     index,
     tag: element?.tag || "a",
     role: element?.role,
-    name: (element?.accessibleName || element?.name || "").replace(/\s+/gu, " ").trim() || undefined,
-    label: element?.label?.replace(/\s+/gu, " ").trim() || undefined,
+    name: cleanName(element?.accessibleName || element?.name) || undefined,
+    label: cleanName(element?.label) || undefined,
     placeholder: element?.placeholder,
     href: element?.href,
   };

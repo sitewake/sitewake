@@ -121,3 +121,20 @@ test("a list the page draws in capitals is harvested by the names the page holds
     server.close();
   }
 });
+
+test("icon-font glyphs inside a list's links are no part of the names harvested", async () => {
+  // PrestaShop draws its menu arrows as private-use characters in the link
+  // text; the cases asked for "  Clothes".
+  const page = CATALOGUE.replace('<a href="/c/travel_2">Travel</a>', '<a href="/c/travel_2"><i></i> <i></i> Travel</a>');
+  const { server, origin } = await serve(page);
+  const browser = await launchTestBrowser();
+  try {
+    const tab = await browser.newPage();
+    await tab.goto(`${origin}/`);
+    const { siblings } = await discovery.harvestStartPage(tab, { generationTaskId: "generation_1", siteId: "site_1", parameters: { category: "Poetry" } });
+    assert.deepEqual(siblings, { category: ["Travel", "Mystery", "Historical Fiction"] });
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});

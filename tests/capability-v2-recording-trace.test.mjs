@@ -134,3 +134,12 @@ test("a link named alike in every entry is the one in the entry its address name
   assert.equal(program.steps.length, 1);
   assert.deepEqual(program.steps[0].target.strategies[0], { type: "role", role: "link", name: "(about)", match: "exact", containsText: { source: "input", path: "authorName" } });
 });
+
+test("a recorded name keeps no icon-font glyph", () => {
+  // The recording names the cart button " Add to cart".
+  const { parameters, experience } = recording("ps-add-mug-quantity");
+  const { program } = traceFromExperience(experience, parameters);
+  const add = program.steps.at(-1);
+  assert.ok(add.target.strategies.some((strategy) => strategy.name === "Add to cart"), JSON.stringify(add.target.strategies));
+  assert.ok(!JSON.stringify(program).match(/[-]/u));
+});
