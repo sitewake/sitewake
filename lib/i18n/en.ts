@@ -1313,6 +1313,7 @@ export const en: ConsoleCopy = {
         frozen: "All authoring examples passed; source frozen",
         activityMessage: {
           "trace taken from the recording": "The trace is taken from the visitor's recording",
+          "the program starts on the page that lists every value": "The capability starts on the page that lists every value it can be asked for",
           "start page harvested": "Start page read: its lists and the values beside the demonstrated ones",
           "start page could not be harvested; authoring proves the demonstration alone": "The start page could not be read; authoring is proven on the demonstrated input alone",
           "model turn": (data) => `Authoring turn ${data.turn ?? ""}`,
