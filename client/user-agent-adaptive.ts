@@ -827,6 +827,44 @@ export async function resolvePageAgentExecution<T>(
 }
 
 /** Evidence failure must never skip disposal, listener removal, or UI restore. */
+
+/**
+ * An action whose tool name the model left out, named from its arguments
+ * when they fit one tool only. A model answered `{"index": 12}` for a click,
+ * the library refused it as an unknown action, and the visitor's task ended
+ * there — twice in one benchmark run. Only an element index on its own is
+ * unambiguous: it is a click. Every other unknown action reaches the library
+ * unchanged and is refused as before.
+ */
+export function nameUnnamedAction(action: unknown, available: Set<string>): unknown {
+  if (!action || typeof action !== "object" || Array.isArray(action)) return action;
+  const entries = Object.entries(action as Record<string, unknown>);
+  if (entries.length !== 1 || available.has(entries[0][0])) return action;
+  const [key, value] = entries[0];
+  const indexOnly = key === "index" && (typeof value === "number" || (typeof value === "string" && /^\d+$/u.test(value)));
+  if (indexOnly && available.has("click_element_by_index")) return { click_element_by_index: { index: Number(value) } };
+  return action;
+}
+
+async function withNamedAction(response: Response, available: Set<string>): Promise<Response> {
+  const text = await response.clone().text().catch(() => "");
+  try {
+    const payload = JSON.parse(text) as { choices?: Array<{ message?: { tool_calls?: Array<{ function?: { arguments?: string } }> } }> };
+    let changed = false;
+    for (const choice of payload.choices || []) {
+      for (const call of choice.message?.tool_calls || []) {
+        const args = call.function?.arguments ? JSON.parse(call.function.arguments) as Record<string, unknown> : undefined;
+        if (!args || !("action" in args)) continue;
+        const named = nameUnnamedAction(args.action, available);
+        if (named !== args.action) { call.function!.arguments = JSON.stringify({ ...args, action: named }); changed = true; }
+      }
+    }
+    return changed ? new Response(JSON.stringify(payload), { status: response.status, statusText: response.statusText, headers: response.headers }) : response;
+  } catch {
+    return response;
+  }
+}
+
 export async function finalizePageAgentRuntime(
   evidence: () => Promise<void>,
   cleanup: () => void | Promise<void>,
@@ -2002,7 +2040,7 @@ async function executeActorRound(options: AdaptiveOptions, task: string, maxStep
           onDequeued: () => resumeBudget(runtime),
         });
         if (response.status === 429) await new Promise((resolve) => setTimeout(resolve, providerRetryAfterMs(response)));
-        return response;
+        return response.ok ? await withNamedAction(response, availableTools) : response;
       } finally {
         metric(runtime, currentTurn, "model_wait", started, { modelRequests: runtime.budget.modelRequests });
       }

@@ -230,3 +230,16 @@ test("the final update reconciles once from the stored run when its revision mov
     globalThis.fetch = originalFetch;
   }
 });
+
+test("an action whose tool name the model left out is named from its arguments only when they fit one tool", async () => {
+  // `{"index": 12}` ended a visitor's task as an unknown action, twice in one run.
+  const adaptive = await bundled("../client/user-agent-adaptive.ts");
+  const available = new Set(["click_element_by_index", "set_text_by_index", "select_dropdown_option", "done"]);
+  assert.deepEqual(adaptive.nameUnnamedAction({ index: 12 }, available), { click_element_by_index: { index: 12 } });
+  assert.deepEqual(adaptive.nameUnnamedAction({ index: "7" }, available), { click_element_by_index: { index: 7 } });
+  // Index and text fit two tools; nothing is guessed.
+  assert.deepEqual(adaptive.nameUnnamedAction({ index: { index: 3, text: "Mug" } }, available), { index: { index: 3, text: "Mug" } });
+  // A named action, or a click the page does not allow, is left alone.
+  assert.deepEqual(adaptive.nameUnnamedAction({ done: { text: "ok" } }, available), { done: { text: "ok" } });
+  assert.deepEqual(adaptive.nameUnnamedAction({ index: 12 }, new Set(["done"])), { index: 12 });
+});
