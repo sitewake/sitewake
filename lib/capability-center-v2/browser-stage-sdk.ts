@@ -173,7 +173,9 @@ export async function executeBrowserCapabilityStage(payload: string | {
    * accessible name the same way, so a module can reuse the proven target as is.
    */
   type Strategy = { type: string; role?: string; name?: unknown; value?: unknown; match?: string; containsText?: unknown };
-  const normalizeText = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim();
+  // Icon fonts draw glyphs as private-use characters inside the text
+  // (PrestaShop's menu arrows, its cart icon): they are no part of a name.
+  const normalizeText = (value: unknown) => String(value ?? '').replace(/\p{Co}/gu, '').replace(/\s+/g, ' ').trim();
   const visible = (element: Element | null): element is HTMLElement => Boolean(element && element instanceof HTMLElement && element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden');
   const accessibleName = (element: Element): string => {
     const aria = element.getAttribute('aria-label'); if (aria && aria.trim()) return normalizeText(aria);

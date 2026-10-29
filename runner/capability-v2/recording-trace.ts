@@ -52,8 +52,13 @@ function sameOrigin(url: string, origin: string) {
   try { return new URL(url).origin === origin; } catch { return false; }
 }
 
+/** A recorded name without icon-font glyphs (private-use characters), as the kernel matches it. */
+function cleanName(value: string | undefined) {
+  return (value || "").replace(/\p{Co}/gu, "").replace(/\s+/gu, " ").trim();
+}
+
 function nameOf(element: RecordedElement | undefined) {
-  return (element?.accessibleName || element?.label || element?.name || element?.placeholder || "").replace(/\s+/gu, " ").trim();
+  return cleanName(element?.accessibleName || element?.label || element?.name || element?.placeholder);
 }
 
 function signature(action: RecordedAction) {
@@ -89,8 +94,8 @@ function pageElement(element: RecordedElement | undefined, index: number) {
     index,
     tag: element?.tag || "a",
     role: element?.role,
-    name: (element?.accessibleName || element?.name || "").replace(/\s+/gu, " ").trim() || undefined,
-    label: element?.label?.replace(/\s+/gu, " ").trim() || undefined,
+    name: cleanName(element?.accessibleName || element?.name) || undefined,
+    label: cleanName(element?.label) || undefined,
     placeholder: element?.placeholder,
     href: element?.href,
   };
@@ -253,8 +258,11 @@ export function traceFromExperience(experience: CapabilityExperience, parameters
   // link named by the value, from the home page; the draft's replay on the
   // other values the site lists proves the link is there.
   let entryUrl = start;
+  // Or the run reached that page without a recorded click — the agent went
+  // there by its address and only scrolled — and ended on it.
   const chosen = Object.entries(parameters).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0
-    && !steps.some((step) => usesInput(step, entry[0])) && pageNamedBy(experience.startPage, entry[1]));
+    && !steps.some((step) => usesInput(step, entry[0]))
+    && (pageNamedBy(experience.startPage, entry[1]) || (!steps.length && pageNamedBy(experience.endPage, entry[1]))));
   if (chosen.length === 1 && origin) {
     const [path] = chosen[0];
     const named = { source: "input" as const, path };

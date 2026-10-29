@@ -368,6 +368,47 @@ categories), `quotes-tag-count` and `quotes-by-author` (authoring budget),
 and three first asks the page agent answers wrong (`books-five-star-mystery`,
 `ps-search-count`, `ps-search-no-result`).
 
+## Iteration 6 — two runs of one build
+
+Build `5960b17b`, runs `2026-10-29T03-49-01` and `2026-10-29T04-26-25`,
+back to back on the same stack, so the comparison separates what is
+unstable from what changed.
+
+- The widget never moves the run's revision back on a late response, and
+  its final update reconciles once on a conflict: runs had stayed "running"
+  with the visitor's answer lost (`ps-search-no-result`).
+- An action whose tool name the model left out (`{"index": 12}`) is named
+  as a click when that is the only tool it fits.
+- Icon-font glyphs (private-use characters) are no part of a name: the
+  harvest had offered "\ue313 \ue316 Clothes" as a category.
+- A run that reached the input's page by its address, without a click, is
+  opened by the input's link; the author is told innerText carries CSS case.
+
+| Rate | Iteration 5 (`bd07bb7e`) | Iteration 6, run 1 | Iteration 6, run 2 |
+| --- | --- | --- | --- |
+| First ask | 15 / 18 | 15 / 18 | 16 / 18 |
+| Generation published | 6 / 9 | 8 / 10 | 10 / 13 |
+| Reuse | 5 / 5 | 6 / 7 | 7 / 8 |
+| Visitor | 20 / 23 | 21 / 25 | 23 / 26 |
+
+Across both runs: generation 18 / 23 (78%), reuse 13 / 15, first ask
+31 / 36, visitor 44 / 51 (86%). Five tasks flipped between the two runs of
+one build (two PrestaShop generations, a quotes generation, a reuse, a
+first ask), so one run moves a rate by about two tasks.
+
+What is left, by class:
+
+- **Counts across several pages**: `quotes-tag-count` was published and
+  answered another tag wrong on reuse, and the page agent misses the same
+  count on first asks (`books-five-star-mystery`, `quotes-tag-count`).
+- **The page agent building a search address** (`/search?q=…`) instead of
+  using the site's search box (`ps-search-count`, every run).
+- **A capability that times out for a value off the page it was shown on**
+  (`ps-open-detail-price` reuse, `ps-add-notebook-zh` through the mug's
+  capability).
+- Model variance in authoring: budgets and malformed actions, one or two
+  tasks a run.
+
 ## Live demo, 2026-10-22 → 2026-10-27 (for comparison)
 
 Not a benchmark run: the demo console's own records over the days the fixes

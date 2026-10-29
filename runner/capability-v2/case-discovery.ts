@@ -222,8 +222,10 @@ async function collectRawRegions(page: Page, demonstrationValues: string[] = [])
     const maxValues = ${MAX_OBSERVED_VALUES};
     const maxNavigationValues = ${MAX_NAVIGATION_VALUES};
     const navigationShare = ${REGION_NAVIGATION_SHARE};
+    // Icon-font glyphs are private-use characters in the text, not part of a name.
     const normalize = (value, limit) => value
       .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu, "[REDACTED_EMAIL]")
+      .replace(/\p{Co}/gu, "")
       .replace(/\s+/gu, " ").trim().slice(0, limit);
     const sensitive = /(?:password|passwd|passcode|secret|token|authorization|cookie|credential|api.?key|private.?key|otp|session.?id)/iu;
     const trackingParameter = /^(?:utm_|_ga|_gl|gclid|fbclid|ref$|referrer$|from$|spm$|_t$|ts$|timestamp$|nonce$|_$|cb$)/iu;

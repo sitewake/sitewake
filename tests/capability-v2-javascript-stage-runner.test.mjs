@@ -748,3 +748,26 @@ test("find tells apart links named alike by the entry around them", async () => 
     await browser.close();
   }
 });
+
+test("find matches a link by its name without the icon-font glyphs drawn in it", async () => {
+  const menu = `<!doctype html><title>Shop</title><ul><li><a href="/3-clothes"><i></i> Clothes</a></li><li><a href="/6-accessories"><i></i> Accessories</a></li></ul>`;
+  const module = `export const capability={version:2,stages:[{id:"stage_verify",io:{reads:{input:["category"],state:[]},writes:{state:[],output:["href"]}},navigation:"none",async run({input,find,nameOf}){const link=await find({strategies:[{type:"role",role:"link",name:input["category"],match:"exact"}]});return link?{outcome:"Success",output:{href:link.getAttribute("href")}}:{outcome:"NoResult",reason:"no link"}}}]};`;
+  const browser = await launchTestBrowser();
+  const context = await browser.newContext();
+  await context.route("**/*", async (route) => {
+    const url = route.request().url();
+    if (url === "https://shop.test/") return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: menu });
+    if (url === "https://public.test/module.js") return route.fulfill({ status: 200, headers: { "content-type": "text/javascript", "access-control-allow-origin": "*" }, body: module });
+    return route.abort("failed");
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("https://shop.test/");
+    const stages = [{ id: "stage_verify", title: "Verify", purpose: "Verify", effect: "read", resumePolicy: "skip-completed", io: { reads: { input: ["category"], state: [] }, writes: { state: [], output: ["href"] } }, navigation: "none" }];
+    const result = await stageRunner.runCapabilityJavaScriptStages({ page, moduleUrl: "https://public.test/module.js", program: { ...program, entry: { mode: "CurrentPage" }, stages }, input: { category: "Accessories" } });
+    assert.equal(result.output.href, "/6-accessories", result.reason);
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+});
