@@ -1498,6 +1498,26 @@ export async function findActiveCapabilityClassificationReservation(
     : undefined;
 }
 
+/** In-flight generations that reserved this name, oldest first. */
+export async function findActiveClassificationReservationsByName(siteId: string, candidateName: string) {
+  const wanted = normalize(candidateName);
+  const database = db();
+  if (!database) {
+    return [...memory.classificationReservations.values()]
+      .filter((item) => item.siteId === siteId && item.status === "Active" && normalize(item.candidateName) === wanted)
+      .map((item) => ({ generationTaskId: item.generationTaskId, candidateName: item.candidateName }));
+  }
+  await ready(database);
+  const rows = await all<Record<string, unknown>>(
+    database,
+    `SELECT generation_task_id, candidate_name FROM ccv2_classification_reservations WHERE site_id=? AND status='Active' ORDER BY created_at`,
+    [siteId],
+  );
+  return rows
+    .filter((row) => normalize(text(row.candidate_name)) === wanted)
+    .map((row) => ({ generationTaskId: text(row.generation_task_id), candidateName: text(row.candidate_name) }));
+}
+
 export async function beginIdempotentRequest(
   siteId: string,
   scope: string,

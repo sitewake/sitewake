@@ -1,0 +1,80 @@
+{
+ "goal": "Sort the products of a given category by ascending price and return the cheapest item name(s) and price.",
+ "parameters": {
+  "category": "Accessories"
+ },
+ "experience": {
+  "schemaVersion": "1.0",
+  "episodeId": "episode_b0a7f632-7a0b-4bdc-ab86-1382a96386a8",
+  "agentRunId": "run_2bef46bd-020a-45fb-884e-0cd671ce0fcf",
+  "browserSessionId": "browser_a0b244a5-c84b-4553-94cc-79711fa5382e",
+  "originalGoal": "What's the cheapest item in Accessories, and how much is it?",
+  "outcome": "Success",
+  "outcomeSummary": "The cheapest items in Accessories are the mugs priced at $11.90 each — \"Mug Today is a good day\", \"Mug The adventure begins\", and \"Mug The best is yet to come\" are all tied for the lowest price. The next cheapest are the notebooks at $12.90.",
+  "answer": "The cheapest items in Accessories are the mugs priced at $11.90 each — \"Mug Today is a good day\", \"Mug The adventure begins\", and \"Mug The best is yet to come\" are all tied for the lowest price. The next cheapest are the notebooks at $12.90.",
+  "startedAt": "2026-10-28T23:30:58.798Z",
+  "endedAt": "2026-10-28T23:31:25.134Z",
+  "startPage": {
+   "url": "http://prestashop.bench/6-accessories",
+   "title": "Accessories",
+   "heading": "Accessories"
+  },
+  "endPage": {
+   "url": "http://prestashop.bench/6-accessories?order=product.price.asc",
+   "title": "Accessories",
+   "heading": "Accessories"
+  },
+  "actions": [
+   {
+    "action": "click",
+    "rawAction": "click_element_by_index",
+    "input": {
+     "index": 75
+    },
+    "element": {
+     "tag": "button",
+     "role": "button",
+     "accessibleName": "Sort by selection",
+     "contextText": "There are 11 products. Sort by: Relevance  Sales, highest to lowest Relevance Name, A to Z Name, Z to A Price, low to high Price, high to low Reference, A to Z Reference, Z to A Filter Showing 1-11 of 11 item(s) Active filters  Quick view Mug The adventure begins $11.90 New favorite_border  Quick view Mug The best is yet to come $11.90 New favorite_border  Quick view Mug Today is a good day $1",
+     "landmark": "main"
+    },
+    "page": {
+     "url": "http://prestashop.bench/6-accessories",
+     "title": "Accessories",
+     "heading": "Accessories"
+    },
+    "observedAt": "2026-10-28T23:31:07.631Z"
+   },
+   {
+    "action": "click",
+    "rawAction": "click_element_by_index",
+    "input": {
+     "index": 80
+    },
+    "element": {
+     "tag": "a",
+     "role": "link",
+     "accessibleName": "Price, low to high",
+     "href": "http://prestashop.bench/6-accessories?order=product.price.asc",
+     "contextText": "There are 11 products. Sort by: Relevance  Sales, highest to lowest Relevance Name, A to Z Name, Z to A Price, low to high Price, high to low Reference, A to Z Reference, Z to A Filter Showing 1-11 of 11 item(s) Active filters  Quick view Mug The adventure begins $11.90 New favorite_border  Quick view Mug The best is yet to come $11.90 New favorite_border  Quick view Mug Today is a good day $1",
+     "landmark": "main"
+    },
+    "page": {
+     "url": "http://prestashop.bench/6-accessories",
+     "title": "Accessories",
+     "heading": "Accessories"
+    },
+    "observedAt": "2026-10-28T23:31:16.763Z"
+   }
+  ],
+  "routes": [
+   {
+    "url": "http://prestashop.bench/6-accessories",
+    "sceneId": "scene_13wey9w",
+    "bindings": {},
+    "observedAt": "2026-10-28T23:30:54.772Z"
+   }
+  ],
+  "output": {}
+ }
+}

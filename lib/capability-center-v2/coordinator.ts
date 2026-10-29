@@ -20,7 +20,7 @@ import type { CapabilityContract, CapabilityPublishResult, CapabilityTask, JsonV
 import { projectProductionStatus, type CapabilityProductionStatus } from "./production-status";
 import { inspectCapabilityQuality, demonstrationParametersOf } from "./quality";
 import { decodeC2CaseGenerationOutput } from "./case-generation";
-import { REVIEW_DEMONSTRATION_CASE_FAILED, REVIEW_DEMONSTRATION_CASE_NO_RESULT, REVIEW_OFFERED_INPUT_NO_RESULT, validationVerdict, type ValidationVerdict } from "./review-adjudication";
+import { REVIEW_DEMONSTRATION_CASE_FAILED, REVIEW_DEMONSTRATION_CASE_NO_RESULT, REVIEW_OFFERED_INPUT_FAILED, REVIEW_OFFERED_INPUT_NO_RESULT, validationVerdict, type ValidationVerdict } from "./review-adjudication";
 
 /** Review is a read-only gate over the exact persisted C3 package. */
 function assertValidatedPackageForReview(validated: ValidatedCapabilityPackage) {
@@ -115,7 +115,7 @@ export async function reviewValidatedVersion(siteId: string, versionId: string) 
 }
 
 /** The rejections a second authoring can answer: a case the program did not satisfy, named with its input. */
-const REPAIRABLE_REJECTIONS = new Set([REVIEW_OFFERED_INPUT_NO_RESULT, REVIEW_DEMONSTRATION_CASE_NO_RESULT, REVIEW_DEMONSTRATION_CASE_FAILED]);
+const REPAIRABLE_REJECTIONS = new Set([REVIEW_OFFERED_INPUT_NO_RESULT, REVIEW_OFFERED_INPUT_FAILED, REVIEW_DEMONSTRATION_CASE_NO_RESULT, REVIEW_DEMONSTRATION_CASE_FAILED]);
 
 /**
  * One more authoring after a rejection the verdict can name a case for: the

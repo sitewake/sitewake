@@ -1,0 +1,38 @@
+{
+ "goal": "Determine how many products a given product category contains.",
+ "parameters": {
+  "category": "Art"
+ },
+ "experience": {
+  "schemaVersion": "1.0",
+  "episodeId": "episode_c28e7d9c-c96f-4712-943d-55ef4f3b9f73",
+  "agentRunId": "run_19244fdc-1de0-4dc9-b75b-fbbddd9c4fcb",
+  "browserSessionId": "browser_9dd1be61-7914-458c-8e87-8aedc7d1deba",
+  "originalGoal": "How many products are in the Art category?",
+  "outcome": "Success",
+  "outcomeSummary": "The Art category contains 7 products (the page states \"There are 7 products\" and \"Showing 1-7 of 7 item(s)\").",
+  "answer": "The Art category contains 7 products (the page states \"There are 7 products\" and \"Showing 1-7 of 7 item(s)\").",
+  "startedAt": "2026-10-28T23:30:30.825Z",
+  "endedAt": "2026-10-28T23:30:36.429Z",
+  "startPage": {
+   "url": "http://prestashop.bench/9-art",
+   "title": "Art",
+   "heading": "Art"
+  },
+  "endPage": {
+   "url": "http://prestashop.bench/9-art",
+   "title": "Art",
+   "heading": "Art"
+  },
+  "actions": [],
+  "routes": [
+   {
+    "url": "http://prestashop.bench/9-art",
+    "sceneId": "scene_mj0haa",
+    "bindings": {},
+    "observedAt": "2026-10-28T23:30:28.437Z"
+   }
+  ],
+  "output": {}
+ }
+}

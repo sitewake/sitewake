@@ -1,4 +1,6 @@
 import {
+  findActiveClassificationReservationsByName,
+  findLiveCapabilityByName,
   CapabilityCenterV2Error,
   createCapabilityTask,
   getCapability,
@@ -123,7 +125,7 @@ export async function classifyCapabilityGeneration(
   options: ClassifierOptions = {},
 ): Promise<ExperienceClassificationResult> {
   const input = assertCapabilityGenerationInput(rawInput);
-  const candidate = options.candidate;
+  let candidate = options.candidate;
   const operation = options.repair ? "repair" : input.source === "Admin" ? input.instruction.operation : "create";
   const summary = candidate ? {
     name: candidate.name,
@@ -134,6 +136,36 @@ export async function classifyCapabilityGeneration(
   const duplicate = operation === "create" ? await findDuplicateCapability(siteId, input.request.goal, summary) : undefined;
   const replacementTargets = new Set(candidate?.replacementPlan?.replacesCapabilityIds || []);
   if (duplicate && !replacementTargets.has(duplicate.id)) return duplicateResult(duplicate, "B semantic classification matched an existing capability");
+  // Not a duplicate, and named like a live capability: publication would set
+  // it aside as already published. "Add product to cart" with a quantity was
+  // judged a capability of its own, then dropped for the live "Add product to
+  // cart" that has no quantity, and the visitor's three mugs became one. It
+  // is named for what it adds.
+  // The same holds for a generation still in flight under that name: two
+  // ran at once, neither name was live yet, and the second was dropped at
+  // publication for the first.
+  if (operation === "create" && candidate) {
+    const live = await findLiveCapabilityByName(siteId, candidate.name);
+    const inFlight = live ? [] : await findActiveClassificationReservationsByName(siteId, candidate.name);
+    const reserving = inFlight.length ? await getTask(siteId, inFlight[0].generationTaskId, true) : undefined;
+    // The inputs the taken name stands for: the live contract's, or the
+    // values the in-flight generation was demonstrated with.
+    const takenInputs = live && !replacementTargets.has(live.id)
+      ? Object.keys((live.contract.inputSchema.properties || {}) as Record<string, unknown>)
+      : reserving && !(options.sourceAgentRunId && reserving.sourceAgentRunId === options.sourceAgentRunId) ? Object.keys(reserving.input.parameters || {}) : undefined;
+    if (takenInputs) {
+      const liveInputs = takenInputs;
+      const added = candidate.semantic.parameters.map((parameter) => parameter.path).filter((path) => !liveInputs.includes(path));
+      const words = (path: string) => path.replace(/([a-z0-9])([A-Z])/gu, "$1 $2").replace(/[_-]+/gu, " ").toLocaleLowerCase();
+      // Only a generation that asks for more than the taken name's contract
+      // is renamed; one that asks for the same is a duplicate, and the checks
+      // below are what say so.
+      if (added.length) {
+        candidate = { ...candidate, name: `${candidate.name} (with ${added.map(words).join(", ")})` };
+        options = { ...options, candidate };
+      }
+    }
+  }
 
   const candidateName = candidate?.name || input.request.goal;
   const createReservationHash = await classificationReservationHash(candidateName, operation, options.repair?.capabilityId, candidate?.semantic || null);
