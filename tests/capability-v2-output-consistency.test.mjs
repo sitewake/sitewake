@@ -52,3 +52,12 @@ test("one number the output states anywhere is agreement, and an answer that lea
   // An output with no number at all, against an answer that leads with one, disagrees.
   assert.deepEqual(demonstrationAnswerDisagreement({ tag: "humor" }, "There are 12 quotes tagged 'humor'."), { sentence: "There are 12 quotes tagged 'humor'", stated: ["12"], output: [] });
 });
+
+test("a number the answer adds in parentheses is not what it found", () => {
+  // "There are 12 quotes tagged 'humor' (10 on page 1, 2 on page 2)": a draft
+  // that counted the last page answered 2, agreed with the breakdown, and was
+  // published to answer every tag with one page's count.
+  const answer = "There are 12 quotes tagged 'humor' on Quotes to Scrape (10 on page 1, 2 on page 2).";
+  assert.ok(demonstrationAnswerDisagreement({ tag: "humor", quoteCount: 2, lastPageNumber: 2 }, answer), "the last page's count disagrees");
+  assert.equal(demonstrationAnswerDisagreement({ tag: "humor", quoteCount: 12 }, answer), undefined);
+});
