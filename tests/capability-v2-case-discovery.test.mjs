@@ -192,3 +192,23 @@ test("a longer list on a linked page that leaves out some of the start page's va
     server.close();
   }
 });
+
+test("a card title cut short is not a value: the link's full title is, when the page gives one", async () => {
+  // PrestaShop cuts long product titles on its cards; the cases asked for
+  // "The best is yet to come'...".
+  const card = (shown, full) => `<article><h3><a href="/p/${shown.length}"${full ? ` title="${full}"` : ""}>${shown}</a></h3></article>`;
+  const home = `<!doctype html><title>Shop</title><main><div>${card("Mug The best is yet to come", "")}${card("Today is a good day Framed...", "Today is a good day Framed poster")}${card("The adventure begins Framed...", "")}${card("Brown bear cushion", "")}</div></main>`;
+  const server = createServer((request, response) => { response.writeHead(200, { "content-type": "text/html; charset=utf-8" }); response.end(home); });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const browser = await launchTestBrowser();
+  try {
+    const tab = await browser.newPage();
+    await tab.goto(`${origin}/`);
+    const { siblings } = await discovery.harvestStartPage(tab, { generationTaskId: "generation_1", siteId: "site_1", parameters: { productName: "Mug The best is yet to come" } });
+    assert.deepEqual(siblings.productName, ["Today is a good day Framed poster", "Brown bear cushion"]);
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});

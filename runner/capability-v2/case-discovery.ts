@@ -453,9 +453,17 @@ async function collectRawRegions(page: Page, demonstrationValues: string[] = [])
     // A card is named by its heading: "Mira Pendant", not the whole card
     // ("Mira PendantPendant · 2700K · Dimmable$219").
     const HEADING = "h1,h2,h3,h4,h5,h6,[role=heading]";
+    // A title the card cuts short ("Today is a good day Framed...") is not a
+    // value anyone types and no program finds by it: the full title from the
+    // link's title or aria-label when the page gives one, else no value.
+    const cut = /(?:\.\.\.|…)$/u;
     const cardName = (item) => {
       const heading = item.matches && item.matches(HEADING) ? item : item.querySelector && item.querySelector(HEADING);
-      return heading ? normalize(heading.textContent || "", 160) : nameOfItem(itemOf(item));
+      const name = heading ? normalize(heading.textContent || "", 160) : nameOfItem(itemOf(item));
+      if (!cut.test(name)) return name;
+      const link = (heading && heading.querySelector("a[title],a[aria-label]")) || (item.querySelector && item.querySelector("a[title],a[aria-label]"));
+      const full = link ? normalize(link.getAttribute("title") || link.getAttribute("aria-label") || "", 160) : "";
+      return full && !cut.test(full) ? full : "";
     };
     // A grid of cards is a list too: a container whose children repeat (the
     // same tag, three or more of them) and each hold a heading or a link.
