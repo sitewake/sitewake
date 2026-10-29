@@ -830,13 +830,17 @@ export async function performC1Authoring(
   const explored = resume?.exploration || await fromRecording();
   // The contract states each input in the writing the program consumes: the
   // address writing only where the program opens the page by its address.
+  // Where the program starts: the recorded start page, unless the trace
+  // starts elsewhere — the home page, when the run began on the page an
+  // input chooses. Authoring, the harvest and the cases start there too.
+  const startUrl = explored.program.entry.mode === "Navigate" && explored.program.entry.url ? explored.program.entry.url : spec.browser.startUrl;
   const explorationContract = explored.candidateSummary.contract;
   const summary = {
     ...explored.candidateSummary,
     contract: contractInProgramWritings(
       explorationContract,
       addressOpenedInputs(explored.program, explorationContract, {
-        startUrl: spec.browser.startUrl,
+        startUrl,
         demonstrationParameters: resolveCapabilityInput(explorationContract, explored.demonstrationParameters).declared,
       }),
       explored.demonstrationParameters,
@@ -848,7 +852,7 @@ export async function performC1Authoring(
   const harvestPage = await isolatedValidationPage(page, spec, authoringBaselineStorageState);
   let harvested: Awaited<ReturnType<typeof harvestStartPage>> | undefined;
   try {
-    await harvestPage.page.goto(spec.browser.startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await harvestPage.page.goto(startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await harvestPage.page.waitForTimeout(200);
     harvested = await harvestStartPage(harvestPage.page, { generationTaskId: spec.taskId, siteId: spec.siteId, parameters: explored.demonstrationParameters });
   } catch (error) {
@@ -873,7 +877,7 @@ export async function performC1Authoring(
   const authored = await authorJavaScriptCapability({
     explorationPage: page,
     workspace: helpers.workspace,
-    startUrl: spec.browser.startUrl,
+    startUrl,
     goal: spec.goal || "完成用户目标",
     input: { ...spec.input, parameters: explored.demonstrationParameters },
     contract: summary.contract,
@@ -899,7 +903,7 @@ export async function performC1Authoring(
       validationCases: groundingExamples,
       source: authored.bundle,
       summary,
-      entryUrl: spec.browser.startUrl,
+      entryUrl: startUrl,
     },
   );
   await helpers.onEvent(
@@ -984,6 +988,7 @@ export async function performC1Authoring(
     artifactRefs: [],
     // The start page as read before authoring, for case generation to read instead of browsing again.
     startPageSnapshot,
+    startUrl,
   };
 }
 
@@ -1058,8 +1063,8 @@ async function perform(
           ? { demonstrationParameters: authored.demonstrationParameters }
           : {}),
         browser: {
-          baseUrl: new URL(spec.browser.startUrl).origin,
-          startUrl: spec.browser.startUrl,
+          baseUrl: new URL(authored.startUrl || spec.browser.startUrl).origin,
+          startUrl: authored.startUrl || spec.browser.startUrl,
           recording: spec.browser.recording,
           session: { mode: "AuthenticatedSnapshot" },
           readOnlyPathPrefixes: ["/"],

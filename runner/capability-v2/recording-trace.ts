@@ -103,9 +103,41 @@ function targetFor(action: RecordedAction, index: number, input: CapabilityTaskI
   return { strategies };
 }
 
+/**
+ * A typed value equal to an input is that input. Numbers count: a quantity of
+ * 2 arrives in the recording as the text "2", and left a literal it made the
+ * seed add two mugs whatever quantity was asked for.
+ */
 function valueFor(text: string, input: CapabilityTaskInput): ProgramStep["value"] {
-  const path = Object.entries(input.parameters).find(([, value]) => typeof value === "string" && value.trim().length > 1 && value.trim() === text.trim())?.[0];
+  const typed = text.trim();
+  const path = typed ? Object.entries(input.parameters).find(([, value]) => (typeof value === "string" || typeof value === "number") && String(value).trim() === typed)?.[0] : undefined;
   return path ? { source: "input", path } : { source: "literal", value: text };
+}
+
+function slugWords(value: string) {
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/gu, "").toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u).filter((word) => word && !/^\d+$/u.test(word));
+}
+
+/**
+ * Whether the page the run started on is the one an input's value chose: its
+ * heading or title is the value, or the last segment of its address spells
+ * it (`/9-art` for "Art", `/6-accessories` for "Accessories" — the number is
+ * the site's id, which no template can know).
+ */
+function pageNamedBy(page: CapabilityExperience["startPage"], value: string) {
+  const want = slugWords(value).join(" ");
+  if (!want) return false;
+  if ([page.heading, page.title].some((text) => text && slugWords(text).join(" ") === want)) return true;
+  try {
+    const segment = new URL(page.url).pathname.split("/").filter(Boolean).at(-1) || "";
+    return slugWords(segment.replace(/\.html?$/u, "")).join(" ") === want;
+  } catch {
+    return false;
+  }
+}
+
+function usesInput(step: ProgramStep, path: string): boolean {
+  return JSON.stringify(step).includes(JSON.stringify({ source: "input", path }));
 }
 
 /**
@@ -184,9 +216,24 @@ export function traceFromExperience(experience: CapabilityExperience, parameters
     }
     steps.push({ id, action: "click", target: targetFor(move.action, move.index, input) });
   }
+  // The visitor began on the page an input chooses — a category page opened
+  // straight from a link elsewhere, or read without a click — so no recorded
+  // step uses that input, and a program built from the steps alone opens the
+  // demonstrated page for every value. The way to that page is the site's own
+  // link named by the value, from the home page; the draft's replay on the
+  // other values the site lists proves the link is there.
+  let entryUrl = start;
+  const chosen = Object.entries(parameters).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0
+    && !steps.some((step) => usesInput(step, entry[0])) && pageNamedBy(experience.startPage, entry[1]));
+  if (chosen.length === 1 && origin) {
+    const [path] = chosen[0];
+    const named = { source: "input" as const, path };
+    entryUrl = `${origin}/`;
+    steps.unshift({ id: "step_choose", action: "click", target: { strategies: [{ type: "role", role: "link", name: named, match: "exact" }, { type: "text", value: named, match: "exact" }] as LocatorStrategy[] } });
+  }
   const program: CapabilityDslProgram = {
     schemaVersion: "1.0",
-    entry: { mode: "Navigate", url: start },
+    entry: { mode: "Navigate", url: entryUrl },
     defaults: { timeoutMs: 15_000, retryCount: 1 },
     steps,
     result: { pageUrl: { source: "variable", name: "__pageUrl" }, pageTitle: { source: "variable", name: "__pageTitle" } },

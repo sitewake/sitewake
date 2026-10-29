@@ -1,0 +1,93 @@
+{
+ "goal": "Add a given quantity of a specific product to the user's shopping cart.",
+ "parameters": {
+  "productName": "Mug The best is yet to come",
+  "quantity": 2
+ },
+ "experience": {
+  "schemaVersion": "1.0",
+  "episodeId": "episode_7ac43f36-8a11-42f0-8920-d57dbfa6dcd9",
+  "agentRunId": "run_3cc3ce80-d229-4df9-b25a-421aebebd580",
+  "browserSessionId": "browser_10d04948-f9ee-414d-8335-5f4732bbfbd6",
+  "originalGoal": "Put 2 of the \"Mug The best is yet to come\" in my cart",
+  "outcome": "Success",
+  "outcomeSummary": "Done! I added 2 of the \"Mug The best is yet to come\" to your cart. The confirmation shows Quantity: 2, subtotal $23.80, and there are 2 items in your cart.",
+  "answer": "Done! I added 2 of the \"Mug The best is yet to come\" to your cart. The confirmation shows Quantity: 2, subtotal $23.80, and there are 2 items in your cart.",
+  "startedAt": "2026-10-28T23:26:21.538Z",
+  "endedAt": "2026-10-28T23:26:53.004Z",
+  "startPage": {
+   "url": "http://prestashop.bench/",
+   "title": "PrestaShop"
+  },
+  "endPage": {
+   "url": "http://prestashop.bench/home-accessories/6-mug-the-best-is-yet-to-come.html",
+   "title": "Mug The best is yet to come",
+   "heading": "Mug The best is yet to come"
+  },
+  "actions": [
+   {
+    "action": "click",
+    "rawAction": "click_element_by_index",
+    "input": {
+     "index": 40
+    },
+    "element": {
+     "tag": "a",
+     "role": "link",
+     "accessibleName": "Mug The best is yet to come",
+     "href": "http://prestashop.bench/home-accessories/6-mug-the-best-is-yet-to-come.html",
+     "contextText": " Quick view Mug The best is yet to come $11.90 New favorite_border",
+     "landmark": "main"
+    },
+    "page": {
+     "url": "http://prestashop.bench/",
+     "title": "PrestaShop"
+    },
+    "observedAt": "2026-10-28T23:26:31.475Z"
+   },
+   {
+    "action": "fill",
+    "rawAction": "input_text",
+    "input": {
+     "index": 12,
+     "text": "2"
+    },
+    "element": {
+     "tag": "input",
+     "role": "textbox",
+     "accessibleName": "Quantity",
+     "name": "qty",
+     "contextText": "Quantity  Add to cart favorite_border Share Share Tweet Pinterest",
+     "landmark": "main"
+    },
+    "page": {
+     "url": "http://prestashop.bench/home-accessories/6-mug-the-best-is-yet-to-come.html",
+     "title": "Mug The best is yet to come",
+     "heading": "Mug The best is yet to come"
+    },
+    "observedAt": "2026-10-28T23:26:41.406Z"
+   },
+   {
+    "action": "click",
+    "rawAction": "click_element_by_index",
+    "input": {
+     "index": 15
+    },
+    "element": {
+     "tag": "button",
+     "role": "button",
+     "accessibleName": " Add to cart",
+     "contextText": "Quantity  Add to cart favorite_border Share Share Tweet Pinterest",
+     "landmark": "main"
+    },
+    "page": {
+     "url": "http://prestashop.bench/home-accessories/6-mug-the-best-is-yet-to-come.html",
+     "title": "Mug The best is yet to come",
+     "heading": "Mug The best is yet to come"
+    },
+    "observedAt": "2026-10-28T23:26:46.625Z"
+   }
+  ],
+  "output": {}
+ }
+}
