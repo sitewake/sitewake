@@ -450,6 +450,23 @@ async function collectRawRegions(page: Page, demonstrationValues: string[] = [])
       160,
     );
     const itemOf = (item) => (item.matches("li,tr,[role=listitem]") && item.querySelector("a,button,label,[role=link],[role=button]")) || item;
+    // A card is named by its heading: "Mira Pendant", not the whole card
+    // ("Mira PendantPendant · 2700K · Dimmable$219").
+    const HEADING = "h1,h2,h3,h4,h5,h6,[role=heading]";
+    const cardName = (item) => {
+      const heading = item.matches && item.matches(HEADING) ? item : item.querySelector && item.querySelector(HEADING);
+      return heading ? normalize(heading.textContent || "", 160) : nameOfItem(itemOf(item));
+    };
+    // A grid of cards is a list too: a container whose children repeat (the
+    // same tag, three or more of them) and each hold a heading or a link.
+    // The product grid of a shop is a div of <article>s, not a <ul>.
+    const repeatedItem = (element) => {
+      for (let node = element; node && node.parentElement && node !== document.body; node = node.parentElement) {
+        const siblings = [...node.parentElement.children].filter((child) => child.tagName === node.tagName);
+        if (siblings.length >= 3 && siblings.every((child) => child.querySelector(HEADING + ",a,button") || child.matches("a,button"))) return { item: node, container: node.parentElement };
+      }
+      return undefined;
+    };
     const choiceLists = [];
     // A breadcrumb also lists the value, between "Home" and the section it
     // is in; those are where the visitor is, not what they could choose.
@@ -462,7 +479,7 @@ async function collectRawRegions(page: Page, demonstrationValues: string[] = [])
       const seenNames = new Set();
       for (const item of items) {
         if (!(item instanceof HTMLOptionElement) && !visible(item)) continue;
-        const name = nameOfItem(itemOf(item));
+        const name = cardName(item);
         const key = valueKey(name);
         if (!name || seenNames.has(key)) continue;
         seenNames.add(key);
@@ -474,14 +491,15 @@ async function collectRawRegions(page: Page, demonstrationValues: string[] = [])
     for (const wanted of demonstrationValues) {
       const shown = wanted.normalize("NFKC").trim().toLocaleLowerCase();
       if (!shown) continue;
-      const matches = [...document.querySelectorAll("a,button,option,li,label,td,th,dt,dd,span,[role=option],[role=tab],[role=menuitem],[role=radio],[role=link],[role=button]")]
+      const matches = [...document.querySelectorAll("a,button,option,li,label,td,th,dt,dd,span,h1,h2,h3,h4,h5,h6,[role=heading],[role=option],[role=tab],[role=menuitem],[role=radio],[role=link],[role=button]")]
         .filter((element) => visible(element) && nameOfItem(element).normalize("NFKC").toLocaleLowerCase() === shown);
       // Of every list that shows the value, the one with the most choices: the
       // category list over the breadcrumb that also names the category.
       let chosen;
       const seenLists = new Set();
       for (const element of matches) {
-        const container = element.closest("ul,ol,select,datalist,table,tbody,[role=list],[role=listbox],[role=menu],[role=tablist],[role=radiogroup],[role=group],nav");
+        const container = element.closest("ul,ol,select,datalist,table,tbody,[role=list],[role=listbox],[role=menu],[role=tablist],[role=radiogroup],[role=group],nav")
+          || (repeatedItem(element) || {}).container;
         if (!container || seenLists.has(container) || breadcrumb(container)) continue;
         seenLists.add(container);
         const names = listNames(container);
@@ -823,6 +841,67 @@ export async function discoverCapabilityCaseEvidence(
 const sameText = (left: unknown, right: unknown) => typeof left === "string" && typeof right === "string"
   && left.normalize("NFKC").trim().toLocaleLowerCase() === right.normalize("NFKC").trim().toLocaleLowerCase();
 
+/** At most this many pages linked from the start page are read for a longer list. */
+const MAX_LINKED_PAGES = 8;
+
+/**
+ * The start page often shows a few of the values an input takes: the home
+ * page of a shop shows four of its sixteen lamps. Cases drawn from those four
+ * proved a price capability that clicked a card on the home page, and it hung
+ * for every lamp the home page does not show. Pages linked from the start
+ * page's navigation and main content are read (a bounded few), and where one
+ * of them lists the demonstrated value among more choices, that list is the
+ * one the cases come from — the values the start page does not show first,
+ * so the program is held to reaching them.
+ */
+async function widenListsFromLinkedPages(
+  page: Page,
+  regions: CapabilityCaseDiscoveryRegion[],
+  actions: CapabilityCaseDiscoveryAction[],
+  demonstrationValues: string[],
+) {
+  const startUrl = page.url();
+  const links = await page.evaluate<string[]>(`(() => {
+    const here = location.origin + location.pathname + location.search;
+    const seen = new Set([here]);
+    const ordered = [...document.querySelectorAll("nav a[href], header a[href]"), ...document.querySelectorAll("main a[href], [role=main] a[href]"), ...document.querySelectorAll("a[href]")];
+    const out = [];
+    for (const anchor of ordered) {
+      let url;
+      try { url = new URL(anchor.getAttribute("href"), location.href); } catch { continue; }
+      if (url.origin !== location.origin) continue;
+      const key = url.origin + url.pathname + url.search;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(key);
+    }
+    return out;
+  })()`).catch(() => [] as string[]);
+  const found: CapabilityCaseDiscoveryRegion[] = [];
+  for (const href of links.slice(0, MAX_LINKED_PAGES)) {
+    try {
+      await page.goto(href, { waitUntil: "domcontentloaded", timeout: 15_000 });
+      await page.waitForTimeout(800);
+      const pageRegions: CapabilityCaseDiscoveryRegion[] = [];
+      await appendPageRegions(page, pageRegions, actions, demonstrationValues);
+      found.push(...pageRegions.filter((region) => region.kind === "choice-list"));
+    } catch { /* a page that does not open is not a list */ }
+  }
+  await page.goto(startUrl, { waitUntil: "domcontentloaded", timeout: 15_000 }).catch(() => undefined);
+  for (const value of demonstrationValues) {
+    const holds = (region: CapabilityCaseDiscoveryRegion) => region.kind === "choice-list" && region.observedValues.some((item) => sameText(item, value));
+    const local = regions.find(holds);
+    const wider = found.filter(holds).sort((left, right) => right.observedValues.length - left.observedValues.length)[0];
+    if (!wider || (local && wider.observedValues.length <= local.observedValues.length)) continue;
+    const shown = local?.observedValues || [];
+    const unseen = wider.observedValues.filter((item) => !shown.some((other) => sameText(other, item)));
+    const merged = { ...wider, observedValues: [...unseen, ...wider.observedValues.filter((item) => !unseen.includes(item))] };
+    const at = local ? regions.indexOf(local) : -1;
+    if (at >= 0) regions.splice(at, 1);
+    regions.unshift({ ...merged, regionId: `region_${regions.length + 1}` });
+  }
+}
+
 /**
  * The start page read once, before authoring: the lists the demonstrated
  * values were chosen from ahead of the cards and the page summary, as the
@@ -841,6 +920,7 @@ export async function harvestStartPage(
   const actions: CapabilityCaseDiscoveryAction[] = [];
   await appendPageRegions(page, regions, actions, demonstrationValues);
   if (!regions.length) throw new Error("case_discovery_regions_required");
+  if (demonstrationValues.length) await widenListsFromLinkedPages(page, regions, actions, demonstrationValues);
   fitEvidenceBudget(regions);
   const siblings: Record<string, JsonValue[]> = {};
   for (const [path, value] of Object.entries(input.parameters)) {

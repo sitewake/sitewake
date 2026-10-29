@@ -59,9 +59,15 @@ function numbersIn(text: string) {
 }
 
 /** The sentence an answer leads with: what it states before its first full stop or line break. */
+/**
+ * The answer's first sentence, without what it adds in parentheses: "There
+ * are 12 quotes tagged 'humor' (10 on page 1, 2 on page 2)" states 12. The
+ * breakdown's 2 let a draft that counted only the last page agree with it,
+ * and the capability was published to answer every tag with one page's count.
+ */
 function leadSentence(answer: string) {
   const match = /^[\s\S]*?(?:[.!?。！？](?=\s|$)|\n|$)/u.exec(answer.trim());
-  return (match?.[0] || "").replace(/[.!?。！？]\s*$/u, "").trim();
+  return (match?.[0] || "").replace(/[.!?。！？]\s*$/u, "").replace(/\s*[(（][^()（）]*[)）]/gu, "").trim();
 }
 
 /** Every number an output states: a number, the digit runs inside a string, the length of a list. */

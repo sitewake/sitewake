@@ -771,3 +771,43 @@ test("find matches a link by its name without the icon-font glyphs drawn in it",
     await browser.close();
   }
 });
+
+test("a target chosen by an input that the settled page does not show ends the wait, and the stage says so", async () => {
+  // A visitor asked for a lamp the shop does not sell; the price capability
+  // waited for its card until the stage's three-minute deadline.
+  const shopPage = `<!doctype html><title>Shop</title><main><div><article><a href="/p/lune"><h3>Lune Lamp</h3></a></article><article><a href="/p/mira"><h3>Mira Pendant</h3></a></article></div></main>`;
+  // As the seed writes it: the acting stage finds the item, the verify stage reads it.
+  const module = `export const capability={version:2,stages:[
+    {id:"stage_1",io:{reads:{input:["productName"],state:[]},writes:{state:["href"],output:[]}},navigation:"optional",async run({input,waitForTarget}){const element=await waitForTarget({strategies:[{type:"role",role:"link",name:input["productName"],match:"contains"}],choice:input["productName"]});if(!element)return{outcome:"NoResult",reason:"No item named "+input["productName"]+" on this page"};return{outcome:"Continue",state:{href:element.getAttribute("href")}}}},
+    {id:"stage_verify",io:{reads:{input:[],state:["href"]},writes:{state:[],output:["href"]}},navigation:"none",async run({state}){return{outcome:"Success",output:{href:state.href}}}}]};`;
+  const browser = await launchTestBrowser();
+  const context = await browser.newContext();
+  await context.route("**/*", async (route) => {
+    const url = route.request().url();
+    if (url === "https://shop.test/shop") return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: shopPage });
+    if (url === "https://public.test/module.js") return route.fulfill({ status: 200, headers: { "content-type": "text/javascript", "access-control-allow-origin": "*" }, body: module });
+    return route.abort("failed");
+  });
+  try {
+    const page = await context.newPage();
+    const stages = [
+      { id: "stage_1", title: "Find", purpose: "Find", effect: "read", resumePolicy: "skip-completed", io: { reads: { input: ["productName"], state: [] }, writes: { state: ["href"], output: [] } }, navigation: "optional" },
+      { id: "stage_verify", title: "Verify", purpose: "Verify", effect: "read", resumePolicy: "skip-completed", io: { reads: { input: [], state: ["href"] }, writes: { state: [], output: ["href"] } }, navigation: "none" },
+    ];
+    const run = async (productName) => {
+      await page.goto("https://shop.test/shop");
+      const started = Date.now();
+      const result = await stageRunner.runCapabilityJavaScriptStages({ page, moduleUrl: "https://public.test/module.js", program: { ...program, entry: { mode: "CurrentPage" }, stages }, input: { productName } });
+      return { ...result, seconds: (Date.now() - started) / 1000 };
+    };
+    const present = await run("Mira Pendant");
+    assert.deepEqual(present.output, { href: "/p/mira" });
+    const absent = await run("Pilo Lamp");
+    assert.equal(absent.outcome, "NoResult");
+    assert.match(absent.reason, /No item named Pilo Lamp/);
+    assert.ok(absent.seconds < 20, `answered in ${absent.seconds}s, not at the deadline`);
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+});

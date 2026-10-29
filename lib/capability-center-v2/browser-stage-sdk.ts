@@ -294,7 +294,33 @@ export async function executeBrowserCapabilityStage(payload: string | {
     if ((typeof choice === 'string' || typeof choice === 'number') && normalizeText(choice)) return findChoice(strategies, String(choice));
     return firstFound(strategies);
   };
-  const waitForTarget = (target: unknown) => waitUntil(() => find(target), `find(${JSON.stringify(target).slice(0, 300)})`);
+  // A target chosen by an input value that the settled page does not show
+  // is not coming: the page is not loading it, the site does not have it.
+  // Waiting for it until the stage's deadline made a visitor who asked for a
+  // lamp the shop does not sell watch the assistant work for three minutes
+  // and then report an unidentified failure. Once the page has stayed
+  // unchanged for a few seconds without it, the wait ends with null, and the
+  // stage answers that there is no such item.
+  const CHOICE_SETTLED_MS = 5000;
+  const CHOICE_MIN_WAIT_MS = 3000;
+  const waitForTarget = async (target: unknown) => {
+    const label = `find(${JSON.stringify(target).slice(0, 300)})`;
+    const choice = target && typeof target === 'object' && !Array.isArray(target) ? (target as { choice?: unknown }).choice : undefined;
+    if (!((typeof choice === 'string' || typeof choice === 'number') && normalizeText(choice))) return waitUntil(() => find(target), label);
+    const started = Date.now();
+    let previous = '';
+    let quietSince = started;
+    const missing = { missing: true } as const;
+    const found = await waitUntil(() => {
+      const element = find(target);
+      if (element) return element;
+      const now = Date.now();
+      const shape = `${location.href}|${document.body?.textContent?.length ?? 0}|${document.querySelectorAll('*').length}`;
+      if (shape !== previous) { previous = shape; quietSince = now; }
+      return now - started >= CHOICE_MIN_WAIT_MS && now - quietSince >= CHOICE_SETTLED_MS ? missing : null;
+    }, label);
+    return found === missing ? null : found as HTMLElement;
+  };
   /**
    * Let an in-place update finish rendering. A click that opens a drawer or a
    * panel changes the document the moment the container mounts, and a Stage

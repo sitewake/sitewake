@@ -138,3 +138,32 @@ test("icon-font glyphs inside a list's links are no part of the names harvested"
     server.close();
   }
 });
+
+test("a card grid is a list named by its headings, and a longer list on a linked page is the one the values come from", async () => {
+  // The demo shop's home page shows four of sixteen lamps as cards — a div of
+  // <article>s, each named by an <h3>. Cases drawn from those four proved a
+  // price capability that only clicked home-page cards; it hung for the rest.
+  const card = (name) => `<article><a href="/product/${name.toLowerCase().replace(/ /g, "-")}"><div><h3>${name}</h3><p>Table lamp · 2700K</p></div><p>$129</p></a></article>`;
+  const home = `<!doctype html><title>Shop</title><header><nav><a href="/shop">Shop</a><a href="/help">Help</a></nav></header><main><div class="grid">${["Lune Lamp", "Mira Pendant", "Arden Lamp"].map(card).join("")}</div><a href="/shop">View all 6 lamps</a></main>`;
+  const shop = `<!doctype html><title>All</title><header><nav><a href="/shop">Shop</a></nav></header><main><div class="grid">${["Lune Lamp", "Sela Lamp", "Mira Pendant", "Pilo Lamp", "Arden Lamp", "Tove Sconce"].map(card).join("")}</div></main>`;
+  const server = createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(request.url === "/" ? home : request.url === "/shop" ? shop : "<!doctype html><title>Help</title><p>help</p>");
+  });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const browser = await launchTestBrowser();
+  try {
+    const tab = await browser.newPage();
+    await tab.goto(`${origin}/`);
+    const { snapshot, siblings } = await discovery.harvestStartPage(tab, { generationTaskId: "generation_1", siteId: "site_1", parameters: { productName: "Mira Pendant" } });
+    assert.deepEqual(siblings.productName.slice(0, 3), ["Sela Lamp", "Pilo Lamp", "Tove Sconce"], "the lamps the start page does not show come first");
+    assert.deepEqual([...siblings.productName].sort(), ["Arden Lamp", "Lune Lamp", "Pilo Lamp", "Sela Lamp", "Tove Sconce"]);
+    assert.equal(snapshot.regions[0].kind, "choice-list");
+    assert.equal(snapshot.regions[0].url, `${origin}/shop`);
+    assert.equal(tab.url(), `${origin}/`, "the page is back where it started");
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});
