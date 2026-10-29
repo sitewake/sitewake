@@ -143,3 +143,14 @@ test("a recorded name keeps no icon-font glyph", () => {
   assert.ok(add.target.strategies.some((strategy) => strategy.name === "Add to cart"), JSON.stringify(add.target.strategies));
   assert.ok(!JSON.stringify(program).match(/[-]/u));
 });
+
+test("a run that reached the input's page by its address, without a click, opens it by the input's link", () => {
+  // The agent went from the home page to /6-accessories by address and only
+  // scrolled: the recording held one scroll and the trace was empty.
+  const { parameters, experience } = recording("ps-cheapest-navigated");
+  assert.deepEqual(experience.actions.map((action) => action.action), ["scroll"]);
+  const { program } = traceFromExperience(experience, parameters);
+  assert.equal(program.entry.url, "http://prestashop.bench/");
+  assert.equal(program.steps.length, 1);
+  assert.ok(names(program.steps[0]).includes(JSON.stringify({ source: "input", path: "category" })));
+});

@@ -258,8 +258,11 @@ export function traceFromExperience(experience: CapabilityExperience, parameters
   // link named by the value, from the home page; the draft's replay on the
   // other values the site lists proves the link is there.
   let entryUrl = start;
+  // Or the run reached that page without a recorded click — the agent went
+  // there by its address and only scrolled — and ended on it.
   const chosen = Object.entries(parameters).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].trim().length > 0
-    && !steps.some((step) => usesInput(step, entry[0])) && pageNamedBy(experience.startPage, entry[1]));
+    && !steps.some((step) => usesInput(step, entry[0]))
+    && (pageNamedBy(experience.startPage, entry[1]) || (!steps.length && pageNamedBy(experience.endPage, entry[1]))));
   if (chosen.length === 1 && origin) {
     const [path] = chosen[0];
     const named = { source: "input" as const, path };
