@@ -189,3 +189,44 @@ test("starting a run sweeps that site's leftovers", async () => {
   assert.match(create, /sweepExpiredRunsForSite/);
   assert.match(create, /void sweepExpiredRunsForSite/, "a failed sweep must not block the user's task");
 });
+
+// A widget instance without its page wiring: only what the run bookkeeping reads.
+function bareWidget() {
+  const storage = new Map();
+  globalThis.sessionStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)), removeItem: (key) => storage.delete(key) };
+  const widget = Object.create(port.AgentPort.prototype);
+  widget.options = { endpoint: "https://console.test", siteAgentId: "site" };
+  return widget;
+}
+
+test("a response older than the revision the widget holds does not move it back", () => {
+  // Two checkpoints sent 200 ms apart came back reversed; the older revision
+  // was kept and the run's final update was refused as a conflict.
+  const widget = bareWidget();
+  widget.saveRunPointer({ runId: "run_1", resumeToken: "token", revision: 5, pageEpoch: 1, savedAt: Date.now() });
+  widget.updateRun(run({ revision: 4, pageEpoch: 1 }));
+  assert.equal(widget.readRunPointer().revision, 5);
+  widget.updateRun(run({ revision: 6, pageEpoch: 1 }));
+  assert.equal(widget.readRunPointer().revision, 6);
+});
+
+test("the final update reconciles once from the stored run when its revision moved on", async () => {
+  const widget = bareWidget();
+  const sent = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    if ((init.method || "GET") === "GET") return new Response(JSON.stringify({ run: run({ revision: 7, pageEpoch: 1 }) }), { status: 200 });
+    const body = JSON.parse(init.body);
+    sent.push(body.expectedRevision);
+    return body.expectedRevision === 7
+      ? new Response(JSON.stringify({ run: run({ revision: 8, status: "completed" }) }), { status: 200 })
+      : new Response(JSON.stringify({ error: "agent_run_revision_conflict" }), { status: 409 });
+  };
+  try {
+    const finished = await widget.sendTerminalState({ runId: "run_1", resumeToken: "token", revision: 5, pageEpoch: 1, status: "completed", savedAt: Date.now() });
+    assert.equal(finished.status, "completed");
+    assert.deepEqual(sent, [5, 7], "one stale attempt, then the stored revision");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
