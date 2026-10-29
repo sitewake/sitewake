@@ -22,8 +22,11 @@ export const REVIEW_APPROVED_ON_VALIDATION =
 export const REVIEW_DEMONSTRATION_CASE_FAILED = "review rejected: the demonstrated input's case did not pass";
 export const REVIEW_DEMONSTRATION_CASE_NO_RESULT = "review rejected: the demonstrated input's case found nothing where the visitor's run found a result";
 export const REVIEW_OFFERED_INPUT_NO_RESULT = "review rejected: a case found nothing for a value the site lists beside the demonstrated one";
+export const REVIEW_OFFERED_INPUT_FAILED = "review rejected: a case failed for a value the site lists beside the demonstrated one";
 /** The failure a validation case records when it found nothing for a value the site offers. */
 export const OFFERED_INPUT_NO_RESULT = /^no_result_for_offered_input:/u;
+/** The failure a validation case records when anything else stopped it on a value the site offers. */
+export const OFFERED_INPUT_FAILED = /^offered_input_failed:/u;
 export const REVIEW_NO_CASE_PASSED = "review rejected: no validation case passed";
 export const REVIEW_DEMONSTRATION_VALUE_LEAKED = "review rejected: a demonstrated value is written into the source";
 
@@ -105,6 +108,11 @@ export function validationCaseFloor(
   // Poetry alone and answered every other category with the Poetry page.
   const offered = results.find((item) => OFFERED_INPUT_NO_RESULT.test(item.failureReason || ""));
   if (offered) return { reason: REVIEW_OFFERED_INPUT_NO_RESULT, caseId: offered.caseId, failure: firstLine(offered.failureReason) };
+  // Two programs that timed out on every other category the menu lists were
+  // published on the demonstrated one alone; the cases had failed, not found
+  // nothing, and only the second was marked.
+  const failedOffered = results.find((item) => OFFERED_INPUT_FAILED.test(item.failureReason || ""));
+  if (failedOffered) return { reason: REVIEW_OFFERED_INPUT_FAILED, caseId: failedOffered.caseId, failure: firstLine(failedOffered.failureReason) };
   if (demonstration) return undefined;
   return results.some((item) => classifyValidationCase(item, demonstrationParameters).outcome === "Passed")
     ? undefined

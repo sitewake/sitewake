@@ -1123,9 +1123,12 @@ export async function authorJavaScriptCapability(options: {
             debugContext = isolatedExample;
             await workspace.event('replay.failure', {...lastCase, observation:lastDraftObservation, error:String(error)});
             const message = error instanceof Error ? error.message : String(error);
-            // A draft that finds nothing for a value the site offers has not
-            // passed; it does not go on when the repairs run out.
-            if (!/^offered_input_no_result:/u.test(message)) demonstrated = passedDemonstration;
+            // A draft that fails in any way on a value the site offers has not
+            // passed; it does not go on when the repairs run out. A draft that
+            // timed out on every other category used to go on, and was published.
+            const offeredExample = /^offered_input_no_result:/u.test(message)
+              || offeredInputPaths(groundingInput.parameters as JsonObject, options.discoveryRegions || []).length > 0;
+            if (!offeredExample) demonstrated = passedDemonstration;
             throw new Error(`draft_grounding_example_failed:example_${exampleIndex + 1}:${message}`);
           } finally {
             if (debugContext !== isolatedExample) await isolatedExample.context.close().catch(() => undefined);

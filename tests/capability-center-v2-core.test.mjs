@@ -6320,3 +6320,27 @@ test("a capability is never named after the value the run demonstrated with", ()
   }
   assert.equal(plan.name, "查看某个明星的热搜话题列表", "应当选用规范化目标这个可复用的说法");
 });
+
+test("a generation that adds an input to a name already live or in flight is named for what it adds", async () => {
+  // "Add product to cart" with a quantity ran beside the one without; both
+  // were named alike, and the second was set aside at publication for the
+  // first, which has no quantity: three mugs became one.
+  const seed = (paths) => ({
+    schemaVersion: "1.0", name: "加购商品", description: "把商品加入购物车", aliases: [], intent: "把商品加入购物车",
+    semantic: {
+      schemaVersion: "1.0", goal: "加购商品", effect: "write",
+      parameters: paths.map((path) => ({ path, role: path === "quantity" ? "value" : "target", userSupplied: true, example: path === "quantity" ? 2 : "马克杯" })),
+      dependencies: [],
+      scopeDecision: { status: "Generalized", scope: { kind: "site-global", binding: "user-input", generalizable: true }, rationale: "x", assumptions: [], unresolvedDependencies: [] },
+      entryPolicy: { kind: "site-global", requiredInputPaths: paths, scopeTokens: [], mismatch: "no-match", rationale: "x" },
+      evidenceRefs: ["episode:cart"],
+    },
+  });
+  const request = (parameters) => ({ request: { goal: "加购商品", parameters, entryUrl: "https://example.test/" }, source: "Admin", instruction: { operation: "create" } });
+  const first = await classifyCapabilityGeneration(siteId, request({ productName: "马克杯" }), { candidate: seed(["productName"]) });
+  assert.equal(first.disposition, "Created");
+  assert.equal(first.task.runSpec.input.capabilitySeed?.name ?? (await getTask(siteId, first.task.id, true)).input.candidateSummary.name, "加购商品");
+  const second = await classifyCapabilityGeneration(siteId, request({ productName: "马克杯", quantity: 2 }), { candidate: seed(["productName", "quantity"]) });
+  assert.equal(second.disposition, "Created", JSON.stringify(second));
+  assert.equal((await getTask(siteId, second.task.id, true)).input.candidateSummary.name, "加购商品 (with quantity)");
+});

@@ -465,6 +465,15 @@ async function performCandidateValidation(
         ...spec.input,
         parameters: resolveCapabilityInput(candidate.contract, testCase.input).declared,
       };
+    // A value the site lists beside the demonstrated one is a value the
+    // capability is for: whatever stops a case on it — nothing found, a wait
+    // that never ends, a failed check — is the program failing, and the
+    // verdict is told which value. Only "nothing found" used to be marked,
+    // and two programs that timed out on every other category were published.
+    const offeredPaths = offeredInputPaths(caseInput.parameters, parsedEvidence.value.regions);
+    const onOffered = (reason: string) => offeredPaths.length && !/^no_result_for_offered_input:/u.test(reason)
+      ? `offered_input_failed:${offeredPaths[0]}=${JSON.stringify(caseInput.parameters[offeredPaths[0]])}:${reason}`
+      : reason;
     try {
       validateContractInput(candidate.contract, caseInput);
       // CandidateValidation's physical transport projection intentionally keeps
@@ -540,7 +549,7 @@ async function performCandidateValidation(
           output: replayed.output || {},
           stageReceipts: projectStageReceipts(replayed.receipts, []),
           evidenceRefs: [],
-          failureReason: reason,
+          failureReason: onOffered(reason),
         });
         await helpers.onEvent(
           "Validating",
@@ -611,7 +620,7 @@ async function performCandidateValidation(
         output: {},
         stageReceipts: [],
         evidenceRefs: [],
-        failureReason: reason,
+        failureReason: onOffered(reason),
       });
       await helpers.onEvent(
         "Validating",

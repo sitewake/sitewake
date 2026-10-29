@@ -103,3 +103,21 @@ test("a demonstrated value that sits in no list on the page adds no region", asy
     server.close();
   }
 });
+
+test("a list the page draws in capitals is harvested by the names the page holds", async () => {
+  // PrestaShop's top menu is upper-cased by CSS; the cases came out as
+  // "CLOTHES" and "ACCESSORIES", and a program that finds a link by its name
+  // could not find either.
+  const page = CATALOGUE.replace("<aside>", '<style>.nav a { text-transform: uppercase }</style><aside>');
+  const { server, origin } = await serve(page);
+  const browser = await launchTestBrowser();
+  try {
+    const tab = await browser.newPage();
+    await tab.goto(`${origin}/`);
+    const { siblings } = await discovery.harvestStartPage(tab, { generationTaskId: "generation_1", siteId: "site_1", parameters: { category: "Poetry" } });
+    assert.deepEqual(siblings, { category: ["Travel", "Mystery", "Historical Fiction"] });
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});

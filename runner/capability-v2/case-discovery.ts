@@ -438,8 +438,11 @@ async function collectRawRegions(page: Page, demonstrationValues: string[] = [])
     // list "Poetry" sits in never became one, and the cases for the category
     // input were drawn from the first product card instead — "In stock", a
     // book's title. These lists go first, ahead of the budget.
+    // By the name the kernel finds it by: the text in the document, not as
+    // drawn. PrestaShop's menu is upper-cased by CSS, innerText read the
+    // categories as "CLOTHES", and no program could find a link by that name.
     const nameOfItem = (item) => normalize(
-      item.getAttribute("aria-label") || item.innerText || item.textContent
+      item.getAttribute("aria-label") || item.textContent
         || (item.querySelector && item.querySelector("img[alt]") ? item.querySelector("img[alt]").getAttribute("alt") : "")
         || item.getAttribute("title") || "",
       160,
