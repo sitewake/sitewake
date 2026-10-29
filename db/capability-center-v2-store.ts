@@ -2177,6 +2177,7 @@ export async function createCapabilityMaintenanceTask(
     guidance?: string;
     parameters?: Record<string, JsonValue>;
     context?: CapabilityTaskInput["context"];
+    experience?: CapabilityTaskInput["experience"];
     rerunOfTaskId?: string;
   },
 ) {
@@ -2219,6 +2220,7 @@ export async function createCapabilityMaintenanceTask(
   const sourceContext = sourceTask
     ? withoutDerivedMaintenanceContext(sourceTask.input.context)
     : {};
+  const experience = input.experience || sourceTask?.input.experience;
   const fallbackStartUrl =
     baseVersion.program.entry.mode === "Navigate" &&
     typeof baseVersion.program.entry.url === "string"
@@ -2249,6 +2251,9 @@ export async function createCapabilityMaintenanceTask(
       parameters,
       context,
       interactions: [],
+      // Generation derives the program from the visitor's recording; a
+      // rebuild without it fails before authoring starts.
+      ...(experience ? { experience } : {}),
       trigger: {
         baseVersionId: baseVersion.id,
         errorCode:
