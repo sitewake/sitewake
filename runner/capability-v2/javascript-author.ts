@@ -1,6 +1,6 @@
 import { countsIgnoringTheirList, demonstrationAnswerDisagreement, describeAnswerDisagreement, describeCountIgnoringList } from "../../lib/capability-center-v2/output-consistency";
 import { createAuthoringConnectors, type AuthoringConnectors } from "./connectors";
-import { contractWithOutputs } from "./contract-from-demonstration";
+import { contractWithOutputs, withOptionalOutputs } from "./contract-from-demonstration";
 import { offeredInputPaths } from "../../lib/capability-center-v2/case-generation";
 import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
 import { DEFAULT_CAPABILITY_TOTAL_TIMEOUT_MS } from "../../lib/capability-center-v2/control-flow";
@@ -490,6 +490,14 @@ function locatorExpression(value: LocatorValue | ProgramValue | undefined): stri
   return undefined;
 }
 
+/** The input expression a target is chosen by, when it is chosen by one. */
+function choiceExpression(target: ProgramStep["target"]): string | undefined {
+  const choice = (target?.strategies || [])
+    .flatMap((strategy) => [strategy.name, strategy.value])
+    .find((value) => value !== undefined && typeof value !== "string" && value.source === "input");
+  return locatorExpression(choice);
+}
+
 /**
  * Render one exploration target as a `find()`-compatible object literal. A
  * target named by an input also carries that input as its `choice`: the
@@ -631,11 +639,15 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
     const step = trace.steps[index - (manifest.stages.length - trace.steps.length - 1)];
     if (!step) return `${header} async run() { return { outcome: "Continue" }; } }`;
     const target = targetExpression(step.target);
+    // A target chosen by an input value that the settled page does not show:
+    // the kernel ends the wait with null, and there is no such item to act on.
+    const chosenBy = choiceExpression(step.target);
+    const absent = chosenBy ? `\n        if (!element) return { outcome: "NoResult", reason: \`No item named \${${chosenBy}} on this page\` };` : "";
     if (step.action === "fill" || step.action === "select") {
       const value = locatorExpression(step.value) || '""';
       return `${header}
       async run({ input, waitForTarget, fill }) {
-        const element = await waitForTarget(${target});
+        const element = await waitForTarget(${target});${absent}
         fill(element, ${value});
         return { outcome: "Continue" };
       } }`;
@@ -652,7 +664,7 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
       return `${header}
       async run({ input, waitForTarget, waitUntil, settle, keep, nameOf }) {
         void input;
-        const element = await waitForTarget(${target});
+        const element = await waitForTarget(${target});${absent}
         // Read the identity of the object being acted on before the page changes;
         // stage_verify checks the result against this instead of re-deriving it
         // from whatever wording the result page happens to carry. nameOf is the
@@ -739,6 +751,13 @@ export async function authorJavaScriptCapability(options: {
   startingSource?: string;
   /** The rejection this run is the one repair for: the verdict and the case it named, replayed first among the examples. */
   repair?: AuthoringRepair;
+  /**
+   * A page the program must open first, whatever page it is called from:
+   * the one that lists every value of its input. Without it a site-wide
+   * capability runs on the visitor's current page and reaches only what that
+   * page shows.
+   */
+  entryUrl?: string;
   /** The candidate's name, description and aliases, for the rules that read them. */
   summary?: { name?: string; description?: string; aliases?: string[] };
   explorationPromptProvenance?: CapabilityPromptProvenance[];
@@ -955,7 +974,9 @@ export async function authorJavaScriptCapability(options: {
         // the explicit Navigate entry because their contract declares the
         // page context as part of the business boundary — the page the
         // Contract names, not the one exploration happened to start on.
-        entry: entryPage
+        entry: options.entryUrl
+          ? { mode: "Navigate", url: options.entryUrl }
+          : entryPage
           ? { mode: "Navigate", url: entryPage }
           : contract.scope?.kind === "site-global"
             ? { mode: "CurrentPage" }
@@ -1114,6 +1135,16 @@ export async function authorJavaScriptCapability(options: {
               continue;
             }
             if (exampleReplay.outcome !== "Success") throw new Error(`${exampleReplay.outcome}:${exampleReplay.reason || ""}`);
+            // A field the demonstrated item had and this listed item answers
+            // without is optional, not a failure (see withOptionalOutputs).
+            const requiredOutputs = Array.isArray((contract.outputSchema as JsonObject).required) ? ((contract.outputSchema as JsonObject).required as JsonValue[]).map(String) : [];
+            const answered = (exampleReplay.output || {}) as JsonObject;
+            const lacking = requiredOutputs.filter((name) => answered[name] === undefined || answered[name] === null);
+            if (lacking.length && Object.keys(answered).length) {
+              contract = withOptionalOutputs(contract, lacking);
+              await workspace.write('dist/contract.json', contract);
+              await options.onEvent?.({ phase: "DraftReplay", message: "an output another listed value does not have is optional", payload: { fields: lacking.join(","), example: exampleIndex + 1 } });
+            }
             await evaluateResult(isolatedExample.page, options.goal, contract, exampleReplay.output, groundingInput, undefined, exampleReplay.observedText);
             answers.push({ input: groundingInput.parameters as JsonObject, output: exampleReplay.output as JsonObject });
             await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example succeeded", payload: { example: exampleIndex + 1 } });
@@ -1145,7 +1176,8 @@ export async function authorJavaScriptCapability(options: {
           demonstrated = passedDemonstration;
           throw new Error(`draft_grounding_example_failed:answers_together:${describeCountIgnoringList(stuck[0], answers.map((answer) => answer.input))}`);
         }
-        await acceptDraft(passedDemonstration);
+        // The examples may have made an output optional since the demonstration passed.
+        await acceptDraft({ ...passedDemonstration, contract });
         draftResult = { ok: true, outcome: draft.outcome, output: draft.output, evidence: draft.evidence, receipts: draft.receipts };
         await options.onEvent?.({ phase: "DraftReplay", message: "draft replay succeeded" });
       } catch (error) {

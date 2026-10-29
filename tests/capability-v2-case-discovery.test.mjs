@@ -138,3 +138,77 @@ test("icon-font glyphs inside a list's links are no part of the names harvested"
     server.close();
   }
 });
+
+test("a card grid is a list named by its headings, and a longer list on a linked page is the one the values come from", async () => {
+  // The demo shop's home page shows four of sixteen lamps as cards — a div of
+  // <article>s, each named by an <h3>. Cases drawn from those four proved a
+  // price capability that only clicked home-page cards; it hung for the rest.
+  const card = (name) => `<article><a href="/product/${name.toLowerCase().replace(/ /g, "-")}"><div><h3>${name}</h3><p>Table lamp · 2700K</p></div><p>$129</p></a></article>`;
+  const home = `<!doctype html><title>Shop</title><header><nav><a href="/shop">Shop</a><a href="/help">Help</a></nav></header><main><div class="grid">${["Lune Lamp", "Mira Pendant", "Arden Lamp"].map(card).join("")}</div><a href="/shop">View all 6 lamps</a></main>`;
+  const shop = `<!doctype html><title>All</title><header><nav><a href="/shop">Shop</a></nav></header><main><div class="grid">${["Lune Lamp", "Sela Lamp", "Mira Pendant", "Pilo Lamp", "Arden Lamp", "Tove Sconce"].map(card).join("")}</div></main>`;
+  const server = createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(request.url === "/" ? home : request.url === "/shop" ? shop : "<!doctype html><title>Help</title><p>help</p>");
+  });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const browser = await launchTestBrowser();
+  try {
+    const tab = await browser.newPage();
+    await tab.goto(`${origin}/`);
+    const { snapshot, siblings } = await discovery.harvestStartPage(tab, { generationTaskId: "generation_1", siteId: "site_1", parameters: { productName: "Mira Pendant" } });
+    assert.deepEqual(siblings.productName.slice(0, 3), ["Sela Lamp", "Pilo Lamp", "Tove Sconce"], "the lamps the start page does not show come first");
+    assert.deepEqual([...siblings.productName].sort(), ["Arden Lamp", "Lune Lamp", "Pilo Lamp", "Sela Lamp", "Tove Sconce"]);
+    assert.equal(snapshot.regions[0].kind, "choice-list");
+    assert.equal(snapshot.regions[0].url, `${origin}/shop`);
+    assert.equal(tab.url(), `${origin}/`, "the page is back where it started");
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});
+
+test("a longer list on a linked page that leaves out some of the start page's values is not the whole list", async () => {
+  // PrestaShop's home page shows eight popular products from several
+  // categories; its Accessories page lists eleven, none of them clothes.
+  const card = (name) => `<article><a href="/p/${name.toLowerCase().replace(/ /g, "-")}"><h3>${name}</h3></a></article>`;
+  const home = `<!doctype html><title>Shop</title><nav><a href="/accessories">Accessories</a></nav><main><div>${["Mug", "T-shirt", "Cushion"].map(card).join("")}</div></main>`;
+  const accessories = `<!doctype html><title>Accessories</title><nav><a href="/accessories">Accessories</a></nav><main><div>${["Mug", "Cushion", "Notebook", "Poster", "Lamp"].map(card).join("")}</div></main>`;
+  const server = createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(request.url === "/" ? home : accessories);
+  });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const browser = await launchTestBrowser();
+  try {
+    const tab = await browser.newPage();
+    await tab.goto(`${origin}/`);
+    const { snapshot, siblings } = await discovery.harvestStartPage(tab, { generationTaskId: "generation_1", siteId: "site_1", parameters: { productName: "Mug" } });
+    assert.deepEqual(siblings.productName, ["T-shirt", "Cushion"], "the start page's own list stands");
+    assert.equal(snapshot.regions.find((region) => region.kind === "choice-list").url, `${origin}/`);
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});
+
+test("a card title cut short is not a value: the link's full title is, when the page gives one", async () => {
+  // PrestaShop cuts long product titles on its cards; the cases asked for
+  // "The best is yet to come'...".
+  const card = (shown, full) => `<article><h3><a href="/p/${shown.length}"${full ? ` title="${full}"` : ""}>${shown}</a></h3></article>`;
+  const home = `<!doctype html><title>Shop</title><main><div>${card("Mug The best is yet to come", "")}${card("Today is a good day Framed...", "Today is a good day Framed poster")}${card("The adventure begins Framed...", "")}${card("Brown bear cushion", "")}</div></main>`;
+  const server = createServer((request, response) => { response.writeHead(200, { "content-type": "text/html; charset=utf-8" }); response.end(home); });
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const browser = await launchTestBrowser();
+  try {
+    const tab = await browser.newPage();
+    await tab.goto(`${origin}/`);
+    const { siblings } = await discovery.harvestStartPage(tab, { generationTaskId: "generation_1", siteId: "site_1", parameters: { productName: "Mug The best is yet to come" } });
+    assert.deepEqual(siblings.productName, ["Today is a good day Framed poster", "Brown bear cushion"]);
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});

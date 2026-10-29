@@ -157,3 +157,22 @@ export function contractWithOutputs(contract: CapabilityContract, output: JsonOb
     successConditions: [...kept, ...required.map((path) => ({ type: "outputExists", path }))],
   };
 }
+
+/**
+ * The Contract with these outputs optional: not required, and no success
+ * condition demanding them. The outputs are frozen from the demonstrated
+ * item, and a field that item had is not one every item has — the cushion
+ * the visitor added came in colours, and the notebook beside it in the list
+ * does not. A field another listed value answers without is optional.
+ */
+export function withOptionalOutputs(contract: CapabilityContract, names: string[]): CapabilityContract {
+  if (!names.length) return contract;
+  const outputSchema = contract.outputSchema as JsonObject;
+  const required = Array.isArray(outputSchema.required) ? (outputSchema.required as JsonValue[]).filter((name) => !names.includes(String(name))) : [];
+  return {
+    ...contract,
+    outputSchema: { ...outputSchema, required } as JsonObject,
+    successConditions: contract.successConditions.filter((condition) => !(condition && typeof condition === "object" && !Array.isArray(condition)
+      && (condition as JsonObject).type === "outputExists" && names.includes(String((condition as JsonObject).path)))),
+  };
+}

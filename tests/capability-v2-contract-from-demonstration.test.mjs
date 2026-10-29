@@ -80,3 +80,15 @@ test("intent and names are written from the words at hand", () => {
   assert.equal(humanize("quoteCount"), "Quote count");
   assert.equal(humanize("product_name"), "Product name");
 });
+
+test("an output another listed value answers without is optional, and no condition demands it", async () => {
+  const { contractWithOutputs, withOptionalOutputs } = await load("../runner/capability-v2/contract-from-demonstration.ts");
+  const base = { intent: "Add {{productName}} to cart", inputSchema: { type: "object", properties: { productName: { type: "string" } }, required: ["productName"] }, outputSchema: { type: "object", properties: {}, required: [], additionalProperties: true }, preconditions: [], successConditions: [] };
+  const frozen = contractWithOutputs(base, { productName: "Brown bear cushion", selectedColor: "White", quantity: 1 });
+  assert.deepEqual(frozen.outputSchema.required, ["productName", "selectedColor", "quantity"]);
+  const relaxed = withOptionalOutputs(frozen, ["selectedColor"]);
+  assert.deepEqual(relaxed.outputSchema.required, ["productName", "quantity"]);
+  assert.ok(relaxed.outputSchema.properties.selectedColor, "the field stays declared");
+  assert.ok(!relaxed.successConditions.some((condition) => condition.path === "selectedColor"));
+  assert.ok(relaxed.successConditions.some((condition) => condition.path === "quantity"));
+});

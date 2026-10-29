@@ -879,6 +879,25 @@ export async function performC1Authoring(
     });
   }
   startPageSnapshot = harvested?.snapshot;
+  // Where the whole list is. The visitor picked the Mira Pendant from the
+  // four lamps the home page shows; the shop page lists all sixteen. A
+  // program that clicks the item named by its input on the start page can
+  // only reach what that page shows, and its stages are fixed by the trace,
+  // so the model cannot add a step to go elsewhere. When the input's list was
+  // found whole on a page linked from the start, the program starts there.
+  let authoringStartUrl = startUrl;
+  let authoringProgram = explored.program;
+  const actingStep = explored.program.steps.find((step) => step.action !== "navigate");
+  const actingInput = actingStep ? /"source":"input","path":"([^"]+)"/u.exec(JSON.stringify(actingStep.target || {}))?.[1] : undefined;
+  const demonstrated = actingInput ? explored.demonstrationParameters[actingInput] : undefined;
+  const wholeList = actingInput && harvested
+    ? harvested.snapshot.regions.find((region) => region.kind === "choice-list" && region.observedValues.some((item) => typeof item === "string" && typeof demonstrated === "string" && item.normalize("NFKC").trim().toLocaleLowerCase() === demonstrated.normalize("NFKC").trim().toLocaleLowerCase()))
+    : undefined;
+  if (wholeList?.url && new URL(wholeList.url).href !== new URL(startUrl).href && actingStep?.action === "click") {
+    authoringStartUrl = wholeList.url;
+    authoringProgram = { ...explored.program, entry: { mode: "Navigate", url: wholeList.url }, steps: explored.program.steps.filter((step) => step.action !== "navigate" || step !== explored.program.steps[0]) };
+    await helpers.onEvent("Specification", "the program starts on the page that lists every value", { input: actingInput || "", url: wholeList.url, values: wholeList.observedValues.length });
+  }
   // A generation rerun as the one repair after a rejection carries the case
   // the verdict named; that case is replayed first, ahead of the siblings.
   const repair = repairOf(spec);
@@ -886,11 +905,12 @@ export async function performC1Authoring(
   const authored = await authorJavaScriptCapability({
     explorationPage: page,
     workspace: helpers.workspace,
-    startUrl,
+    startUrl: authoringStartUrl,
+    ...(authoringStartUrl !== startUrl ? { entryUrl: authoringStartUrl } : {}),
     goal: spec.goal || "完成用户目标",
     input: { ...spec.input, parameters: explored.demonstrationParameters },
     contract: summary.contract,
-    explorationProgram: explored.program,
+    explorationProgram: authoringProgram,
     groundingExamples,
     discoveryRegions: harvested?.snapshot.regions,
     startingSource: resume?.source,
@@ -912,7 +932,7 @@ export async function performC1Authoring(
       validationCases: groundingExamples,
       source: authored.bundle,
       summary,
-      entryUrl: startUrl,
+      entryUrl: authoringStartUrl,
     },
   );
   await helpers.onEvent(
@@ -997,7 +1017,7 @@ export async function performC1Authoring(
     artifactRefs: [],
     // The start page as read before authoring, for case generation to read instead of browsing again.
     startPageSnapshot,
-    startUrl,
+    startUrl: authoringStartUrl,
   };
 }
 
