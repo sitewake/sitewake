@@ -874,7 +874,30 @@ export const DEMOTED_CHECKS: Record<string, string> = {
   // from the elements it listed; the resolver could not trace a value through
   // sort/reduce and failed closed, three times out of three in the benchmark.
   capability_module_output_provenance_unknown: "the output of a verify stage could not be traced to a page source by static reading",
+  // The rest never refused a recorded bad module and never produced a
+  // benchmark failure (benchmark/GATES.md, 2026-10-28). What each is after is
+  // decided by the replays: a draft is run on the demonstrated input and on
+  // the values the site offers beside it, and independent validation runs it
+  // again in a fresh context.
+  capability_module_computed_aria_selector_forbidden: "a selector is built from get_dom's computed role or accessible name",
+  capability_module_direct_navigation_forbidden: "the source navigates by assigning location instead of returning a navigation intent",
+  capability_module_direct_value_assignment: "the source assigns element.value instead of calling fill()",
+  capability_module_fixed_cart_success_text: "success is asserted on a literal cart sentence with a fixed quantity",
+  capability_module_input_not_verified: "stage_verify does not read a target input",
+  capability_module_input_unused: "the source does not read a required input",
+  capability_module_invented_customization: "the source invents customization text",
+  capability_module_output_fabricated: "an output is assembled from a hard-coded address",
+  capability_module_related_add_to_cart_fallback: "a document-wide Add-to-cart fallback could click a related product",
+  capability_module_related_variant_navigation: "a document-wide variant link could leave the selected product",
+  capability_module_search_form_submit_unsafe: "the source calls searchForm.submit()",
+  capability_module_target_first_candidate_forbidden: "target resolution selects a candidate without a complete match",
+  capability_module_target_input_not_reused: "a target input is not read again for candidate selection",
 };
+
+/** Whether a refusal code (with any `:suffix`) is a demoted check's. */
+export function isDemotedModuleCheck(code: string) {
+  return Object.hasOwn(DEMOTED_CHECKS, code.split(":")[0]);
+}
 
 /**
  * Return the number of statically visible reads of one public input path.
@@ -1092,20 +1115,25 @@ export function validateCapabilityJavaScriptSource(
   }
   // Findings of demoted checks (DEMOTED_CHECKS): recorded, not refused.
   const notes: CapabilityQualityNote[] = [];
+  const refused = (code: string, message: string): JavaScriptModuleValidation | undefined => {
+    if (!isDemotedModuleCheck(code)) return { ok: false, code, message };
+    notes.push({ code, message });
+    return undefined;
+  };
   if (/(?:^|[\s("'`])(?:button|a|input|select|textarea|\*)\s*\[\s*role\s*=|\[\s*role\s*=\s*["'](?:button|link)["']/iu.test(normalized)) {
-    return { ok: false, code: "capability_module_computed_aria_selector_forbidden", message: "get_dom roles are computed accessibility metadata; use real HTML elements and semantic text instead of CSS role attributes" };
+    { const refusal = refused("capability_module_computed_aria_selector_forbidden", "get_dom roles are computed accessibility metadata; use real HTML elements and semantic text instead of CSS role attributes"); if (refusal) return refusal; }
   }
   // `name` in get_dom is the computed accessible name (button text, placeholder),
   // not the HTML name attribute. A [name="…"] selector containing non-ASCII text
   // or spaces never matches anything and only waits until the timeout.
   if ([...normalized.matchAll(/\[\s*name\s*=\s*\\?["']([^"'\\]*)\\?["']\s*\]/gu)].some((match) => /[^\x00-\x7F]|\s/u.test(match[1]))) {
-    return { ok: false, code: "capability_module_computed_aria_selector_forbidden", message: "get_dom's `name` is the computed accessible name (button text, placeholder), not an HTML name attribute; a [name=\"…\"] selector built from it never matches. Select by the element's css from get_dom, its placeholder/type/id attributes, or its visible text" };
+    { const refusal = refused("capability_module_computed_aria_selector_forbidden", "get_dom's `name` is the computed accessible name (button text, placeholder), not an HTML name attribute; a [name=\"…\"] selector built from it never matches. Select by the element's css from get_dom, its placeholder/type/id attributes, or its visible text"); if (refusal) return refusal; }
   }
   for (const path of requiredInputPaths) {
     const name = string(path).split(".")[0];
     if (!name) continue;
     if (!sourceConsumesInputPath(normalized, name)) {
-      return { ok: false, code: `capability_module_input_unused:${name}`, message: `capability source must consume input.${name}` };
+      { const refusal = refused(`capability_module_input_unused:${name}`, `capability source must consume input.${name}`); if (refusal) return refusal; }
     }
   }
   // Consuming an input is not the same as acting on it. A capability whose
@@ -1189,11 +1217,10 @@ export function validateCapabilityJavaScriptSource(
     const verifySource = executableWithoutComments.slice(verifyStart);
     const assembled = /`https?:\/\/[^`]*\$\{|["']https?:\/\/[^"']*["']\s*\+/u.exec(verifySource);
     if (assembled) {
-      return {
-        ok: false,
-        code: "capability_module_output_fabricated",
-        message: `an output is being assembled from a hard-coded address (${assembled[0].slice(0, 60)}…) instead of read from the page; take the URL from location.href or a link's href, and return NoResult when the page does not provide it`,
-      };
+      {
+        const refusal = refused("capability_module_output_fabricated", `an output is being assembled from a hard-coded address (${assembled[0].slice(0, 60)}…) instead of read from the page; take the URL from location.href or a link's href, and return NoResult when the page does not provide it`);
+        if (refusal) return refusal;
+      }
     }
   }
   // A target is not consumed merely because it drives the initial search. It
@@ -1207,22 +1234,20 @@ export function validateCapabilityJavaScriptSource(
     if (!name) continue;
     const count = sourceInputPathUsageCount(normalized, name);
     if (count < 2) {
-      return {
-        ok: false,
-        code: `capability_module_target_input_not_reused:${name}`,
-        message: `target input.${name} must be used for both target resolution and candidate selection`,
-      };
+      {
+        const refusal = refused(`capability_module_target_input_not_reused:${name}`, `target input.${name} must be used for both target resolution and candidate selection`);
+        if (refusal) return refusal;
+      }
     }
   }
   const heuristicSource = stripJavaScriptComments(normalized);
   const unsafeFirst = unsafeFirstCandidateExpression(heuristicSource);
   const unsafeIncompleteFind = unsafeIncompleteCandidateFindExpression(heuristicSource);
   if (targetInputPaths.length && (unsafeFirst || unsafeIncompleteFind)) {
-    return {
-      ok: false,
-      code: "capability_module_target_first_candidate_forbidden",
-      message: `target resolution must match all public target/facet inputs; source still selects a candidate collection without a complete match and executable-action proof (${unsafeFirst || unsafeIncompleteFind || "expression"}). Filter all candidates for full input identity and an enabled executable action, then choose a matching candidate or return NoResult/Ambiguous`,
-    };
+    {
+      const refusal = refused("capability_module_target_first_candidate_forbidden", `target resolution must match all public target/facet inputs; source still selects a candidate collection without a complete match and executable-action proof (${unsafeFirst || unsafeIncompleteFind || "expression"}). Filter all candidates for full input identity and an enabled executable action, then choose a matching candidate or return NoResult/Ambiguous`);
+      if (refusal) return refusal;
+    }
   }
   // A customization field is user-owned data.  A generated module must never
   // invent a literal textarea value ("Hello", "test", etc.) merely to enable
@@ -1236,22 +1261,20 @@ export function validateCapabilityJavaScriptSource(
     )
     && !/\.\s*value\s*=\s*(?:input\s*\.|input\s*\[)/iu.test(normalized)
   ) {
-    return {
-      ok: false,
-      code: "capability_module_invented_customization",
-      message: "do not invent customization text; consume a user-provided customization input or choose another executable product",
-    };
+    {
+      const refusal = refused("capability_module_invented_customization", "do not invent customization text; consume a user-provided customization input or choose another executable product");
+      if (refusal) return refusal;
+    }
   }
   // Native searchForm.submit() is unreliable on the client-rendered
   // PrestaShop search widget and can leave the following Stage on an empty
   // result document.  Require the input-driven same-origin URL handoff so the
   // runner can settle the new page before candidate selection.
   if (/\bsearchForm\s*\.\s*submit\s*\(\s*\)/iu.test(normalized)) {
-    return {
-      ok: false,
-      code: "capability_module_search_form_submit_unsafe",
-      message: "use an input-driven /search?controller=search&s=... navigation handoff instead of searchForm.submit()",
-    };
+    {
+      const refusal = refused("capability_module_search_form_submit_unsafe", "use an input-driven /search?controller=search&s=... navigation handoff instead of searchForm.submit()");
+      if (refusal) return refusal;
+    }
   }
   // A product-detail page often renders related product cards below the main
   // product. A document-wide enabled-button fallback can therefore click a
@@ -1264,11 +1287,10 @@ export function validateCapabilityJavaScriptSource(
     && /add\s*(?:to\s*)?cart/iu.test(normalized)
     && !/closest\s*\(\s*["'`]article["'`]\s*\)/iu.test(normalized)
   ) {
-    return {
-      ok: false,
-      code: "capability_module_related_add_to_cart_fallback",
-      message: "document-wide Add-to-cart fallback can click a related product; scope the write to the primary detail region and skip disabled/related candidates",
-    };
+    {
+      const refusal = refused("capability_module_related_add_to_cart_fallback", "document-wide Add-to-cart fallback can click a related product; scope the write to the primary detail region and skip disabled/related candidates");
+      if (refusal) return refusal;
+    }
   }
   // Variant links are often rendered for related products as well as the
   // primary detail. A document-wide `a[href*=color-/variant-]` navigation can
@@ -1281,11 +1303,10 @@ export function validateCapabilityJavaScriptSource(
     && documentWideVariantSelector.test(normalized)
     && /(?:__SiteWakeNavigate|location\s*\.\s*(?:assign|replace|href)|\.\s*click\s*\(\s*\)|dispatchEvent\s*\()/iu.test(normalized)
   ) {
-    return {
-      ok: false,
-      code: "capability_module_related_variant_navigation",
-      message: "do not navigate document-wide color/variant links; scope variant selection to the requested primary product region and never leave the selected target for a related card",
-    };
+    {
+      const refusal = refused("capability_module_related_variant_navigation", "do not navigate document-wide color/variant links; scope variant selection to the requested primary product region and never leave the selected target for a related card");
+      if (refusal) return refusal;
+    }
   }
   // Assigning .value directly is reverted by React/Vue controlled inputs: the
   // framework's value tracker sees no change, onChange never fires, and the next
@@ -1295,18 +1316,16 @@ export function validateCapabilityJavaScriptSource(
   const domHandles = [...executableSource.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:waitFor\s*\(|document\s*\.\s*(?:querySelector|getElementById)\s*\()/gu)].map((match) => match[1]);
   const directValueAssignment = new RegExp(`(?:\\b(?:${[...new Set(domHandles), "document\\s*\\.\\s*querySelector\\s*\\([^)]*\\)"].join("|")})|\\(\\s*await\\s+waitFor\\s*\\([^)]*\\)\\s*\\))\\s*\\.\\s*value\\s*=(?!=)`, "u");
   if (directValueAssignment.test(executableSource)) {
-    return {
-      ok: false,
-      code: "capability_module_direct_value_assignment",
-      message: "do not assign element.value directly; React/Vue controlled inputs revert it. Use fill(element, value) from the run arguments, which writes through the native setter and dispatches input/change like real typing",
-    };
+    {
+      const refusal = refused("capability_module_direct_value_assignment", "do not assign element.value directly; React/Vue controlled inputs revert it. Use fill(element, value) from the run arguments, which writes through the native setter and dispatches input/change like real typing");
+      if (refusal) return refusal;
+    }
   }
   if (/(?:__SiteWakeNavigate|location\s*\.\s*(?:assign|replace|reload)|location\s*=|location\s*\.\s*href\s*=(?!=))/iu.test(executableSource)) {
-    return {
-      ok: false,
-      code: "capability_module_direct_navigation_forbidden",
-      message: "do not set location/location.href or call location.assign/replace; click the real control (button/link) or return a same-origin navigation intent from the Stage result — the host commits state/cursor/receipt before navigating",
-    };
+    {
+      const refusal = refused("capability_module_direct_navigation_forbidden", "do not set location/location.href or call location.assign/replace; click the real control (button/link) or return a same-origin navigation intent from the Stage result — the host commits state/cursor/receipt before navigating");
+      if (refusal) return refusal;
+    }
   }
   // A concrete locale sentence (especially one containing a fixed quantity)
   // is not a reusable success proof.  It changes with locale, theme and cart
@@ -1321,11 +1340,10 @@ export function validateCapabilityJavaScriptSource(
     && /(?:includes|indexOf|match|===|!==)/iu.test(heuristicSource)
     && /(?:innerText|textContent|body|dialog|status|aria-live)/iu.test(heuristicSource)
   ) {
-    return {
-      ok: false,
-      code: "capability_module_fixed_cart_success_text",
-      message: "do not assert a literal cart sentence or fixed quantity; verify structural success evidence such as a visible status/dialog, item identity, or a cart-count/state transition derived from the page",
-    };
+    {
+      const refusal = refused("capability_module_fixed_cart_success_text", "do not assert a literal cart sentence or fixed quantity; verify structural success evidence such as a visible status/dialog, item identity, or a cart-count/state transition derived from the page");
+      if (refusal) return refusal;
+    }
   }
   // A business identity sliced out of a text blob between literal page phrases
   // is not a reusable reading of the result: those phrases are editorial copy
@@ -1400,11 +1418,10 @@ export function validateCapabilityJavaScriptSource(
       // input but the terminal verifier happens to spell the access safely.
       const directUsage = sourceInputPathUsageCount(verifySource, name);
       if (directUsage <= 0) {
-        return {
-          ok: false,
-          code: `capability_module_input_not_verified:${name}`,
-          message: `stage_verify must verify input.${name} against the final business state`,
-        };
+        {
+          const refusal = refused(`capability_module_input_not_verified:${name}`, `stage_verify must verify input.${name} against the final business state`);
+          if (refusal) return refusal;
+        }
       }
     }
   }

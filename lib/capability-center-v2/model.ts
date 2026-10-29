@@ -164,7 +164,12 @@ export type CapabilityCaseDiscoveryEvidenceRef = {
 export type CapabilityCaseDiscoveryRegion = {
   regionId: string;
   url: string;
-  kind: "page-summary" | "business-region" | "control-group";
+  /**
+   * A choice-list is the list a demonstrated value was chosen from — the
+   * category links "Poetry" sits among, the options beside the chosen one —
+   * harvested as that list's items and nothing else.
+   */
+  kind: "page-summary" | "business-region" | "control-group" | "choice-list";
   text: string;
   /** Typed values actually observed in this region, never model proposals. */
   observedValues: JsonValue[];
@@ -350,7 +355,8 @@ export type CapabilityPublishInput = {
   generationTaskId: string;
   validated: ValidatedCapabilityPackage;
   authorization:
-    | { mode: "AIApproved"; reviewId: string }
+    /** The validation verdict approved it; `reason` is the verdict's own words. */
+    | { mode: "Validated"; reason: string }
     | { mode: "AdminOverride"; adminId: string; reason: string };
 };
 
@@ -701,9 +707,15 @@ export type Capability = {
 };
 
 export type Review = {
+  /**
+   * The verdict on the validated version. Decided from the validation record
+   * since 2026-10-28 (`deterministic: true`); earlier records hold a model
+   * review's decision and the prompt that produced it.
+   */
   ai?: {
     status: "Pending" | "Reviewing" | "Approved" | "Rejected" | "Error";
     reason?: string;
+    deterministic?: boolean;
     promptKey?: string;
     promptVersion?: string;
     promptHash?: string;

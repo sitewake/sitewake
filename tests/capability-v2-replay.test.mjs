@@ -101,7 +101,7 @@ test("a Contract that names an output no Stage may write is rejected before auth
   assert.ok(issues.some((issue) => issue.code === "condition_output_undeclared"), JSON.stringify(issues));
   const manifest = authoringManifest(fixture.contract.explorationProgram, frozen);
   const report = inspectCapabilityQuality(frozen, { schemaVersion: "2.0", runtime: "BrowserJavaScriptStage", module: { contentHash: "x", moduleUrl: "/x", exportName: "capability" }, entry: { mode: "CurrentPage" }, ...manifest });
-  assert.ok(report.issues.some((issue) => issue.code === "condition_output_undeclared"), "the quality gate reports the same contradiction");
+  assert.ok(report.notes.some((issue) => issue.code === "condition_output_undeclared"), "the quality gate records the same contradiction, as a note");
 });
 
 test("a case keyword that is site vocabulary is not a leaked demonstration value", { skip: !corpus }, () => {

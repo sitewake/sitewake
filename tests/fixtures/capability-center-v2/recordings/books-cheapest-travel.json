@@ -1,0 +1,73 @@
+{
+  "goal": "What is the cheapest book in the Travel category, and how much does it cost?",
+  "parameters": {
+    "category": "Travel"
+  },
+  "experience": {
+    "schemaVersion": "1.0",
+    "episodeId": "episode_653af1b7-3562-47c5-a2e1-a14b2152aeb1",
+    "agentRunId": "run_2864beef-7d4e-4de3-93c8-975708864470",
+    "browserSessionId": "browser_fa8d63db-5933-46f7-b7b4-7bef2fd4afd6",
+    "originalGoal": "What is the cheapest book in the Travel category, and how much does it cost?",
+    "outcome": "Success",
+    "outcomeSummary": "The cheapest book in the Travel category is \"The Road to Little Dribbling: Adventures of an American in Britain (Notes From a Small Island #2)\", priced at £23.21 (it is in stock).",
+    "answer": "The cheapest book in the Travel category is \"The Road to Little Dribbling: Adventures of an American in Britain (Notes From a Small Island #2)\", priced at £23.21 (it is in stock).",
+    "startedAt": "2026-10-28T10:21:25.720Z",
+    "endedAt": "2026-10-28T10:21:51.031Z",
+    "startPage": {
+      "url": "http://books.bench:8101/",
+      "title": "All products | Books to Scrape - Sandbox",
+      "heading": "All products"
+    },
+    "endPage": {
+      "url": "http://books.bench:8101/catalogue/category/books/travel_2/index.html",
+      "title": "Travel | Books to Scrape - Sandbox",
+      "heading": "Travel"
+    },
+    "actions": [
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 3
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Travel",
+          "href": "http://books.bench:8101/catalogue/category/books/travel_2/index.html",
+          "contextText": "Travel",
+          "landmark": "aside"
+        },
+        "page": {
+          "url": "http://books.bench:8101/",
+          "title": "All products | Books to Scrape - Sandbox",
+          "heading": "All products"
+        },
+        "observedAt": "2026-10-28T10:21:34.394Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 79
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "The Road to Little Dribbling: Adventures of an American in Britain (Notes From a Small Island #2)",
+          "href": "http://books.bench:8101/catalogue/the-road-to-little-dribbling-adventures-of-an-american-in-britain-notes-from-a-small-island-2_277/index.html",
+          "contextText": "The Road to Little ... £23.21 In stock Add to basket",
+          "landmark": "unknown"
+        },
+        "page": {
+          "url": "http://books.bench:8101/catalogue/category/books/travel_2/index.html",
+          "title": "Travel | Books to Scrape - Sandbox",
+          "heading": "Travel"
+        },
+        "observedAt": "2026-10-28T10:21:41.179Z"
+      }
+    ],
+    "output": {}
+  }
+}

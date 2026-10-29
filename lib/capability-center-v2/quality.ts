@@ -12,7 +12,10 @@ import { inspectContractConsistency } from "./contract-consistency";
 export type CapabilityQualityIssue = { code: string; message: string; path?: string };
 export type CapabilityQualityReport = {
   valid: boolean;
+  /** Findings that block publication. */
   issues: CapabilityQualityIssue[];
+  /** Findings of demoted checks (DEMOTED_QUALITY_CHECKS): recorded with the version, blocking nothing. */
+  notes: CapabilityQualityIssue[];
   declaredInputs: string[];
   requiredInputs: string[];
   programInputs: string[];
@@ -20,6 +23,49 @@ export type CapabilityQualityReport = {
   targetInputs: string[];
   scopeVerdict?: "pass" | "warn" | "fail";
 };
+
+/**
+ * Checks that block nothing any more. A check earns the right to block by a
+ * recorded module it refuses or a benchmark failure it produced
+ * (benchmark/GATES.md); none of these had either. Each is still applied, and
+ * its finding is kept as a note on the version; the demonstration and the
+ * independent validation decide. `demonstration_value_leaked` is not here:
+ * it is the publication verdict's own rule, applied where the source is.
+ */
+export const DEMOTED_QUALITY_CHECKS: Record<string, string> = {
+  condition_output_undeclared: "a success condition names an output the schema does not declare",
+  condition_output_unwritable: "a success condition names an output no Stage declares it writes",
+  declared_input_not_consumed_by_source: "the source does not read an input the program declares",
+  default_input_must_be_optional: "a required input declares a default",
+  default_omission_validation_required: "no case omits a defaulted input",
+  deterministic_success_condition_required: "no success condition is executable",
+  independent_target_evidence_required: "validation saw fewer than two identities for a target input",
+  independent_validation_cases_required: "a parameterized capability has no complete validation case",
+  input_reference_undeclared: "the program or Contract references an undeclared input",
+  output_required_undeclared: "a required output is not declared",
+  output_schema_object_required: "the outputSchema is not an object schema",
+  output_schema_properties_required: "the outputSchema declares no properties and is closed",
+  page_scope_match_required: "a page-scoped capability has no matcher",
+  page_selecting_input_not_navigated: "an input that selects the page is never navigated to",
+  required_input_does_not_parameterize: "no acting Stage reads a required input",
+  required_input_not_consumed: "a required input has no parameter role",
+  required_input_undeclared: "a required input is not declared",
+  scope_input_undeclared: "the scope references an undeclared input",
+  stage_io_input_undeclared: "a Stage reads an input the Contract does not declare",
+  stage_io_output_undeclared: "a Stage writes an output the Contract does not declare",
+  stage_io_required: "a Stage declares no io",
+  stage_io_state_read_unavailable: "a Stage reads state no earlier Stage produces",
+  stage_io_terminal_output_missing: "the terminal Stage does not declare a required output",
+  target_binding_required: "a target input has no binding",
+  target_first_candidate_forbidden: "target resolution selects the first candidate",
+  target_success_condition_required: "a target input is verified by no parameterized condition",
+  write_stage_reconciliation_required: "a write Stage does not reconcile before retry",
+};
+
+/** Whether a finding's code (with any `:suffix`) is a demoted check's. */
+export function isDemotedQualityCheck(code: string) {
+  return Object.hasOwn(DEMOTED_QUALITY_CHECKS, code.split(":")[0]);
+}
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -461,7 +507,9 @@ export function inspectCapabilityQuality(
     }
   }
 
-  return { valid: issues.length === 0, issues, declaredInputs, requiredInputs, programInputs, contractInputs, targetInputs, scopeVerdict };
+  const blocking = issues.filter((issue) => !isDemotedQualityCheck(issue.code));
+  const notes = issues.filter((issue) => isDemotedQualityCheck(issue.code));
+  return { valid: blocking.length === 0, issues: blocking, notes, declaredInputs, requiredInputs, programInputs, contractInputs, targetInputs, scopeVerdict };
 }
 
 export function assertCapabilityQuality(contract: CapabilityContract, program: CapabilityProgram, options?: Parameters<typeof inspectCapabilityQuality>[2]) {

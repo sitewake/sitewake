@@ -61,7 +61,7 @@ function humanStage(stage: CapabilityStageManifest) {
 function eventText(event: CapabilityTaskEvent) {
   const phase = typeof event.payload.phase === "string" ? event.payload.phase : event.eventType;
   const data = activityData(event.payload);
-  // A review's reason is the reviewer's own prose; the feed names the outcome.
+  // The verdict's reason is a fixed sentence the catalog words; the feed names the outcome.
   if (event.eventType === "ReviewCompleted") return { phase, message: event.payload.decision === "Approved" ? "review approved" : "review rejected", data };
   if (event.eventType === "ReviewFailed") return { phase, message: "review failed", data };
   const message = typeof event.payload.message === "string"

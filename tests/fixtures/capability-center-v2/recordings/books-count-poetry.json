@@ -1,0 +1,52 @@
+{
+  "goal": "How many books are in the Poetry category?",
+  "parameters": {
+    "category": "Poetry"
+  },
+  "experience": {
+    "schemaVersion": "1.0",
+    "episodeId": "episode_7c3ed5f7-0c59-4a87-a078-a6ee1a93bd6a",
+    "agentRunId": "run_e1db76c6-8172-4815-bc96-b39b6178781e",
+    "browserSessionId": "browser_061c1425-9200-4d67-912e-d53ce20c5a39",
+    "originalGoal": "How many books are in the Poetry category?",
+    "outcome": "Success",
+    "outcomeSummary": "The Poetry category contains 19 books. The category page shows \"Poetry 19 results.\"",
+    "answer": "The Poetry category contains 19 books. The category page shows \"Poetry 19 results.\"",
+    "startedAt": "2026-10-28T10:22:07.545Z",
+    "endedAt": "2026-10-28T10:22:24.489Z",
+    "startPage": {
+      "url": "http://books.bench:8101/",
+      "title": "All products | Books to Scrape - Sandbox",
+      "heading": "All products"
+    },
+    "endPage": {
+      "url": "http://books.bench:8101/catalogue/category/books/poetry_23/index.html",
+      "title": "Poetry | Books to Scrape - Sandbox",
+      "heading": "Poetry"
+    },
+    "actions": [
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 24
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Poetry",
+          "href": "http://books.bench:8101/catalogue/category/books/poetry_23/index.html",
+          "contextText": "Poetry",
+          "landmark": "aside"
+        },
+        "page": {
+          "url": "http://books.bench:8101/",
+          "title": "All products | Books to Scrape - Sandbox",
+          "heading": "All products"
+        },
+        "observedAt": "2026-10-28T10:22:15.618Z"
+      }
+    ],
+    "output": {}
+  }
+}

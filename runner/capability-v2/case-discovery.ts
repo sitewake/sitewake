@@ -1,5 +1,6 @@
 import type { Browser, BrowserContextOptions, Page } from "playwright";
 import type {
+  JsonValue,
   C2CaseGenerationInput,
   CapabilityCaseDiscoveryEvidence,
   CapabilityCaseDiscoveryRegion,
@@ -52,6 +53,8 @@ export type CapabilityCaseDiscoverySnapshot = Omit<
 export type CapabilityCaseDiscoveryDependencies = {
   browser: Browser;
   storageState?: BrowserContextOptions["storageState"];
+  /** The start page as authoring harvested it; given, no browser is opened here. */
+  snapshot?: CapabilityCaseDiscoverySnapshot;
 };
 
 type RawRegion = {
@@ -210,9 +213,10 @@ async function waitForPageToSettle(page: Page) {
  * to `/daily/2026-03-10` is the site saying it serves that date), then word
  * tokens, and last the Han n-grams that let a query be a part of a title.
  */
-async function collectRawRegions(page: Page): Promise<RawRegion[]> {
+async function collectRawRegions(page: Page, demonstrationValues: string[] = []): Promise<RawRegion[]> {
   await assertNoAuthenticationControls(page);
   return page.evaluate<RawRegion[]>(String.raw`(() => {
+    const demonstrationValues = ${JSON.stringify(demonstrationValues.filter((value) => typeof value === "string" && value.trim()).slice(0, 8))};
     const maxRegions = ${MAX_REGIONS_PER_PAGE};
     const maxText = ${MAX_REGION_TEXT};
     const maxValues = ${MAX_OBSERVED_VALUES};
@@ -428,7 +432,63 @@ async function collectRawRegions(page: Page): Promise<RawRegion[]> {
       const title = normalize(document.title || "", 240) || normalize(location.pathname, 240) || "/";
       regions.push({ kind: "page-summary", text: title, observedValues: navigation, controlOptions: [] });
     }
-    return regions;
+    // The list each demonstrated value was chosen from, as the page lays it
+    // out: the items of the tightest list that shows the value by name. The
+    // regions above score cards and penalise navigation, so the category
+    // list "Poetry" sits in never became one, and the cases for the category
+    // input were drawn from the first product card instead — "In stock", a
+    // book's title. These lists go first, ahead of the budget.
+    const nameOfItem = (item) => normalize(
+      item.getAttribute("aria-label") || item.innerText || item.textContent
+        || (item.querySelector && item.querySelector("img[alt]") ? item.querySelector("img[alt]").getAttribute("alt") : "")
+        || item.getAttribute("title") || "",
+      160,
+    );
+    const itemOf = (item) => (item.matches("li,tr,[role=listitem]") && item.querySelector("a,button,label,[role=link],[role=button]")) || item;
+    const choiceLists = [];
+    // A breadcrumb also lists the value, between "Home" and the section it
+    // is in; those are where the visitor is, not what they could choose.
+    const breadcrumb = (container) => /breadcrumb/iu.test(container.className + " " + (container.getAttribute("aria-label") || "") + " " + (container.parentElement ? container.parentElement.className + " " + (container.parentElement.getAttribute("aria-label") || "") : ""));
+    const listNames = (container) => {
+      const items = container.matches("select,datalist") ? [...container.querySelectorAll("option")]
+        : container.matches("table,tbody") ? [...container.querySelectorAll("tr")]
+          : [...container.children];
+      const names = [];
+      const seenNames = new Set();
+      for (const item of items) {
+        if (!(item instanceof HTMLOptionElement) && !visible(item)) continue;
+        const name = nameOfItem(itemOf(item));
+        const key = valueKey(name);
+        if (!name || seenNames.has(key)) continue;
+        seenNames.add(key);
+        names.push(name);
+        if (names.length >= maxValues) break;
+      }
+      return names;
+    };
+    for (const wanted of demonstrationValues) {
+      const shown = wanted.normalize("NFKC").trim().toLocaleLowerCase();
+      if (!shown) continue;
+      const matches = [...document.querySelectorAll("a,button,option,li,label,td,th,dt,dd,span,[role=option],[role=tab],[role=menuitem],[role=radio],[role=link],[role=button]")]
+        .filter((element) => visible(element) && nameOfItem(element).normalize("NFKC").toLocaleLowerCase() === shown);
+      // Of every list that shows the value, the one with the most choices: the
+      // category list over the breadcrumb that also names the category.
+      let chosen;
+      const seenLists = new Set();
+      for (const element of matches) {
+        const container = element.closest("ul,ol,select,datalist,table,tbody,[role=list],[role=listbox],[role=menu],[role=tablist],[role=radiogroup],[role=group],nav");
+        if (!container || seenLists.has(container) || breadcrumb(container)) continue;
+        seenLists.add(container);
+        const names = listNames(container);
+        if (names.length < 2 || !names.some((name) => name.normalize("NFKC").toLocaleLowerCase() === shown)) continue;
+        if (!chosen || names.length > chosen.names.length) chosen = { container, names };
+      }
+      if (!chosen) continue;
+      const before = chosen.container.previousElementSibling;
+      const heading = before && /^H[1-6]$/u.test(before.tagName) ? normalize(before.textContent || "", 120) : "";
+      choiceLists.push({ kind: "choice-list", text: normalize((heading ? heading + ": " : "") + chosen.names.join(", "), maxText), observedValues: chosen.names, controlOptions: [] });
+    }
+    return [...choiceLists, ...regions];
   })()`);
 }
 
@@ -525,9 +585,10 @@ async function appendPageRegions(
   page: Page,
   regions: CapabilityCaseDiscoveryRegion[],
   actions: CapabilityCaseDiscoveryAction[],
+  demonstrationValues: string[] = [],
 ) {
   const url = safeEvidenceUrl(page.url());
-  const rawRegions = await collectRawRegions(page);
+  const rawRegions = await collectRawRegions(page, demonstrationValues);
   actions.push({
     action: "inspect",
     outcome: "performed",
@@ -560,6 +621,11 @@ export async function discoverCapabilityCaseEvidence(
   input: C2CaseGenerationInput,
   dependencies: CapabilityCaseDiscoveryDependencies,
 ): Promise<CapabilityCaseDiscoverySnapshot> {
+  // The page was read once, before authoring, and the authoring loop
+  // replayed on what it offered; case generation reads the same page.
+  if (dependencies.snapshot) {
+    return { ...dependencies.snapshot, generationTaskId: input.generationTaskId, siteId: input.siteId };
+  }
   const baseUrl = safeHttpUrl(input.browser.baseUrl);
   const startUrl = safeHttpUrl(input.browser.startUrl);
   if (startUrl.origin !== baseUrl.origin)
@@ -577,6 +643,10 @@ export async function discoverCapabilityCaseEvidence(
       : undefined;
 
   const mutating = isMutatingCandidate(input);
+  // What the demonstration chose, so the harvest can find the lists those
+  // values were chosen from.
+  const demonstrationValues = Object.values(input.demonstrationParameters || {})
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
   // This grant comes from the control-plane contract, not browser text.
   const readPaths = input.browser.readOnlyPathPrefixes || [];
   const context = await dependencies.browser.newContext({ storageState });
@@ -657,7 +727,7 @@ export async function discoverCapabilityCaseEvidence(
       reason: "entry_get_navigation",
       requestMethod: "GET",
     });
-    await appendPageRegions(page, regions, actions);
+    await appendPageRegions(page, regions, actions, demonstrationValues);
 
     if (mutating) {
       actions.push({
@@ -717,7 +787,7 @@ export async function discoverCapabilityCaseEvidence(
             reason: "bounded_same_origin_get_exploration",
             requestMethod: "GET",
           });
-          await appendPageRegions(page, regions, actions);
+          await appendPageRegions(page, regions, actions, demonstrationValues);
         } catch {
           actions.push({
             action: "navigate",
@@ -742,4 +812,45 @@ export async function discoverCapabilityCaseEvidence(
   } finally {
     await context.close();
   }
+}
+
+
+const sameText = (left: unknown, right: unknown) => typeof left === "string" && typeof right === "string"
+  && left.normalize("NFKC").trim().toLocaleLowerCase() === right.normalize("NFKC").trim().toLocaleLowerCase();
+
+/**
+ * The start page read once, before authoring: the lists the demonstrated
+ * values were chosen from ahead of the cards and the page summary, as the
+ * snapshot case generation reads instead of browsing again. `siblings` are
+ * the other items of each input's list — what the authoring loop replays
+ * the draft on, so a program that only works for the demonstrated value is
+ * found while the model can still fix it.
+ */
+export async function harvestStartPage(
+  page: Page,
+  input: { generationTaskId: string; siteId: string; parameters: Record<string, JsonValue> },
+): Promise<{ snapshot: CapabilityCaseDiscoverySnapshot; siblings: Record<string, JsonValue[]> }> {
+  const demonstrationValues = Object.values(input.parameters)
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
+  const regions: CapabilityCaseDiscoveryRegion[] = [];
+  const actions: CapabilityCaseDiscoveryAction[] = [];
+  await appendPageRegions(page, regions, actions, demonstrationValues);
+  if (!regions.length) throw new Error("case_discovery_regions_required");
+  fitEvidenceBudget(regions);
+  const siblings: Record<string, JsonValue[]> = {};
+  for (const [path, value] of Object.entries(input.parameters)) {
+    const list = regions.find((region) => region.kind === "choice-list" && region.observedValues.some((item) => sameText(item, value)));
+    if (list) siblings[path] = list.observedValues.filter((item) => !sameText(item, value));
+  }
+  return {
+    snapshot: {
+      schemaVersion: "1.0",
+      generationTaskId: input.generationTaskId,
+      siteId: input.siteId,
+      explorationMode: "evidence-only",
+      regions,
+      actions: actions.slice(0, 32),
+    },
+    siblings,
+  };
 }

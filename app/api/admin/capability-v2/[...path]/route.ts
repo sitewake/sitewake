@@ -1,7 +1,6 @@
 import { capabilityExperienceRunVerdict, listCapabilityExperienceIntakes, retryCapabilityExperienceIntake } from "@/db/capability-experience-outbox-store";
-import { advanceTaskById } from "@/lib/capability-center-v2/coordinator";
+import { advanceTaskById, productionProgress } from "@/lib/capability-center-v2/coordinator";
 import type { CapabilityTask } from "@/lib/capability-center-v2/model";
-import { projectProductionStatus } from "@/lib/capability-center-v2/production-status";
 import {
   actOnCapability,
   actOnVersion,
@@ -20,14 +19,12 @@ import {
   getSetting,
   getTask,
   getGenerationPublication,
-  getLatestTaskPublicationEvent,
   getTaskMaintenance,
   listCapabilities,
   listRunners,
   listSettings,
   listTaskArtifacts,
   listTaskEventPage,
-  listTaskEvents,
   listTasks,
   listVersions,
   patchPendingTask,
@@ -42,44 +39,12 @@ import {
   upsertSetting,
 } from "@/db/capability-center-v2-store";
 import { RuntimeLauncher, terminateRunnerProcess } from "@/runner/capability-v2/runtime-launcher";
-import type { CapabilityProductionStatus } from "@/lib/capability-center-v2/production-status";
 import { capabilityJson, capabilityOptions, capabilityReadAuthorized, capabilityWriteAuthorized, errorResponse, siteIdFromRequest } from "@/app/api/capability-v2/http";
 
 type Context = { params: Promise<{ path: string[] }> | { path: string[] } };
 async function segments(context: Context) { const params = await context.params; return (params.path || []).map((part) => decodeURIComponent(part)); }
 async function bodyOf(request: Request) { try { return await request.json() as Record<string, unknown>; } catch { throw new Error("invalid_json"); } }
 
-/** The validation task a frozen candidate was handed to, as recorded by the CandidateFrozen audit event. */
-async function validationTaskIdFromEvents(siteId: string, taskId: string) {
-  const frozen = (await listTaskEvents(siteId, taskId)).filter((event) => event.eventType === "CandidateFrozen").at(-1);
-  const id = frozen?.payload.validationTaskId;
-  return typeof id === "string" && id ? id : undefined;
-}
-
-async function productionProgress(siteId: string, task: CapabilityTask): Promise<CapabilityProductionStatus> {
-  if (task.status === "Succeeded" && task.input.context.__pipelineVersion === "2.0" && !task.result?.capabilityId) {
-    const generationId = task.type === "Validation" && task.result?.buildResult?.outcome === "Validated" ? task.result.buildResult.package.artifact.generationTaskId : task.id;
-    const published = await getGenerationPublication(siteId, generationId);
-    // Only a publication this generation made is its own; a superseded one
-    // is told by its PublicationSuperseded event below, in its own words.
-    if (published?.outcome === "Published") task = { ...task, result: { ...task.result!, capabilityId: published.capability.id, versionId: published.version.id } };
-  }
-  const latest = task.type === "Validation" && task.status === "Succeeded" ? await getLatestTaskPublicationEvent(siteId, task.id) : undefined;
-  const own = projectProductionStatus(task, latest ? [latest] : []);
-  // A generation task hands its frozen candidate to a separate validation task,
-  // and review/publication then happen on that one. Left alone, the generation
-  // record stays on "authoring" forever while the work moves on. Follow the
-  // chain so the record the user opened shows where the capability really is.
-  if (own.state !== "Published" && task.type !== "Validation" && !["Failed", "Cancelled", "Deleted", "WaitingInput"].includes(task.status)) {
-    const validationTaskId = task.result?.validationTaskId || await validationTaskIdFromEvents(siteId, task.id);
-    const validation = validationTaskId ? await getTask(siteId, validationTaskId, true) : undefined;
-    if (validation) {
-      const downstream = await productionProgress(siteId, validation);
-      return { ...downstream, taskId: task.id, nextTaskId: validation.id };
-    }
-  }
-  return own;
-}
 
 export async function OPTIONS() { return capabilityOptions(); }
 
@@ -241,7 +206,13 @@ export async function PATCH(request: Request, context: Context) {
   const path = await segments(context); let body: Record<string, unknown>; try { body = await bodyOf(request); } catch { return capabilityJson({ error: "invalid_json" }, 400); }
   const siteId = siteIdFromRequest(request, body); if (!siteId) return capabilityJson({ error: "site_id_required" }, 400);
   try {
-    if (path[0] === "settings" && path[1]) return capabilityJson(await upsertSetting(siteId, path[1], (body.settingValue || {}) as never, String(body.updatedBy || "administrator")));
+    if (path[0] === "settings" && path[1]) {
+      const saved = await upsertSetting(siteId, path[1], (body.settingValue || {}) as never, String(body.updatedBy || "administrator"));
+      // The review prompt once steered a model review between validation and
+      // publication. Publication is decided by the validation record now; the
+      // setting is kept for the records that cite it and steers nothing.
+      return capabilityJson(path[1] === "review.prompt" ? { ...saved, applied: false, note: "review.prompt is no longer applied: publication is decided by the validation record" } : saved);
+    }
     if (path[0] === "capabilities" && path[1]) return capabilityJson(await updateCapability(siteId, path[1], { name: typeof body.name === "string" ? body.name : undefined, description: typeof body.description === "string" ? body.description : undefined, aliases: Array.isArray(body.aliases) ? body.aliases.filter((item): item is string => typeof item === "string") : undefined, searchText: typeof body.searchText === "string" ? body.searchText : undefined }));
     if (path[0] === "tasks" && path[1]) return capabilityJson(await patchPendingTask(siteId, path[1], { goal: typeof body.goal === "string" ? body.goal : undefined, guidance: typeof body.guidance === "string" ? body.guidance : undefined, input: body.input as never }));
     return capabilityJson({ error: "admin_capability_v2_route_not_found" }, 404);

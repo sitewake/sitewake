@@ -5,7 +5,7 @@ import { prepareFormalPipeline, withModel, closeFixtureSite } from './capability
 import { GET, POST } from '../app/api/admin/capability-v2/[...path]/route.ts';
 import { cancelTask, claimTask, submitTaskResult, resetCapabilityCenterV2ForTests } from '../db/capability-center-v2-store.ts';
 
-test('revalidation retains generation lineage; failed review can recover and publish exactly one version', async () => {
+test('revalidation retains generation lineage; the verdict publishes exactly one version and asks no model', async () => {
   process.env.SITEWAKE_LOCAL_DEV = '1';
   process.env.CAPABILITY_V2_AUTO_DISPATCH = '0';
   resetCapabilityCenterV2ForTests();
@@ -24,20 +24,21 @@ test('revalidation retains generation lineage; failed review can recover and pub
     assert.equal(rerun.task.input.context.__retryOfTaskId, prepared.validationTask.id);
     await claimTask(siteId, rerun.task.id, 'recovery-runner');
     await submitTaskResult(siteId, rerun.task.id, 'recovery-runner', { outcome: 'Success', validationResults: prepared.validationTask.result.validationResults });
-    await withModel(() => ({ httpStatus: 500, body: 'temporary_review_failure' }), () => call('POST', `tasks/${rerun.task.id}/retry-review`));
     let progress = (await call('GET', `tasks/${rerun.task.id}/progress`)).progress;
-    assert.equal(progress.state, 'Failed'); assert.equal(progress.recovery, 'RetryReview');
-    const list = await call('GET', 'tasks');
-    assert.equal(list.progress[rerun.task.id].state, 'Failed', 'review failure must be visible in task list');
+    assert.equal(progress.phase, 'Review'); assert.equal(progress.state, 'Running');
+    // The verdict is read off the validation record: a model answering here
+    // would be a defect, so one is served that only fails.
     let calls = 0;
-    await withModel(async () => { calls++; return JSON.parse(await readFile(new URL('./fixtures/capability-center-v2/notebook-search/05-review-model-fixture.json', import.meta.url), 'utf8')); }, async () => {
+    await withModel(() => { calls++; return { httpStatus: 500, body: 'the verdict asks no model' }; }, async () => {
       const recovered = await call('POST', `tasks/${rerun.task.id}/retry-review`);
       assert.equal(recovered.review.outcome, 'Published');
       assert.equal((await call('POST', `tasks/${rerun.task.id}/retry-review`)).alreadyPublished, true);
     });
-    assert.equal(calls, 1);
+    assert.equal(calls, 0);
     progress = (await call('GET', `tasks/${rerun.task.id}/progress`)).progress;
     assert.equal(progress.state, 'Published');
+    const list = await call('GET', 'tasks');
+    assert.equal(list.progress[rerun.task.id].state, 'Published', 'the verdict and publication are visible in the task list');
     const versions = await call('GET', `capabilities/${progress.capabilityId}/versions`);
     assert.equal(versions.versions.length, 1);
     // A version the 2.0 pipeline published is found from its generation, so a
@@ -94,9 +95,9 @@ test('database publication compare-and-swap rolls back a concurrent baseline cha
   assert.equal(result.current.current_version_id, 'raced-version');
 });
 
-test('the generation record follows its validation task: review failure and publication show on the record the user opened', async () => {
+test('the generation record follows its validation task: the verdict and publication show on the record the user opened', async () => {
   // The four-step bar on a generation record used to stay on "authoring" forever:
-  // validation, review and publication happen on a separate task.
+  // validation, the verdict and publication happen on a separate task.
   process.env.SITEWAKE_LOCAL_DEV = '1';
   process.env.CAPABILITY_V2_AUTO_DISPATCH = '0';
   resetCapabilityCenterV2ForTests();
@@ -111,13 +112,12 @@ test('the generation record follows its validation task: review failure and publ
   };
   try {
     const generationId = prepared.task.id;
-    await withModel(() => ({ httpStatus: 500, body: 'temporary_review_failure' }), () => call('POST', `tasks/${prepared.validationTask.id}/retry-review`));
     let progress = (await call('GET', `tasks/${generationId}/progress`)).progress;
     assert.equal(progress.taskId, generationId, 'the record keeps its own id');
     assert.equal(progress.nextTaskId, prepared.validationTask.id);
-    assert.equal(progress.phase, 'Review', 'the generation record shows the review phase of its validation task');
-    assert.equal(progress.state, 'Failed');
-    await withModel(async () => JSON.parse(await readFile(new URL('./fixtures/capability-center-v2/notebook-search/05-review-model-fixture.json', import.meta.url), 'utf8')), () => call('POST', `tasks/${prepared.validationTask.id}/retry-review`));
+    assert.equal(progress.phase, 'Review', 'the generation record shows the verdict phase of its validation task');
+    assert.equal(progress.state, 'Running');
+    await withModel(() => ({ httpStatus: 500, body: 'the verdict asks no model' }), () => call('POST', `tasks/${prepared.validationTask.id}/retry-review`));
     progress = (await call('GET', `tasks/${generationId}/progress`)).progress;
     assert.equal(progress.phase, 'Publication');
     assert.equal(progress.state, 'Published');

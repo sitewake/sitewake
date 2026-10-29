@@ -829,7 +829,7 @@ function decodeDiscoveryRegion(
     throw new Error(`case_discovery_region_fields_invalid:${index}`);
   }
   if (
-    !["page-summary", "business-region", "control-group"].includes(
+    !["page-summary", "business-region", "control-group", "choice-list"].includes(
       String(region.kind),
     )
   ) {
@@ -1482,6 +1482,21 @@ function regionValues(region: CapabilityCaseDiscoveryRegion) {
   return [...region.observedValues, ...(region.controlOptions || [])];
 }
 
+/**
+ * The inputs of a case whose value the site lists beside the demonstrated
+ * one — an item of a choice-list the harvest kept. A program that finds
+ * nothing for such a value has not answered "there is none of that": the
+ * list says there is. Empty when the case took no value from such a list.
+ */
+export function offeredInputPaths(input: JsonObject, regions: CapabilityCaseDiscoveryRegion[]): string[] {
+  const lists = regions.filter((region) => region.kind === "choice-list");
+  if (!lists.length) return [];
+  return Object.entries(input)
+    .filter(([, value]) => value !== null && typeof value !== "object"
+      && lists.some((region) => regionValues(region).some((offered) => evidenceValueEqual(offered, value))))
+    .map(([path]) => path);
+}
+
 function mapCaseEvidence(
   cases: CapabilityValidationCase[],
   evidence: CapabilityCaseDiscoveryEvidence,
@@ -1504,12 +1519,12 @@ function mapCaseEvidence(
     const candidateRegions = [...evidence.regions]
       .filter(
         (region) =>
-          !requiresBusinessRegion || region.kind === "business-region",
+          !requiresBusinessRegion || region.kind === "business-region" || region.kind === "choice-list",
       )
       .filter((region) => supplied.length < 2 || region.kind !== "page-summary")
       .sort((left, right) => {
         const kindRank = (region: CapabilityCaseDiscoveryRegion) =>
-          region.kind === "business-region"
+          region.kind === "choice-list" || region.kind === "business-region"
             ? 0
             : region.kind === "control-group"
               ? 1
@@ -1866,6 +1881,22 @@ function demonstrationSiblings(
   const holding = regions
     .filter((region) => regionValues(region).some((value) => evidenceValueEqual(value, witness)))
     .sort((left, right) => regionValues(left).length - regionValues(right).length);
+  // Closest of all: the list the harvest found the value in, as the page
+  // lays it out. "Poetry" sat in the catalogue's category list beside Travel
+  // and Mystery; the cases that took "In stock" and a book's title from the
+  // product card above it asked the category page for a badge and a book,
+  // and the reviewer rejected a working program for what they came to.
+  for (const region of holding) {
+    if (region.kind !== "choice-list") continue;
+    const keys = new Set([evidenceKey(witness)]);
+    const listed = regionValues(region).filter((value) => {
+      const key = evidenceKey(value);
+      if (keys.has(key)) return false;
+      keys.add(key);
+      return admits(value);
+    });
+    if (listed.length) return listed;
+  }
   // Closest of all: the other items of a list the value is written in, as in
   // "3 finishes: Brass, Matte black, Chalk white". The harvest splits that
   // text at spaces, which gives "Matte" and "black" but not "Matte black".
@@ -1949,7 +1980,7 @@ function siblingsIn(
 }
 
 function regionRank(kind: CapabilityCaseDiscoveryRegion["kind"]) {
-  return kind === "business-region" ? 0 : kind === "control-group" ? 1 : 2;
+  return kind === "choice-list" ? 0 : kind === "business-region" ? 1 : kind === "control-group" ? 2 : 3;
 }
 
 /**
@@ -2217,12 +2248,19 @@ export function deriveCapabilityCases(
   // with anything the contract accepts.
   if (!taken.some((item) => canonicalCapabilityCaseJson(item.input) === canonicalCapabilityCaseJson(demonstrationCase))
     && Object.keys(demonstrationCase).length) {
+    // The suggestions beside a value are the list it was chosen from when the
+    // harvest found one, and everything the page offered otherwise.
+    const chosenFrom = (path: string) => {
+      const list = orderedRegions.find((region) => region.kind === "choice-list"
+        && regionValues(region).some((value) => evidenceValueEqual(value, demonstrationCase[path])));
+      return list ? regionValues(list).filter((value) => admitsValue(path, value)) : undefined;
+    };
     taken.unshift({
       input: cloneJson(demonstrationCase) as JsonObject,
       expected: {},
       regionId: discovery.regions[0]?.regionId || "",
       alternatives: Object.fromEntries(
-        Object.keys(demonstrationCase).map((path) => [path, (acrossRegions.get(path) || []).slice(0, CASE_ALTERNATIVES_MAX_VALUES)]),
+        Object.keys(demonstrationCase).map((path) => [path, (chosenFrom(path) || acrossRegions.get(path) || []).slice(0, CASE_ALTERNATIVES_MAX_VALUES)]),
       ),
     });
     if (taken.length > CAPABILITY_CASE_DERIVATION_MAX_CASES) taken.length = CAPABILITY_CASE_DERIVATION_MAX_CASES;
@@ -2268,169 +2306,8 @@ export type CapabilityCaseEnrichment = {
   cases: Array<{ input?: JsonObject; expected: JsonObject }>;
 };
 
-/** One entry per derived case, in order; anything else is not an enrichment. */
-export function decodeCapabilityCaseEnrichment(
-  value: unknown,
-  count: number,
-): CapabilityCaseEnrichment {
-  const output = record(value);
-  if (
-    [
-      "candidate",
-      "contract",
-      "program",
-      "name",
-      "description",
-      "aliases",
-      "generationTaskId",
-    ].some((key) => Object.hasOwn(output, key))
-  ) {
-    throw new Error("case_generation_candidate_rewrite_forbidden");
-  }
-  if (Object.keys(output).some((key) => key !== "cases"))
-    throw new Error("case_enrichment_fields_invalid");
-  const cases = output.cases;
-  if (!Array.isArray(cases) || cases.length !== count) {
-    throw new Error(
-      `case_enrichment_count_mismatch:${Array.isArray(cases) ? cases.length : "none"}:${count}`,
-    );
-  }
-  return {
-    cases: cases.map((raw, index) => {
-      const item = record(raw);
-      if (Object.keys(item).some((key) => key !== "input" && key !== "expected"))
-        throw new Error(`case_enrichment_case_fields_invalid:${index}`);
-      return {
-        ...(item.input === undefined
-          ? {}
-          : {
-              input: cloneJson(
-                jsonObject(item.input, `case_enrichment_input_invalid:${index}`),
-              ),
-            }),
-        expected: cloneJson(
-          jsonObject(
-            item.expected ?? {},
-            `case_enrichment_expected_invalid:${index}`,
-          ),
-        ),
-      };
-    }),
-  };
-}
 
-export type CapabilityCaseEnrichmentReport = {
-  reselected: number[];
-  inputIgnored: Array<{ index: number; reason: string }>;
-  expectedIgnored: Array<{ index: number; reason: string }>;
-};
 
-/**
- * Apply a model's enrichment to derived cases, keeping only what the
- * evidence supports. An input may be re-selected among the case's own
- * alternatives, path by path, never added, dropped or invented; `expected`
- * is kept where every value is evidenced. Anything else is ignored per case
- * and reported. This never throws for what the model said.
- */
-export function mergeCapabilityCaseEnrichment(
-  inputValue: C2CaseGenerationInput | unknown,
-  derivation: CapabilityCaseDerivation,
-  enrichmentValue: unknown,
-  discoveryValue: Omit<CapabilityCaseDiscoveryEvidence, "cases"> | unknown,
-): { cases: CapabilityCaseModelCase[]; report: CapabilityCaseEnrichmentReport } {
-  const input = decodeC2CaseGenerationInput(inputValue);
-  const sanitized = sanitizeCaseContextJson(discoveryValue as JsonValue);
-  assertSafeCaseContextValue(sanitized, "caseDiscoveryEvidence");
-  const discovery = decodeCapabilityCaseDiscoveryEvidence(sanitized, false);
-  const contract = input.candidate.contract;
-  const enrichment = decodeCapabilityCaseEnrichment(
-    enrichmentValue,
-    derivation.cases.length,
-  );
-  const report: CapabilityCaseEnrichmentReport = {
-    reselected: [],
-    inputIgnored: [],
-    expectedIgnored: [],
-  };
-  const cases: CapabilityCaseModelCase[] = derivation.cases.map((item) => ({
-    input: cloneJson(item.input),
-    expected: cloneJson(item.expected),
-  }));
-  const taken = new Set(cases.map((item) => canonicalCapabilityCaseJson(item.input)));
-  const demonstratedIndex = derivation.cases.findIndex((item) =>
-    isDemonstratedCase(item.input, input.demonstrationParameters),
-  );
-  const reason = (error: unknown) =>
-    error instanceof Error ? error.message : String(error);
-  enrichment.cases.forEach((item, index) => {
-    const derived = derivation.cases[index];
-    if (item.input && Object.keys(item.input).length) {
-      try {
-        // The demonstration's own case is the floor validation stands on. A
-        // model once moved all three cases of a Mira Pendant cart onto other
-        // lamps' finishes; the one value the page was known to offer never
-        // ran, and a program that had just worked was refused.
-        if (index === demonstratedIndex)
-          throw new Error("case_enrichment_demonstrated_case_kept");
-        const next: JsonObject = cloneJson(derived.input);
-        for (const [path, value] of Object.entries(item.input)) {
-          if (!Object.hasOwn(derived.input, path))
-            throw new Error(`case_enrichment_path_not_in_case:${path}`);
-          // A value the page happened to show is a suggestion, not the set of
-          // things this input may be. The page writes a date one way and the
-          // person writes it another; a site's search box takes words that are
-          // nowhere on the page it is standing on. What decides whether a value
-          // may be used is the contract, checked just below, and what decides
-          // whether the capability works is running it.
-          const match = (derived.alternatives[path] || []).find((candidate) =>
-            evidenceValueEqual(candidate, value),
-          );
-          const chosen = match === undefined ? value : match;
-          // Free to write a value the page never showed, held to the writing
-          // the contract states for this input. A value in another form is
-          // ignored for this case, which keeps the one it was derived with.
-          const writing = declaredValueShape(
-            record(record(record(contract.inputSchema).properties)[path]),
-            (input.demonstrationParameters || {})[path],
-          );
-          if (writing && (typeof chosen !== "string" || writtenValueShape(chosen) !== writing))
-            throw new Error(`case_enrichment_value_not_in_declared_writing:${path}`);
-          next[path] = cloneJson(chosen);
-        }
-        validateCaseInput(contract, next, index);
-        const key = canonicalCapabilityCaseJson(next);
-        const own = canonicalCapabilityCaseJson(cases[index].input);
-        if (key !== own) {
-          if (taken.has(key)) throw new Error("case_enrichment_duplicate_case");
-          taken.delete(own);
-          taken.add(key);
-          cases[index] = { input: next, expected: echoExpected(contract, next) };
-          report.reselected.push(index);
-        }
-      } catch (error) {
-        report.inputIgnored.push({ index, reason: reason(error) });
-      }
-    }
-    if (Object.keys(item.expected).length) {
-      try {
-        // The echo is the case's own truth; a model value never overrides it.
-        const merged = { ...item.expected, ...cases[index].expected };
-        validateExpectedPartial(contract, merged, index);
-        validateExpectedEvidence(
-          contract,
-          merged,
-          cases[index].input,
-          discovery,
-          index,
-        );
-        cases[index].expected = cloneJson(merged);
-      } catch (error) {
-        report.expectedIgnored.push({ index, reason: reason(error) });
-      }
-    }
-  });
-  return { cases, report };
-}
 
 function assertDiscoveryRefArtifact(value: unknown) {
   const artifactRef =

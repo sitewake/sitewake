@@ -1,5 +1,7 @@
 import { countsIgnoringTheirList, demonstrationAnswerDisagreement, describeAnswerDisagreement, describeCountIgnoringList } from "../../lib/capability-center-v2/output-consistency";
 import { createAuthoringConnectors, type AuthoringConnectors } from "./connectors";
+import { contractWithOutputs } from "./contract-from-demonstration";
+import { offeredInputPaths } from "../../lib/capability-center-v2/case-generation";
 import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
 import { DEFAULT_CAPABILITY_TOTAL_TIMEOUT_MS } from "../../lib/capability-center-v2/control-flow";
 import { CapabilityWorkspace } from "./workspace";
@@ -8,6 +10,7 @@ import type { BrowserContext, Page } from "playwright";
 import { getModelConfig } from "../../lib/model-config";
 import {
   CAPABILITY_V2_MAX_MODULE_BYTES,
+  type CapabilityQualityNote,
   inspectCapabilityJavaScriptProgram,
   validateCapabilityJavaScriptSource,
 } from "../../lib/capability-center-v2/javascript-runtime";
@@ -15,6 +18,7 @@ import { resolveCapabilityInput } from "../../lib/capability-center-v2/run-resol
 import { pageSelectingInputs } from "../../lib/capability-center-v2/quality";
 import { promptProvenance } from "../../lib/capability-center-v2/prompt";
 import type {
+  CapabilityCaseDiscoveryRegion,
   CapabilityContract,
   CapabilityDslProgram,
   CapabilityModuleRef,
@@ -38,13 +42,15 @@ import { JAVASCRIPT_AUTHOR_PROMPT, JAVASCRIPT_AUTHOR_TOOLS } from "./prompts/jav
 import { parseAndValidateToolArguments, requestToolCallingTurn, type ToolCallingMessage, type ToolDefinition } from "./tool-calling";
 import { isTerminalAuthoringError } from "./module-delivery";
 import { inspectCapabilityQuality, type CapabilityQualityReport } from "../../lib/capability-center-v2/quality";
-import { assertContractConsistent } from "../../lib/capability-center-v2/contract-consistency";
+import { inspectContractConsistency } from "../../lib/capability-center-v2/contract-consistency";
 import { capabilityEntryPage } from "../../lib/capability-center-v2/entry-page";
 
 export type JavaScriptAuthorResult = {
   source: string;
   bundle: string;
   program: CapabilityProgram;
+  /** The Contract as frozen on this draft: its outputs are what the draft answered with. */
+  contract: CapabilityContract;
   draft: JavaScriptStageRunResult;
   provenance: CapabilityPromptProvenance;
 };
@@ -202,7 +208,12 @@ function uniquePaths(values: string[]) {
 export const ACTED_ON_STATE_PATH = "targets.__actedOn";
 const ACTED_ON_ACTIONS = ["click", "check", "press"];
 // Elements that change the chosen object rather than name it.
-const CONTROL_SELECTOR = "button, input, select, textarea, label, option, [role=button], [role=radio], [role=checkbox], [role=option], [role=switch], [role=tab], [role=menuitemradio], [role=spinbutton]";
+const CONTROL_SELECTOR = "button, input, select, textarea, label, option, [role=button], [role=radio], [role=checkbox], [role=option], [role=switch], [role=tab], [role=menuitemradio], [role=spinbutton], [rel=next], [rel=prev], [rel=previous], .pagination a, .pager a, nav[aria-label*=pagination i] a, [aria-label*=next page i], [aria-label*=previous page i]";
+// A link that turns the page is a control too, whatever the site calls it:
+// "Count quotes by tag" turned to page 2 of the tag, the seed took "Next →"
+// for the object it had acted on, and the verify stage refused page 2 of
+// the tag for not being "humor". Source text, as the seed is written out.
+const PAGING_NAME_PATTERN = "/^(?:next|previous|prev|more|load more|show more|»|›|«|‹|→|←|\\d+)\\s*(?:[»›→←]|page)?$/iu";
 
 function stageIO(readsInput: string[], readsState: string[] = [], writesState: string[] = [], writesOutput: string[] = []): CapabilityStageIO {
   return {
@@ -222,30 +233,10 @@ function stageIO(readsInput: string[], readsState: string[] = [], writesState: s
  * says what to change.
  */
 export function qualityRepairHint(issue: CapabilityQualityReport["issues"][number]) {
-  const stage = /Stage '([^']+)'/u.exec(issue.message)?.[1] || /program\.stages\.([^.]+)/u.exec(issue.path || "")?.[1] || "the stage";
-  const quoted = [...issue.message.matchAll(/'([^']+)'/gu)].map((match) => match[1]);
-  if (issue.code === "stage_io_state_read_unavailable") {
-    const path = quoted[1] || "that path";
-    return `REPAIR REQUIRED: ${stage} declares io.reads.state "${path}" but no earlier Stage declares it in io.writes.state. Either the Stage that produces it must list it in writes.state and set it in the state it returns, or remove it from ${stage}.io.reads.state and stop reading state.${path}. state.targets.__actedOn exists only when an earlier Stage clicked, checked or pressed an element; when the only actions fill a field or navigate there is no acted-on identity, and ${stage} must locate the result itself.`;
-  }
-  if (issue.code === "stage_io_terminal_output_missing") {
-    return `REPAIR REQUIRED: stage_verify.io.writes.output must list every required output of the Contract, and the stage must return each of them in output.`;
-  }
-  if (issue.code === "stage_io_input_undeclared" || issue.code === "stage_io_output_undeclared") {
-    return `REPAIR REQUIRED: ${stage} declares a field the Contract does not: io.reads.input may name only inputSchema properties and io.writes.output only outputSchema properties. Remove the undeclared field; the public Contract cannot be changed here.`;
-  }
-  if (issue.code === "page_selecting_input_not_navigated") {
-    const input = quoted[0] || "the input";
-    return `REPAIR REQUIRED: input '${input}' selects which page to read — its value is part of the address the capability was demonstrated on — but no Stage navigates, so the program can only ever read that one page. Add a Stage before stage_verify with navigation "required" that opens the page for the input (for example location.assign(\`/daily/\${input.${input}}\`) with the address pattern of the demonstrated page), list the input in that Stage's io.reads.input, and let stage_verify read the page it lands on.`;
-  }
-  if (issue.code === "required_input_does_not_parameterize") {
-    return "REPAIR REQUIRED: a required input is declared by no Stage that acts on the page, so the program acts the same way whatever its value is. The acting Stage must list it in io.reads.input and use it to choose what it acts on — the nth item, the matching row, the query it sends.";
-  }
+  // The quality rules that still block with a program or source path
+  // (benchmark/GATES.md); a demoted rule's finding is a note and never arrives here.
   if (issue.code === "demonstration_value_leaked") {
     return "REPAIR REQUIRED: the demonstration value is written into executable code. Read the value from input.* instead; a literal copied from the example works for one input only.";
-  }
-  if (issue.code === "write_stage_reconciliation_required") {
-    return `REPAIR REQUIRED: ${stage} has effect "write" and must declare resumePolicy "reconcile-before-retry".`;
   }
   return `REPAIR REQUIRED: ${issue.message}`;
 }
@@ -599,7 +590,7 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
         // container: a mounted drawer can still be empty. settle() is available
         // for an in-place update whose shape is not known in advance.
         // TODO(author): wait for the real result region, then return
-        // { outcome: "Success", output: { ${outputs.join(", ")} }, evidence: [{ kind: "status", value: {...} }] }
+        // { outcome: "Success", output: { ${outputs.length ? outputs.join(", ") : "...the fields you read off the result, named for what they are (they become the capability's outputs)"} }, evidence: [{ kind: "status", value: {...} }] }
         // built from the page; NoResult when the page proves there is nothing; BusinessRejection when the site refuses.
         void expected; void state; void waitUntil; void settle; void identityMatches;
         throw new Error("stage_verify_not_authored");
@@ -625,7 +616,7 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
       // own correct result.
       const namesObject = step === firstActedOnStep
         ? "true"
-        : `!element.closest(${JSON.stringify(CONTROL_SELECTOR)})`;
+        : `!element.closest(${JSON.stringify(CONTROL_SELECTOR)}) && !${PAGING_NAME_PATTERN}.test((nameOf(element) || element.innerText || "").trim())`;
       return `${header}
       async run({ input, waitForTarget, waitUntil, settle, keep, nameOf }) {
         void input;
@@ -690,6 +681,14 @@ async function transpile(source: string) {
   return result.code.trim();
 }
 
+/** What a generation rerun after a rejection is told: the verdict and the case it named. */
+export type AuthoringRepair = {
+  reason: string;
+  caseId?: string;
+  failure?: string;
+  input?: Record<string, JsonValue>;
+};
+
 export async function authorJavaScriptCapability(options: {
   explorationPage: Page;
   startUrl: string;
@@ -698,8 +697,16 @@ export async function authorJavaScriptCapability(options: {
   contract: CapabilityContract;
   explorationProgram: CapabilityDslProgram;
   groundingExamples: Array<Record<string, JsonValue>>;
+  /**
+   * What the start page offered, as harvested before authoring: an example
+   * whose value sits in one of these lists beside the demonstrated value is
+   * one the site has, and a draft that finds nothing for it has failed.
+   */
+  discoveryRegions?: CapabilityCaseDiscoveryRegion[];
   /** Source a prior run authored; it replaces the seed as the first draft and meets every check the seed does. */
   startingSource?: string;
+  /** The rejection this run is the one repair for: the verdict and the case it named, replayed first among the examples. */
+  repair?: AuthoringRepair;
   /** The candidate's name, description and aliases, for the rules that read them. */
   summary?: { name?: string; description?: string; aliases?: string[] };
   explorationPromptProvenance?: CapabilityPromptProvenance[];
@@ -718,17 +725,24 @@ export async function authorJavaScriptCapability(options: {
   if (!config.configured) throw new Error("javascript_author_model_not_configured");
   // Every draft, example and debug page opens where the published program
   // will start: the page the Contract binds it to, when it names one.
-  const entryPage = capabilityEntryPage(options.contract, options.startUrl);
+  // The Contract the authoring starts from names the inputs, the scope and
+  // the address; what the capability answers with is known only once a draft
+  // has answered, and is frozen from the first draft that passes the
+  // demonstration (contractWithOutputs). Everything after that reads this.
+  let contract = options.contract;
+  const entryPage = capabilityEntryPage(contract, options.startUrl);
   const startPage = entryPage || options.startUrl;
   const addressOptions: AuthoringAddressOptions = {
     startUrl: options.startUrl,
-    demonstrationParameters: resolveCapabilityInput(options.contract, options.input.parameters).declared,
+    demonstrationParameters: resolveCapabilityInput(contract, options.input.parameters).declared,
   };
-  const manifest = authoringManifest(options.explorationProgram, options.contract, addressOptions);
+  const manifest = authoringManifest(options.explorationProgram, contract, addressOptions);
   if (!manifest.stages.length) throw new Error("javascript_author_stage_manifest_empty");
-  // The Contract and the Stage I/O it implies must agree before any budget is
-  // spent: a predicate on a field no Stage may write is unrepairable by code.
-  assertContractConsistent(options.contract, manifest.stages);
+  // What the Contract and the Stage I/O it implies disagree on is recorded
+  // with the version; the Contract is the demonstration's and the outputs are
+  // frozen from the first passing draft, so nothing here is the model's to fix.
+  const contractNotes: CapabilityQualityNote[] = inspectContractConsistency(contract, manifest.stages).map(({ code, message }) => ({ code, message }));
+  for (const note of contractNotes) await options.onEvent?.({ phase: "Quality", message: "quality note", payload: { code: note.code, message: note.message.slice(0, 400) } });
   // The invariant every gate in this file serves: a draft the post-loop
   // quality gate would refuse is refused before or inside the loop, never
   // after it. Rules about the program run inside run_draft, where the model
@@ -736,7 +750,7 @@ export async function authorJavaScriptCapability(options: {
   // model's to fix and run here, on the seed manifest, before a single model
   // call is spent — the same rules, the same function, so nothing can first
   // appear after the loop.
-  const seedQuality = inspectCapabilityQuality(options.contract, {
+  const seedQuality = inspectCapabilityQuality(contract, {
     schemaVersion: "2.0",
     runtime: "BrowserJavaScriptStage",
     module: { contentHash: "0".repeat(64), moduleUrl: "/pending", exportName: "capability" },
@@ -746,7 +760,7 @@ export async function authorJavaScriptCapability(options: {
     targetBindings: manifest.targetBindings,
     promptProvenance: [],
   }, {
-    demonstrationParameters: resolveCapabilityInput(options.contract, options.input.parameters).declared,
+    demonstrationParameters: resolveCapabilityInput(contract, options.input.parameters).declared,
     entryUrl: options.startUrl,
     validationCases: options.groundingExamples,
     summary: options.summary,
@@ -761,8 +775,8 @@ export async function authorJavaScriptCapability(options: {
   // boundary; passing the raw envelope here would make DraftReplay exercise a
   // different input from the immutable Contract and fail only after the
   // source has already been authored.
-  const demonstrationParameters = resolveCapabilityInput(options.contract, options.input.parameters).declared;
-  const groundingExamples = (options.groundingExamples || []).filter(example => JSON.stringify(resolveCapabilityInput(options.contract, {...options.input.parameters,...example}).declared) !== JSON.stringify(demonstrationParameters));
+  const demonstrationParameters = resolveCapabilityInput(contract, options.input.parameters).declared;
+  const groundingExamples = (options.groundingExamples || []).filter(example => JSON.stringify(resolveCapabilityInput(contract, {...options.input.parameters,...example}).declared) !== JSON.stringify(demonstrationParameters));
   const provenance = await promptProvenance(JAVASCRIPT_AUTHOR_PROMPT, config.model);
   let lastDraftObservation: unknown;
   let debugContext: {context: BrowserContext; page: Page} | undefined;
@@ -784,24 +798,27 @@ export async function authorJavaScriptCapability(options: {
         connectors: connectors.catalog,
         goal: options.goal,
         startUrl: startPage,
-        contract: options.contract,
+        contract: contract,
         demonstrationInput: demonstrationParameters,
         groundingExamples,
         stageManifest: manifest.stages,
         parameterRoles: manifest.parameterRoles,
         targetBindings: manifest.targetBindings,
         successfulExplorationTrace: options.explorationProgram,
-        instruction: "编写通用 JavaScript Stage 模块，不得硬编码 demonstrationInput。",
+        ...(options.repair ? { priorRejection: options.repair } : {}),
+        instruction: options.repair
+          ? "上一版源码通过了自测，却在独立验证中被拒绝：priorRejection 给出原因、没通过的样例输入与程序当时的失败。先用 run_draft 复现（该样例排在 groundingExamples 第一位），再修改源码让它与演示输入都成立，不得硬编码任何取值。"
+          : "编写通用 JavaScript Stage 模块，不得硬编码 demonstrationInput。",
       }),
     },
   ];
   const workspace = options.workspace || await CapabilityWorkspace.create();
   // The first draft is generated from the successful exploration; the model
   // starts from proven action stages and only authors the verification stage.
-  const seed = options.startingSource || seedCapabilitySource(manifest, options.explorationProgram, options.contract, addressOptions);
+  const seed = options.startingSource || seedCapabilitySource(manifest, options.explorationProgram, contract, addressOptions);
   await workspace.revision(seed);
   source = seed;
-  await workspace.write('task/authoring-input.json', {goal:options.goal,startUrl:options.startUrl,input:options.input,contract:options.contract,explorationProgram:options.explorationProgram,groundingExamples});
+  await workspace.write('task/authoring-input.json', {goal:options.goal,startUrl:options.startUrl,input:options.input,contract:contract,explorationProgram:options.explorationProgram,groundingExamples,...(options.repair ? {priorRejection:options.repair} : {})});
   await workspace.write('context/authoring-prompt.json', {provenance,messages});
   await workspace.write('context/tools.json', JAVASCRIPT_AUTHOR_TOOLS);
   await workspace.write('context/connectors.json', connectors.catalog);
@@ -845,7 +862,7 @@ export async function authorJavaScriptCapability(options: {
   /** Build the current source and replay every authoring example; shared by the tool loop and the budget wrap-up. */
   const acceptDraft = async (candidate: JavaScriptAuthorResult) => {
     await workspace.write('dist/program.json', candidate.program);
-    await workspace.write('dist/contract.json', options.contract);
+    await workspace.write('dist/contract.json', candidate.contract);
     await workspace.write('dist/capability.js', candidate.bundle, true);
     const {page: _page, ...receipt} = candidate.draft;
     await workspace.write('reports/author-draft.json', receipt);
@@ -870,7 +887,7 @@ export async function authorJavaScriptCapability(options: {
       if (!source) throw new Error("capability_source_missing;hint=src/capability.ts has not been written yet. Call write_file({ path: 'capability.ts', content }) with the full module first, then run_draft.");
       await options.onEvent?.({ phase: "Building", message: "building the module" });
       const bundle = await transpile(source);
-      const requiredInputPaths = Object.keys(record(record(options.contract.inputSchema).properties));
+      const requiredInputPaths = Object.keys(record(record(contract.inputSchema).properties));
       const validation = validateCapabilityJavaScriptSource(
         bundle,
         requiredInputPaths,
@@ -883,27 +900,11 @@ export async function authorJavaScriptCapability(options: {
         manifest.targetBindings.map((binding) => binding.inputPath),
       );
       if (!validation.ok) {
-        const repairHint = validation.code === "capability_module_target_first_candidate_forbidden"
-          ? "REPAIR REQUIRED: remove every candidate/match/result/product/link/selection collection [0], at(0), first, or incomplete .find predicate. This includes allLinks.find(link => link.href/name), which can silently choose the first product link. Build one record per visible product/card with matchesAllInputs (every public target/facet input matches the card or its detail evidence) and enabledAction (the intended action is visible and enabled), then use .find(candidate => candidate.matchesAllInputs && candidate.enabledAction); return NoResult when none and Ambiguous when multiple remain. Do not replace the collection name or keep a global link fallback to evade this rule."
-          : validation.code === "capability_module_verification_text_slicing"
-            ? "REPAIR REQUIRED: stop slicing the result out of a text blob between literal page phrases — those labels are editorial copy that other records and other days do not carry, so the capability breaks as soon as the page shows a different one. state.targets.__actedOn already holds the identity the action stage acted on: confirm the result belongs to it, and read each output from structure — a heading/title node, a link's URL parameter, a data attribute. Use execute_js on the failing page to find that node before writing the code."
-            : validation.code.startsWith("capability_module_input_unused:")
-            ? "REPAIR REQUIRED: read the exact Contract input property in the real search/filter/action/verification logic; do not delete or rename the property. Unicode keys must use input['原字段名']; if you normalize an envelope, use const params = input?.parameters ?? input and then read params['原字段名']."
-            : validation.code === "capability_module_fixed_cart_success_text"
-              ? "REPAIR REQUIRED: delete every literal cart/bag success sentence containing a fixed number, including fallback branches and comments. Do not compare document.body text to a frozen demonstration sentence, and do not copy any example wording from this error back into capability.ts. In stage_verify read an actual visible dialog/status, item identity, cart badge/count transition, or cart-row structure; derive count from current DOM and/or the before-click state, and return the observed values only as evidence."
-              : validation.code.startsWith("capability_module_input_not_verified:")
-                ? "REPAIR REQUIRED: stage_verify must directly read every named input (use input['原字段名'] or a safe params alias) and compare it with final business-region evidence; a generic toast alone is insufficient."
-                : validation.code === "capability_module_target_input_not_reused"
-                  ? "REPAIR REQUIRED: read the named target/facet input in both target resolution and candidate selection. Filter candidates by the full target identity and facet, then choose only an enabled executable match."
-                  : validation.code === "capability_module_related_variant_navigation"
-                    ? "REPAIR REQUIRED: remove document-wide color/variant link navigation. Scope the variant control to the selected primary business object; related cards must never change the target."
-                    : validation.code === "capability_module_related_add_to_cart_fallback"
-                      ? "REPAIR REQUIRED: remove document-wide Add-to-cart fallback. Scope the action to the primary business region, reject disabled/customization-required candidates, and select another matching executable object or return NoResult."
-                      : validation.code === "capability_module_search_form_submit_unsafe"
-                        ? "REPAIR REQUIRED: replace searchForm.submit() with an input-driven same-origin navigation URL; navigation must be the last action of that Stage and the next Stage must inspect the settled result page."
-                        : validation.code === "capability_module_invented_customization"
-                          ? "REPAIR REQUIRED: never invent textarea/customization text. Consume a user-provided customization input or skip the non-executable object and select another matching object."
-                          : "REPAIR REQUIRED: modify the source according to the validation code before calling run_draft again.";
+        // The checks that still refuse a module (benchmark/GATES.md) and what
+        // to change; a demoted check's finding is a note and never arrives here.
+        const repairHint = validation.code === "capability_module_verification_text_slicing"
+          ? "REPAIR REQUIRED: stop slicing the result out of a text blob between literal page phrases — those labels are editorial copy that other records and other days do not carry, so the capability breaks as soon as the page shows a different one. state.targets.__actedOn already holds the identity the action stage acted on: confirm the result belongs to it, and read each output from structure — a heading/title node, a link's URL parameter, a data attribute. Use execute_js on the failing page to find that node before writing the code."
+          : "REPAIR REQUIRED: modify the source according to the validation code before calling run_draft again.";
         throw new Error(`${validation.code}:${validation.message};hint=${repairHint}`);
       }
       const moduleRef = await options.persistModule(bundle);
@@ -920,19 +921,18 @@ export async function authorJavaScriptCapability(options: {
         // Contract names, not the one exploration happened to start on.
         entry: entryPage
           ? { mode: "Navigate", url: entryPage }
-          : options.contract.scope?.kind === "site-global"
+          : contract.scope?.kind === "site-global"
             ? { mode: "CurrentPage" }
             : { mode: "Navigate", url: options.startUrl },
         stages: manifest.stages,
         parameterRoles: manifest.parameterRoles,
         targetBindings: manifest.targetBindings,
         promptProvenance: [...(options.explorationPromptProvenance || []), provenance],
-        ...(options.contract.inputAliases ? { inputAliases: options.contract.inputAliases } : {}),
-        ...(validation.notes?.length ? { qualityNotes: validation.notes } : {}),
+        ...(contract.inputAliases ? { inputAliases: contract.inputAliases } : {}),
       };
       for (const note of validation.notes || []) await options.onEvent?.({ phase: "Quality", message: "quality note", payload: { code: note.code, message: note.message.slice(0, 400) } });
       await workspace.write('dist/program.json', program);
-      await workspace.write('dist/contract.json', options.contract);
+      await workspace.write('dist/contract.json', contract);
       await workspace.write('dist/capability.js', bundle, true);
       await closeDebug();
       lastDraftObservation = undefined;
@@ -974,7 +974,12 @@ export async function authorJavaScriptCapability(options: {
         // is refused now, with the reason. Issues on the Contract itself are
         // not the model's to fix and are left to the gate that already
         // reports them.
-        const quality = inspectCapabilityQuality(options.contract, program, {
+        // A draft that answered declares the capability's outputs by what it
+        // answered with; the rules below read the Contract as it will be frozen.
+        const frozen = draft.outcome === "Success" && draft.output
+          ? contractWithOutputs(contract, draft.output as JsonObject, program.stages.flatMap((stage) => stage.io?.writes?.output || []))
+          : contract;
+        const quality = inspectCapabilityQuality(frozen, program, {
           demonstrationParameters,
           validationCases: groundingExamples,
           source: bundle,
@@ -985,6 +990,11 @@ export async function authorJavaScriptCapability(options: {
           const issue = repairable[0];
           throw new Error(`capability_quality_rejected:${issue.code}${issue.path ? `@${issue.path}` : ""}:${issue.message};hint=${qualityRepairHint(issue)}`);
         }
+        // Every finding of a demoted check, from the Contract, the source and
+        // the program: kept with the version, blocking nothing.
+        const qualityNotes = [...contractNotes, ...(validation.notes || []), ...quality.notes.map(({ code, message }) => ({ code, message }))];
+        for (const note of quality.notes) await options.onEvent?.({ phase: "Quality", message: "quality note", payload: { code: note.code, message: note.message.slice(0, 400) } });
+        if (qualityNotes.length) program = { ...program, qualityNotes };
         if (draft.outcome !== "Success") {
           // Show the model every stage's result. With only the last four lifecycle
           // rows it concluded "only stage_2 and stage_verify ran", treated the
@@ -1005,12 +1015,14 @@ export async function authorJavaScriptCapability(options: {
         }
         const outputIdentityIssue = draftOutputIdentityIssue(draft.output);
         if (outputIdentityIssue) throw new Error(`draft_output_identity_invalid:${outputIdentityIssue}`);
+        contract = frozen;
+        await workspace.write('dist/contract.json', contract);
         // A Stage module can report Success while still leaving the page
         // in an intermediate state.  Draft Replay must satisfy the same
         // Contract success conditions as the later C3 replay before
         // the authoring loop accepts the source; otherwise a bad module
         // is materialized and only fails much later in the pipeline.
-        await evaluateResult(draft.page, options.goal, options.contract, draft.output, options.input, undefined, draft.observedText);
+        await evaluateResult(draft.page, options.goal, contract, draft.output, options.input, undefined, draft.observedText);
         // The demonstration is the proof of the answer as well as of the path.
         // A draft that reaches the right page and returns a number the visitor
         // was never told has not passed it: "Count quotes by tag" was proven
@@ -1021,7 +1033,7 @@ export async function authorJavaScriptCapability(options: {
           await workspace.event('replay.answer_disagrees', { ...lastCase, finding: disagreement });
           throw new Error(`draft_disagrees_with_demonstration:${describeAnswerDisagreement(disagreement, demonstrationParameters as JsonObject)}`);
         }
-        const passedDemonstration: JavaScriptAuthorResult = { source, bundle, program, draft, provenance };
+        const passedDemonstration: JavaScriptAuthorResult = { source, bundle, program, contract, draft, provenance };
         // What each run answered, to read together once all of them have.
         const answers: Array<{ input: JsonObject; output: JsonObject }> = [{ input: options.input.parameters as JsonObject, output: draft.output as JsonObject }];
         // Replay every evidence-backed grounding example before accepting
@@ -1032,7 +1044,7 @@ export async function authorJavaScriptCapability(options: {
         for (let exampleIndex = 0; exampleIndex < groundingExamples.length; exampleIndex += 1) {
           const groundingInput = {
             ...options.input,
-            parameters: resolveCapabilityInput(options.contract, { ...options.input.parameters, ...groundingExamples[exampleIndex] }).declared,
+            parameters: resolveCapabilityInput(contract, { ...options.input.parameters, ...groundingExamples[exampleIndex] }).declared,
           };
           const isolatedExample = await connectors.execution.createContext();
           try {
@@ -1052,12 +1064,21 @@ export async function authorJavaScriptCapability(options: {
             // demonstration's result here, never "not found", so this cannot
             // hide hardcoding. Independent validation applies the same rule.
             if (exampleReplay.outcome === "NoResult") {
+              // Except for a value the site lists beside the demonstrated
+              // one: the category list says Mystery is a category, so a draft
+              // that finds no category for it has not answered, it has failed
+              // — and the model is told so while it can still fix it.
+              const offered = offeredInputPaths(groundingInput.parameters as JsonObject, options.discoveryRegions || []);
+              if (offered.length) {
+                const path = offered[0];
+                throw new Error(`offered_input_no_result:${path}=${JSON.stringify(groundingInput.parameters[path])}:${exampleReplay.reason || "no_result"};hint=The site lists this value beside the demonstrated one, so the capability is for it too. Locate by the input — the link, card or option named by its value — never by the demonstrated page or item, and read the result from the page that opens for it.`);
+              }
               await workspace.event('replay.no_result', {caseId:`example_${exampleIndex + 1}`,input:groundingInput.parameters,reason:exampleReplay.reason || ""});
               await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example returned no result", payload: { example: exampleIndex + 1, reason: exampleReplay.reason || "" } });
               continue;
             }
             if (exampleReplay.outcome !== "Success") throw new Error(`${exampleReplay.outcome}:${exampleReplay.reason || ""}`);
-            await evaluateResult(isolatedExample.page, options.goal, options.contract, exampleReplay.output, groundingInput, undefined, exampleReplay.observedText);
+            await evaluateResult(isolatedExample.page, options.goal, contract, exampleReplay.output, groundingInput, undefined, exampleReplay.observedText);
             answers.push({ input: groundingInput.parameters as JsonObject, output: exampleReplay.output as JsonObject });
             await options.onEvent?.({ phase: "DraftReplay", message: "draft grounding example succeeded", payload: { example: exampleIndex + 1 } });
           } catch (error) {
@@ -1066,7 +1087,9 @@ export async function authorJavaScriptCapability(options: {
             debugContext = isolatedExample;
             await workspace.event('replay.failure', {...lastCase, observation:lastDraftObservation, error:String(error)});
             const message = error instanceof Error ? error.message : String(error);
-            demonstrated = passedDemonstration;
+            // A draft that finds nothing for a value the site offers has not
+            // passed; it does not go on when the repairs run out.
+            if (!/^offered_input_no_result:/u.test(message)) demonstrated = passedDemonstration;
             throw new Error(`draft_grounding_example_failed:example_${exampleIndex + 1}:${message}`);
           } finally {
             if (debugContext !== isolatedExample) await isolatedExample.context.close().catch(() => undefined);
@@ -1126,7 +1149,7 @@ export async function authorJavaScriptCapability(options: {
     } : {
       seededSource: "src/capability.ts",
       seedCheck,
-      instruction: "src/capability.ts 已按探索成功路径生成：动作阶段用 waitForTarget(探索目标) 定位、fill 写值、点击后等页面变化，它们已经在 seedCheck 里跑过一遍。只需补齐 stage_verify（读取结果页、按 outputSchema 返回 output 与 evidence），保留其余阶段原样；如果 seedCheck 在动作阶段就失败，按它给出的阶段和等待去修。",
+      instruction: "src/capability.ts 已按探索成功路径生成：动作阶段用 waitForTarget(探索目标) 定位、fill 写值、点击后等页面变化，它们已经在 seedCheck 里跑过一遍。只需补齐 stage_verify（读取结果页，返回 output 与 evidence；output 的字段就是这个能力的公开输出，按业务含义命名，契约按第一份通过的草稿冻结它们），保留其余阶段原样；如果 seedCheck 在动作阶段就失败，按它给出的阶段和等待去修。",
     }),
   });
   try {
@@ -1232,7 +1255,7 @@ export async function authorJavaScriptCapability(options: {
             code,
             error: failure.message.slice(0, 1_000),
             ...(call.function.name === "run_draft" && code === "BusinessRejection"
-              ? { contractSuccessConditions: options.contract.successConditions }
+              ? { contractSuccessConditions: contract.successConditions }
               : {}),
             repairable: !isTerminalAuthoringError(failure),
           },
