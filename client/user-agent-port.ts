@@ -1693,6 +1693,12 @@ export class AgentPort {
   }
 
   private updateRun(run: AgentRun) {
+    // Responses can arrive out of order: two checkpoints sent 200 ms apart
+    // came back reversed, the older revision was kept, and the run's final
+    // update was refused as a conflict and left the run "running". A response
+    // older than what this document already holds for the run changes nothing.
+    const held = this.readRunPointer();
+    if (held?.runId === run.id && run.pageEpoch === held.pageEpoch && run.revision < held.revision) return;
     this.activeRun = run;
     this.activityTimeline = run.activityTimeline || run.checkpoint?.activityTimeline || this.activityTimeline;
     this.activeSession = this.taskSessionFromRun(run);
@@ -1908,18 +1914,33 @@ export class AgentPort {
   }
 
   private async sendTerminalState(entry: PendingTerminal) {
-    const response = await json<{ run: AgentRun }>(await fetch(endpointUrl(this.options.endpoint, `/api/agent-runs/${encodeURIComponent(entry.runId)}`), {
+    const send = (revision: number, pageEpoch: number) => fetch(endpointUrl(this.options.endpoint, `/api/agent-runs/${encodeURIComponent(entry.runId)}`), {
       method: "PATCH", headers: { "content-type": "application/json", authorization: `Bearer ${entry.resumeToken}` },
       body: JSON.stringify({
-        expectedRevision: entry.revision,
-        pageEpoch: entry.pageEpoch,
+        expectedRevision: revision,
+        pageEpoch,
         status: entry.status,
         outcome: entry.outcome,
         output: entry.output,
         assistantText: entry.assistantText,
         activityTimeline: entry.activityTimeline,
       }),
-    }));
+    }).then((response) => json<{ run: AgentRun }>(response));
+    let response: { run: AgentRun };
+    try {
+      response = await send(entry.revision, entry.pageEpoch);
+    } catch (error) {
+      // The run's own last write moved its revision past the one this
+      // document held. Reconcile once from the run as stored, while it is
+      // still open; a run that already ended is not ours to close again.
+      if (!String(error).includes("agent_run_revision_conflict")) throw error;
+      const latest = await json<{ run: AgentRun }>(await fetch(endpointUrl(this.options.endpoint, `/api/agent-runs/${encodeURIComponent(entry.runId)}`), {
+        cache: "no-store",
+        headers: { authorization: `Bearer ${entry.resumeToken}` },
+      }));
+      if (!["running", "awaiting-page", "awaiting-user"].includes(latest.run.status)) throw error;
+      response = await send(latest.run.revision, latest.run.pageEpoch);
+    }
     this.forgetPendingTerminal(entry.runId);
     return response.run;
   }
