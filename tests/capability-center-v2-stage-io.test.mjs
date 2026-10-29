@@ -150,6 +150,10 @@ test("identityMatches compares an acted-on card with a result title the way modu
       checks.push(["title carries the emoji", identityMatches("腾讯龙虾宣布停运", "腾讯龙虾宣布停运 😔")]);
       checks.push(["multi-line card", identityMatches("3\n卫星互联网低轨26组卫星成功发射\n95.7万", "卫星互联网低轨26组卫星成功发射")]);
       checks.push(["whitespace and width differences", identityMatches("Ａdd  to\tcart", "Add to cart")]);
+      // A card cuts a long title short; the product page shows the whole of it.
+      checks.push(["card title cut with an ellipsis", identityMatches("A Light in the ...", "A Light in the Attic")]);
+      checks.push(["card title cut with the ellipsis character", identityMatches("Sapiens: A Brief History…\n£54.23", "Sapiens: A Brief History of Humankind")]);
+      checks.push(["a cut title of another book", identityMatches("A Light in the ...", "Tipping the Velvet")]);
       // A different record must not match.
       checks.push(["different topic", identityMatches("3 卫星互联网低轨26组卫星成功发射 95.7万", "特朗普抵达机场")]);
       // Nothing of substance proves nothing.
@@ -167,6 +171,9 @@ test("identityMatches compares an acted-on card with a result title the way modu
     ["title carries the emoji", true],
     ["multi-line card", true],
     ["whitespace and width differences", true],
+    ["card title cut with an ellipsis", true],
+    ["card title cut with the ellipsis character", true],
+    ["a cut title of another book", false],
     ["different topic", false],
     ["one character", false],
     ["empty candidate", false],

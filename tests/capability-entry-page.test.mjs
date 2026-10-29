@@ -42,6 +42,16 @@ test("a capability bound to a page starts on that page, however its Contract wri
   assert.equal(capabilityEntryPage(boundByPrecondition, "https://shop.example/product/lune"), "https://shop.example/shop?type=wall");
 });
 
+test("a scope written as a pattern is not an address to start on", () => {
+  // A category scope written with the category's slug as a star was opened as
+  // that very address; the site answered with its index, and every draft of
+  // "cheapest book in a category" started on a page with no category on it.
+  const detail = "https://books.example/catalogue/the-road_277/index.html";
+  const byPattern = { preconditions: [], scope: { kind: "category-scoped", onMismatch: "no-match", match: { urlPatterns: ["/catalogue/category/books/*/index.html"] } } };
+  assert.equal(capabilityEntryPage(byPattern, detail), undefined);
+  assert.deepEqual(capabilityRunPage(byPattern, detail), { url: detail, entry: undefined });
+});
+
 test("a Contract that names no fixed page leaves the program's own entry alone", () => {
   const siteWide = { preconditions: [], scope: { kind: "site-global", onMismatch: "no-match", match: { urlPatterns: ["/shop"] } } };
   const templated = { preconditions: [], scope: { kind: "page-scoped", onMismatch: "no-match", match: { urlPatterns: ["https://shop.example/shop?type=floor&room={room}"] } } };

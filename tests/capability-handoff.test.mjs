@@ -87,6 +87,7 @@ test("a page-exploration run that reached success is handed over", () => {
   assert.equal(handoff.experience.episodeId, "episode_9216c74a");
   assert.equal(handoff.experience.agentRunId, "run_76376d42");
   assert.equal(handoff.experience.outcome, "Success");
+  assert.equal(handoff.experience.answer, "已成功打开今天排名第一的热搜。", "what the visitor was told travels as the proof a draft's output is read against");
   assert.equal(handoff.experience.actions.length, 1);
 });
 

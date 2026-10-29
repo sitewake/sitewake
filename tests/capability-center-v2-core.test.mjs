@@ -115,6 +115,22 @@ const {
   groundingExamplesDiffer,
 } = store;
 
+test("an experience's identifiers survive the redaction that a card-like digit run would trigger", () => {
+  // The run id's last thirteen digits pass the card-number check; redacted,
+  // the experience named a run that did not exist, its authority never
+  // matched it, and the visitor's successful run was never generated from.
+  const experience = pageAgentExperience({
+    episodeId: "episode_4111111111111111",
+    agentRunId: "run_2864beef-7d4e-4de3-93c8-975708864470",
+    browserSessionId: "browser_5500000000000004",
+    outcomeSummary: "Order 4111 1111 1111 1111 was placed.",
+  });
+  assert.equal(experience.agentRunId, "run_2864beef-7d4e-4de3-93c8-975708864470");
+  assert.equal(experience.episodeId, "episode_4111111111111111");
+  assert.equal(experience.browserSessionId, "browser_5500000000000004");
+  assert.doesNotMatch(experience.outcomeSummary, /4111 1111 1111 1111/, "what the visitor was told is still redacted");
+});
+
 function pageAgentExperience(overrides = {}) {
   return normalizeCapabilityExperience({
     schemaVersion: "1.0",

@@ -761,6 +761,12 @@ export type CapabilityExperience = {
   originalGoal: string;
   outcome: "Success" | "NoResult";
   outcomeSummary: string;
+  /**
+   * What the visitor was told, when the record came from a run that told
+   * them something: the proof a draft's output is read against. Absent on a
+   * record rebuilt from receipts, whose summary is the pipeline's own words.
+   */
+  answer?: string;
   startedAt: string;
   endedAt: string;
   startPage: { url: string; title?: string; heading?: string };

@@ -139,6 +139,69 @@ with the count the page states.
 reply), `ps-add-notebook-zh` (the agent added twice — two cart rows where the
 task expects one; unstable since the baseline).
 
+## Iteration 2 — what the demonstration established reaches the program
+
+Measured on build `e7ccffa9`, run `2026-10-28T10-45-48` (re-judged with the
+checker of this commit, which lets a title drop its subtitle as the page
+does when it cuts the title short). The fixes, each traced to a recorded
+failure and reproduced before it was made:
+
+- a stage that clicks and unloads its document could not return its state,
+  so the acted-on identity the seed had read was lost and the verify stage
+  refused the right category page three times per generation — a stage now
+  keeps that state before the action (`keep`) and both hosts take it as the
+  stage's state when the return never arrives;
+- the authoring loop never read a draft's output against what the visitor
+  was told: "Count quotes by tag" was proven with twelve quotes, counted the
+  two on its last page and was published — the experience carries the
+  answer, and a draft whose output states none of the numbers the answer
+  leads with goes back to the model with both texts;
+- a scope written with a wildcard segment was opened as the capability's
+  entry address (the site answered with its index);
+- a run id whose last digits pass the card-number check came out of the
+  experience's redaction as `run_…93c[REDACTED]`, never equalled the
+  authority's run id, and the intake retried the visitor's successful run
+  for hours without generating from it — identifiers are never redacted;
+- a card title cut with an ellipsis names the same book as the page's full
+  title; and a product card's image link, found by its image's alt, is named
+  by what found it (`nameOf`) rather than read as an empty `innerText` — the
+  last of these was made after the run, on a replay of the run's own failed
+  draft, which then succeeds.
+
+| Rate | Second step (`d38922de`) | Iteration 2 (`e7ccffa9`) |
+| --- | --- | --- |
+| First ask | 16 / 18 (88.9%) | 14 / 18 (77.8%) |
+| Generation published | 2 / 9 (22.2%) | 1 / 9 (11.1%) |
+| Reuse | 0 / 2 | 1 / 1 |
+| Failures by class | gate-false-reject 5 · wrong-answer 3 · site-changed 2 · contradiction 1 | gate-false-reject 4 · contradiction 3 · wrong-answer 3 · timeout 2 · model-protocol 1 |
+
+Read by rate, both visitor rates fell. Read by task, no first ask that
+depends on the module changed: the four first-ask failures are the page
+agent reading one page of a two-page listing (`books-five-star-mystery`,
+failed in every run since the second step), the assistant answering a live
+count from the crawl index (`ps-search-count`, 4 mugs indexed, 5 on the
+storefront), a run answered through a capability the benchmark had just
+reported retiring (`quotes-tag-count` — the console deletes only a disabled
+capability, and the retire step took the refusal for success; fixed in this
+branch), and `quotes-by-author` ending in no result. Three first asks that
+passed in front of the visitor left no run record: the widget's final update
+was refused twice with 409 (`agent_run_revision_conflict`) and the run stayed
+`running`, so no generation followed (`ps-category-count` among them). That
+is a class of its own for the next iteration.
+
+**Generation 1 / 9.** On books, `books-count-poetry` and
+`books-cheapest-travel` were rejected on validation cases drawn from a
+product card — "In stock", "Tipping the Velvet" as categories — the class
+iteration 3 takes on; `books-price-named` failed on the empty identity of
+an image link (fixed after the run, above); `books-most-expensive-travel`
+published and its reuse passed through the capability. On PrestaShop none
+published: a stage declared `navigation: "required"` that never navigates,
+three times (`ps-cheapest-accessory`); a verify stage waiting for
+`#blockcart-modal .product-name` that never shows (`ps-add-mug-quantity`,
+`ps-add-notebook-zh`); a state read the manifest did not declare, twice,
+after a write it did not declare (`ps-add-cushion`); a validation that
+produced no result (`ps-open-detail-price`).
+
 ## Live demo, 2026-10-22 → 2026-10-27 (for comparison)
 
 Not a benchmark run: the demo console's own records over the days the fixes

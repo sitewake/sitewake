@@ -33,9 +33,15 @@ function scopePatterns(contract: Pick<CapabilityContract, "scope">) {
   return (scope.match?.urlPatterns || []).filter((pattern): pattern is string => typeof pattern === "string" && Boolean(pattern.trim()));
 }
 
-/** An address written as a whole URL, a path, or a URL without its scheme; a query fragment is not one. */
+/**
+ * An address written as a whole URL, a path, or a URL without its scheme; a
+ * query fragment is not one, and neither is a pattern. A category scope
+ * written with a wildcard segment (the category's slug as a star) was opened
+ * as that very address: the site answered with its index, and every draft of
+ * "cheapest book in a category" started on a page with no category on it.
+ */
 function addressFor(written: string, site: URL) {
-  if (/[{}]/.test(written)) return undefined;
+  if (/[{}*]/.test(written)) return undefined;
   try {
     if (/^https?:\/\//i.test(written)) return new URL(written);
     if (written.startsWith("/")) return new URL(written, site.origin);

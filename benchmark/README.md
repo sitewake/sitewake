@@ -14,7 +14,7 @@ module; it is not part of CI.
 | --- | --- |
 | `npm run benchmark:up` | Env file, mirrored sites, images, the stack, console password, sites registered and crawled. Re-runnable. `-- --doctor` only reports. `-- --build` rebuilds the three images from this working tree. |
 | `npm run benchmark:mirror` | Fetches the static practice sites into `.artifacts/benchmark/sites/`. Skipped when the manifest still matches. |
-| `npm run benchmark` | Runs the task set (`-- --site <slug>`, `-- --task <id>`, `-- --quick` for the 10-task subset) and writes a report under `.artifacts/benchmark/runs/<id>/`. A run first disables the live capabilities an earlier run published on its sites, so every first ask is answered by the page agent and leaves a demonstration to generate from; `-- --keep-capabilities` keeps them live instead. |
+| `npm run benchmark` | Runs the task set (`-- --site <slug>`, `-- --task <id>`, `-- --quick` for the 10-task subset) and writes a report under `.artifacts/benchmark/runs/<id>/`. A run first retires (deletes) the capabilities earlier runs published on its sites, so every first ask is answered by the page agent and leaves a demonstration to generate from, and what this run publishes is what its reuse asks call; `-- --keep-capabilities` keeps them instead. |
 | `npm run benchmark:down` | Stops the stack. `-- --volumes` also drops its databases and the PrestaShop install. |
 
 The stack is the production `compose.yaml` + `compose.compact.yaml` with

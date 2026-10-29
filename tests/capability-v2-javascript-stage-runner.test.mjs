@@ -315,6 +315,88 @@ test("a click that navigates the document mid-stage is a transition, not a direc
   }
 });
 
+test("nameOf names an element by what found it: its text, else its image's alt, else its title", async () => {
+  // A product card's image link has no text of its own; read as innerText
+  // the identity the stage kept was "", and the right product page was refused.
+  const browser = await launchTestBrowser();
+  const context = await browser.newContext();
+  try {
+    await context.route("**/*", async (route) => {
+      const url = route.request().url();
+      if (url === "https://target.test/start") {
+        return route.fulfill({ status: 200, contentType: "text/html", body: `<!doctype html><title>Start</title><article><a id="image" href="/a"><img alt="A Light in the Attic"></a><h3><a id="text" href="/a" title="A Light in the Attic">A Light in the ...</a></h3><a id="titled" href="/b" title="Only a title"></a></article>` });
+      }
+      if (url === "https://public.test/module.js") {
+        return route.fulfill({ status: 200, headers: { "content-type": "text/javascript; charset=utf-8", "access-control-allow-origin": "*" }, body: `export const capability={version:2,stages:[
+          {id:"stage_verify",io:{reads:{input:[],state:[]},writes:{state:[],output:["image","text","titled","none"]}},navigation:"none",run({nameOf}){return {outcome:"Success",output:{image:nameOf(document.getElementById("image")),text:nameOf(document.getElementById("text")),titled:nameOf(document.getElementById("titled")),none:nameOf(null)},evidence:[]}}}]}` });
+      }
+      await route.abort("failed");
+    });
+    const page = await context.newPage();
+    await page.goto("https://target.test/start");
+    const result = await stageRunner.runCapabilityJavaScriptStages({
+      page,
+      moduleUrl: "https://public.test/module.js",
+      program: { ...program, stages: [{ id: "stage_verify", title: "Verify", purpose: "Verify", effect: "read", resumePolicy: "skip-completed", io: { reads: { input: [], state: [] }, writes: { state: [], output: ["image", "text", "titled", "none"] } }, navigation: "none" }] },
+      input: {},
+    });
+    assert.equal(result.outcome, "Success");
+    assert.deepEqual(result.output, { image: "A Light in the Attic", text: "A Light in the ...", titled: "Only a title", none: "" });
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+});
+
+test("the state a stage keeps before a click that unloads its document reaches the next stage", async () => {
+  // The seed reads the clicked card's text and returns it as the acted-on
+  // identity, but a click that navigates ends the stage before it can return:
+  // the verify stage compared the result against nothing and said the right
+  // category page "does not match the requested category", three times.
+  const browser = await launchTestBrowser();
+  const context = await browser.newContext();
+  try {
+    await context.route("**/*", async (route) => {
+      const url = route.request().url();
+      const csp = "default-src 'self'; script-src 'self' https://public.test 'unsafe-inline'";
+      if (url === "https://target.test/start") {
+        return route.fulfill({ status: 200, contentType: "text/html", headers: { "content-security-policy": csp }, body: `<!doctype html><title>Start</title><a id="poetry" href="/category/poetry">Poetry</a>` });
+      }
+      if (url === "https://target.test/category/poetry") {
+        return route.fulfill({ status: 200, contentType: "text/html", headers: { "content-security-policy": csp }, body: `<!doctype html><title>Poetry</title><h1>Poetry</h1><strong>19</strong>` });
+      }
+      if (url === "https://public.test/module.js") {
+        return route.fulfill({ status: 200, headers: { "content-type": "text/javascript; charset=utf-8", "access-control-allow-origin": "*" }, body: `export const capability={version:2,stages:[
+          {id:"stage_1",io:{reads:{input:[],state:[]},writes:{state:["targets.__actedOn"],output:[]}},navigation:"optional",async run({waitUntil,keep}){const link=document.getElementById("poetry");keep({targets:{__actedOn:link.textContent}});link.click();await waitUntil(()=>location.pathname.includes("poetry"));return {outcome:"Continue",state:{targets:{__actedOn:link.textContent}}}}},
+          {id:"stage_verify",io:{reads:{input:[],state:["targets.__actedOn"]},writes:{state:[],output:["actedOn","heading"]}},navigation:"none",run({state}){return {outcome:"Success",output:{actedOn:state.targets.__actedOn,heading:document.querySelector("h1").textContent},evidence:[]}}}]}` });
+      }
+      await route.abort("failed");
+    });
+    const page = await context.newPage();
+    await page.goto("https://target.test/start");
+    const result = await stageRunner.runCapabilityJavaScriptStages({
+      page,
+      moduleUrl: "https://public.test/module.js",
+      program: {
+        ...program,
+        stages: [
+          { id: "stage_1", title: "Open the category", purpose: "Open", effect: "write", resumePolicy: "reconcile-before-retry", io: { reads: { input: [], state: [] }, writes: { state: ["targets.__actedOn"], output: [] } }, navigation: "optional" },
+          { id: "stage_verify", title: "Verify", purpose: "Verify", effect: "read", resumePolicy: "skip-completed", io: { reads: { input: [], state: ["targets.__actedOn"] }, writes: { state: [], output: ["actedOn", "heading"] } }, navigation: "none" },
+        ],
+      },
+      input: {},
+    });
+    assert.equal(result.outcome, "Success");
+    assert.deepEqual(result.output, { actedOn: "Poetry", heading: "Poetry" });
+    const started = result.receipts.find((receipt) => receipt.stageId === "stage_1" && receipt.status === "Started");
+    assert.deepEqual(started.notes, ["state_kept_through_navigation:targets"], "the receipt says the state came from what the stage kept");
+    assert.equal(await page.evaluate(() => sessionStorage.getItem("sitewake:capability-v2:kept-state")), null, "the kept copy is cleared once taken");
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+});
+
 /**
  * One production run wrote `input.value = keyword` plus an input event in all four
  * drafts. A React controlled input's value tracker sees no change, onChange never

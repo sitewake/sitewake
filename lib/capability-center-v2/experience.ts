@@ -19,6 +19,17 @@ function text(value: unknown, limit = MAX_STRING) {
   return typeof value === "string" ? redactSensitiveText(value).trim().slice(0, limit) : "";
 }
 
+/**
+ * An identifier is never redacted: it is matched, not read. The run id
+ * `run_2864beef-7d4e-4de3-93c8-975708864470` ends in thirteen digits that
+ * pass the card-number check, came out of the redaction as
+ * `run_2864beef-7d4e-4de3-93c[REDACTED]`, never equalled the authority's run
+ * id again, and the visitor's run was retried for hours and never generated.
+ */
+function identifier(value: unknown, limit = 160) {
+  return typeof value === "string" ? value.trim().slice(0, limit) : "";
+}
+
 function safeUrl(value: unknown) {
   const raw = text(value, 2_000);
   if (!raw) return "";
@@ -113,12 +124,13 @@ export function normalizeCapabilityExperience(value: unknown): CapabilityExperie
     .map(route).filter((item): item is NonNullable<typeof item> => Boolean(item));
   const experience: CapabilityExperience = {
     schemaVersion: "1.0",
-    episodeId: text(raw.episodeId, 160),
-    agentRunId: text(raw.agentRunId, 160),
-    browserSessionId: text(raw.browserSessionId, 160),
+    episodeId: identifier(raw.episodeId),
+    agentRunId: identifier(raw.agentRunId),
+    browserSessionId: identifier(raw.browserSessionId),
     originalGoal: text(raw.originalGoal, 1_000),
     outcome,
     outcomeSummary: text(raw.outcomeSummary, 1_000),
+    ...(text(raw.answer, 2_000) ? { answer: text(raw.answer, 2_000) } : {}),
     startedAt: text(raw.startedAt, 80),
     endedAt: text(raw.endedAt, 80),
     startPage: page(raw.startPage),
@@ -291,6 +303,7 @@ export function capabilityHandoffForEpisode(
       originalGoal: episode.goal,
       outcome: episode.outcome.status === "no-result" ? "NoResult" : "Success",
       outcomeSummary: episode.outcome.summary,
+      answer: episode.outcome.summary,
       startedAt: episode.startedAt,
       endedAt: episode.endedAt,
       startPage: episode.startSnapshot,

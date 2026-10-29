@@ -109,13 +109,24 @@ async function ask(browser, site, task, phase) {
 
 // The stack keeps its capabilities between runs, so a run would otherwise be
 // answered by what the run before it published and generate nothing. Each run
-// starts from no live capability on its sites unless told to keep them.
-async function disableLiveCapabilities(admin, site) {
+// starts from no capability on its sites unless told to keep them. They are
+// deleted, not disabled: a generation attaches to a capability of the same
+// name whatever its status, and a version published onto a disabled one
+// left it disabled — the reuse asks then found nothing to call.
+async function retireEarlierCapabilities(admin, site) {
   const payload = await admin.json("/api/admin/capability-v2/capabilities").catch(() => ({}));
-  const live = (payload.capabilities || []).filter((capability) => capability.status === "Active");
-  for (const capability of live) await admin.request(`/api/admin/capability-v2/capabilities/${encodeURIComponent(capability.id)}/disable`, { method: "POST", body: {} }).catch(() => undefined);
-  if (live.length) log(`   ${site.slug}: ${live.length} live capabilit${live.length === 1 ? "y" : "ies"} from earlier runs disabled`);
-  return live.length;
+  const earlier = (payload.capabilities || []).filter((capability) => capability.status !== "Deleted");
+  let retired = 0;
+  for (const capability of earlier) {
+    const path = `/api/admin/capability-v2/capabilities/${encodeURIComponent(capability.id)}`;
+    // The console deletes only a disabled capability; a live one is disabled first.
+    const disabled = capability.status === "Active" ? await admin.request(`${path}/disable`, { method: "POST", body: {} }).catch((error) => ({ ok: false, status: 0, payload: { error: error.message } })) : { ok: true };
+    const deleted = disabled.ok ? await admin.request(path, { method: "DELETE" }).catch((error) => ({ ok: false, status: 0, payload: { error: error.message } })) : disabled;
+    if (deleted.ok) retired += 1;
+    else log(`   ${site.slug}: capability ${capability.id.slice(0, 8)} (${capability.name}) could not be retired: ${deleted.status} ${deleted.payload?.error || ""}`);
+  }
+  if (earlier.length) log(`   ${site.slug}: ${retired} of ${earlier.length} capabilit${earlier.length === 1 ? "y" : "ies"} from earlier runs retired`);
+  return retired;
 }
 
 const browser = await launchBrowser();
@@ -123,7 +134,7 @@ try {
   for (const set of plan) {
     const site = set.site;
     const admin = adminClient(site.id, state.consoleCookie || "");
-    if (!flags["keep-capabilities"]) notes.push(`${site.slug}: ${await disableLiveCapabilities(admin, site)} earlier capability(ies) disabled before the run`);
+    if (!flags["keep-capabilities"]) notes.push(`${site.slug}: ${await retireEarlierCapabilities(admin, site)} earlier capability(ies) retired before the run`);
     log(`── ${site.slug} (${siteBaseUrl(site)}) — ${set.tasks.length} task(s)`);
     const follows = [];
     for (const task of set.tasks) {
@@ -132,13 +143,14 @@ try {
       if (flags["no-generation"] || !first.pass || !first.runId || !hadPageActions(first.fact)) continue;
       const generationRecord = { taskId: task.id, site: site.slug, phase: "generation", pass: false, runId: first.runId, repro: first.repro };
       records.push(generationRecord); save();
-      follows.push({ task, record: generationRecord, promise: followGeneration(admin, { runId: first.runId, finishTimeoutMs: generationTimeoutMs, onEvent: (line) => log(`   ⟳ ${task.id}: ${line}`) }) });
+      follows.push({ task, record: generationRecord, promise: followGeneration(admin, { runId: first.runId, siteId: site.id, finishTimeoutMs: generationTimeoutMs, onEvent: (line) => log(`   ⟳ ${task.id}: ${line}`) }) });
     }
     for (const follow of follows) {
       const generation = await follow.promise.catch((error) => ({ state: "error", message: error.message }));
       follow.record.generation = generation;
       follow.record.pass = /^(Published|AlreadyPublished)$/i.test(generation.state || "");
-      follow.record.detail = follow.record.pass ? `published capability ${generation.capabilityId || ""}` : `${generation.state}${generation.code ? ` ${generation.code}` : ""}${generation.message ? `: ${String(generation.message).slice(0, 200)}` : ""}`;
+      const intake = generation.intake ? ` (intake ${generation.intake.status}${generation.intake.attempts ? ` ×${generation.intake.attempts}` : ""}${generation.intake.lastError ? `: ${generation.intake.lastError}` : generation.intake.reason ? `: ${generation.intake.reason}` : ""})` : "";
+      follow.record.detail = follow.record.pass ? `published capability ${generation.capabilityId || ""}` : `${generation.state}${generation.code ? ` ${generation.code}` : ""}${generation.message ? `: ${String(generation.message).slice(0, 200)}` : ""}${intake}`;
       log(`${follow.record.pass ? "✓" : "✗"} ${follow.task.id} [generation] ${follow.record.detail} (${Math.round((generation.elapsedMs || 0) / 1000)}s)`);
       save();
     }
