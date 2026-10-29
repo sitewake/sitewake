@@ -18,27 +18,8 @@ export type ExpectedOutputComparison = {
   drift: ExpectedOutputDrift[];
 };
 
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === "object")
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, canonical(item)]),
-    );
-  return value;
-}
-
-function normalizedText(value: string) {
-  return value.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase();
-}
-
-/** Equality with the same text normalization C2 uses to ground values in evidence. */
-export function expectedValuesEqual(left: unknown, right: unknown) {
-  if (typeof left === "string" && typeof right === "string")
-    return normalizedText(left) === normalizedText(right);
-  return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
-}
+import { expectedValuesEqual } from "./value-equality";
+export { expectedValuesEqual };
 
 function leafValues(value: unknown): unknown[] {
   if (Array.isArray(value)) return value.flatMap(leafValues);

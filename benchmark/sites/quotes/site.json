@@ -1,0 +1,14 @@
+{
+  "id": "bench-quotes",
+  "name": "Quotes to Scrape (benchmark mirror)",
+  "kind": "mirror",
+  "internalUrl": "http://quotes.bench:8102/",
+  "hostUrl": "http://localhost:8102/",
+  "mirror": {
+    "source": "https://quotes.toscrape.com/",
+    "marker": "Quotes to Scrape"
+  },
+  "crawl": {
+    "limits": { "maxRenders": 60 }
+  }
+}

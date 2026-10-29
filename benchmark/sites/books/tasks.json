@@ -1,0 +1,76 @@
+[
+  {
+    "id": "books-cheapest-travel",
+    "startUrl": "/",
+    "goal": "What is the cheapest book in the Travel category, and how much does it cost?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{travel.cheapest.title}}", "{{travel.cheapest.price}}"] },
+    "reuse": {
+      "goal": "What is the cheapest book in the Poetry category, and how much does it cost?",
+      "expect": { "type": "answer-contains", "facts": ["{{poetry.cheapest.title}}", "{{poetry.cheapest.price}}"] }
+    }
+  },
+  {
+    "id": "books-count-poetry",
+    "startUrl": "/",
+    "goal": "How many books are in the Poetry category?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{poetry.count}}"] },
+    "reuse": {
+      "goal": "How many books are in the Mystery category?",
+      "expect": { "type": "answer-contains", "facts": ["{{mystery.count}}"] }
+    }
+  },
+  {
+    "id": "books-price-named",
+    "startUrl": "/",
+    "goal": "How much is the book \"{{firstPage.titles.0}}\"?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": false,
+    "expect": { "type": "answer-contains", "facts": ["{{named.{{firstPage.titles.0}}}}"] }
+  },
+  {
+    "id": "books-five-star-mystery",
+    "startUrl": "/",
+    "goal": "Which Mystery books are rated five stars?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{mystery.fiveStar.0}}", "{{mystery.fiveStar.1}}"] },
+    "reuse": {
+      "goal": "Which Poetry books are rated five stars?",
+      "expect": { "type": "answer-contains", "facts": ["{{poetry.fiveStar.0}}", "{{poetry.fiveStar.1}}"] }
+    }
+  },
+  {
+    "id": "books-most-expensive-travel",
+    "startUrl": "/",
+    "goal": "What's the most expensive Travel book?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{travel.mostExpensive.title}}", "{{travel.mostExpensive.price}}"] },
+    "reuse": {
+      "goal": "What's the most expensive Poetry book?",
+      "expect": { "type": "answer-contains", "facts": ["{{poetry.mostExpensive.title}}", "{{poetry.mostExpensive.price}}"] }
+    }
+  },
+  {
+    "id": "books-cheapest-travel-zh",
+    "startUrl": "/",
+    "goal": "旅游类里最便宜的书是哪本？多少钱？",
+    "locale": "zh-CN",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{travel.cheapest.title}}", "{{travel.cheapest.price}}"] },
+    "reuse": {
+      "goal": "诗歌类里最便宜的书是哪本？多少钱？",
+      "expect": { "type": "answer-contains", "facts": ["{{poetry.cheapest.title}}", "{{poetry.cheapest.price}}"] }
+    }
+  }
+]

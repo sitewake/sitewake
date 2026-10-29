@@ -1,0 +1,117 @@
+{
+  "computedAt": "2026-10-28T04:47:06.195Z",
+  "categoryCount": 50,
+  "travel": {
+    "name": "Travel",
+    "count": 11,
+    "cheapest": {
+      "title": "The Road to Little Dribbling: Adventures of an American in Britain (Notes From a Small Island #2)",
+      "price": 23.21,
+      "rating": 1,
+      "href": "../../../the-road-to-little-dribbling-adventures-of-an-american-in-britain-notes-from-a-small-island-2_277/index.html"
+    },
+    "mostExpensive": {
+      "title": "A Year in Provence (Provence #1)",
+      "price": 56.88,
+      "rating": 4,
+      "href": "../../../a-year-in-provence-provence-1_421/index.html"
+    },
+    "fiveStar": [
+      "1,000 Places to See Before You Die"
+    ]
+  },
+  "poetry": {
+    "name": "Poetry",
+    "count": 19,
+    "cheapest": {
+      "title": "Poems That Make Grown Women Cry",
+      "price": 14.19,
+      "rating": 4,
+      "href": "../../../poems-that-make-grown-women-cry_824/index.html"
+    },
+    "mostExpensive": {
+      "title": "Slow States of Collapse: Poems",
+      "price": 57.31,
+      "rating": 3,
+      "href": "../../../slow-states-of-collapse-poems_960/index.html"
+    },
+    "fiveStar": [
+      "Quarter Life Poetry: Poems for the Young, Broke and Hangry",
+      "Out of Print: City Lights Spotlight No. 14",
+      "Les Fleurs du Mal",
+      "Leave This Song Behind: Teen Poetry at Its Best",
+      "The Collected Poems of W.B. Yeats (The Collected Works of W.B. Yeats #1)",
+      "Booked"
+    ]
+  },
+  "mystery": {
+    "name": "Mystery",
+    "count": 32,
+    "cheapest": {
+      "title": "Tastes Like Fear (DI Marnie Rome #3)",
+      "price": 10.69,
+      "rating": 1,
+      "href": "../../../tastes-like-fear-di-marnie-rome-3_742/index.html"
+    },
+    "mostExpensive": {
+      "title": "Boar Island (Anna Pigeon #19)",
+      "price": 59.48,
+      "rating": 3,
+      "href": "../../../boar-island-anna-pigeon-19_613/index.html"
+    },
+    "fiveStar": [
+      "A Time of Torment (Charlie Parker #14)",
+      "What Happened on Beale Street (Secrets of the South Mysteries #2)",
+      "The Bachelor Girl's Guide to Murder (Herringford and Watts Mysteries #1)",
+      "The Silkworm (Cormoran Strike #2)",
+      "The Girl You Lost"
+    ]
+  },
+  "classics": {
+    "name": "Classics",
+    "count": 19,
+    "cheapest": {
+      "title": "The Hound of the Baskervilles (Sherlock Holmes #5)",
+      "price": 14.82,
+      "rating": 2,
+      "href": "../../../the-hound-of-the-baskervilles-sherlock-holmes-5_348/index.html"
+    },
+    "mostExpensive": {
+      "title": "Candide",
+      "price": 58.63,
+      "rating": 3,
+      "href": "../../../candide_316/index.html"
+    },
+    "fiveStar": []
+  },
+  "firstPage": {
+    "count": 20,
+    "titles": [
+      "A Light in the Attic",
+      "Tipping the Velvet",
+      "Soumission",
+      "Sharp Objects",
+      "Sapiens: A Brief History of Humankind",
+      "The Requiem Red",
+      "The Dirty Little Secrets of Getting Your Dream Job",
+      "The Coming Woman: A Novel Based on the Life of the Infamous Feminist, Victoria Woodhull",
+      "The Boys in the Boat: Nine Americans and Their Epic Quest for Gold at the 1936 Berlin Olympics",
+      "The Black Maria",
+      "Starving Hearts (Triangular Trade Trilogy, #1)",
+      "Shakespeare's Sonnets",
+      "Set Me Free",
+      "Scott Pilgrim's Precious Little Life (Scott Pilgrim #1)",
+      "Rip it Up and Start Again",
+      "Our Band Could Be Your Life: Scenes from the American Indie Underground, 1981-1991",
+      "Olio",
+      "Mesaerion: The Best Science Fiction Stories 1800-1849",
+      "Libertarianism for Beginners",
+      "It's Only the Himalayas"
+    ]
+  },
+  "named": {
+    "A Light in the Attic": 51.77,
+    "Tipping the Velvet": 53.74,
+    "Soumission": 50.1
+  }
+}

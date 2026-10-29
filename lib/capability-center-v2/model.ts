@@ -1,3 +1,4 @@
+import type { FailureClass } from "./failure-class";
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
@@ -680,6 +681,8 @@ export type CapabilityProgram = {
   targetBindings: CapabilityTargetBinding[];
   promptProvenance: CapabilityPromptProvenance[];
   inputAliases?: CapabilityInputAliases;
+  /** Findings of quality checks that no longer block (DEMOTED_CHECKS), kept with the version. */
+  qualityNotes?: Array<{ code: string; message: string }>;
 };
 
 export type Capability = {
@@ -862,6 +865,9 @@ export type CapabilityTaskError = {
   retryable: boolean;
   stepId?: string;
   cause?: { code: string; message: string };
+  /** The failure's class and stage (lib/capability-center-v2/failure-class.ts), written with the terminal state. */
+  failureClass?: FailureClass;
+  failureStage?: string;
 };
 
 export type CapabilityTaskEvent = {

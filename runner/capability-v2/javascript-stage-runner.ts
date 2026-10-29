@@ -1,3 +1,4 @@
+import { applyCapabilityInputAliases as applyAliases } from "../../lib/capability-center-v2/run-resolution";
 import { capabilityNavigationKind } from "../../lib/capability-center-v2/navigation";
 import { executeBrowserCapabilityStage } from "../../lib/capability-center-v2/browser-stage-sdk";
 import type { BrowserContext, Frame, Page } from "playwright";
@@ -32,6 +33,8 @@ export type JavaScriptStageReceipt = {
   iteration?: number;
   evidence?: CapabilityStageEvidence[];
   durationMs?: number;
+  /** What the host noticed and did not act on: a suspicion recorded with the stage, for the reader of the receipt. */
+  notes?: string[];
 };
 
 export type JavaScriptStageRunResult = {
@@ -120,13 +123,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** Convert user-facing values to site-language terms learned during discovery. */
 export function applyCapabilityInputAliases(program: CapabilityProgram, input: JsonObject): JsonObject {
-  if (!program.inputAliases) return input;
-  const resolved: JsonObject = { ...input };
-  for (const [name, aliases] of Object.entries(program.inputAliases)) {
-    const value = resolved[name];
-    if (typeof value === "string" && typeof aliases[value] === "string") resolved[name] = aliases[value];
-  }
-  return resolved;
+  return applyAliases(program.inputAliases, input) as JsonObject;
 }
 
 /**
@@ -136,8 +133,14 @@ export function applyCapabilityInputAliases(program: CapabilityProgram, input: J
  * apply a facet: it silently changes the business target.  Legitimate
  * target selection starts from a listing/search page, and same-product
  * variant changes keep the pathname and only update the hash/query.
+ *
+ * Only a write stage is judged. Applied to every stage, the rule read any
+ * `.html` page followed by another `.html` page as a product detour, and a
+ * stage paging through a tag or a category on a static site — where every
+ * page ends in `.html` — was refused six times out of six in the benchmark.
  */
-export function isSuspiciousDetailTransition(urlBefore: string, urlAfter: string, stageId: string) {
+export function isSuspiciousDetailTransition(urlBefore: string, urlAfter: string, stageId: string, effect: "read" | "write" = "write") {
+  if (effect !== "write") return false;
   if (!urlBefore || !urlAfter || urlBefore === urlAfter) return false;
   let before: URL;
   let after: URL;
@@ -681,8 +684,13 @@ export async function runCapabilityJavaScriptStages(options: {
     if (lostContext && (program.controlFlow || manifest.transitions)) {
       throw new JavaScriptStageRunError(`capability_stage_context_lost_before_result:${manifest.id}`, receipts);
     }
-    if (transitioned && isSuspiciousDetailTransition(urlBefore, page.url(), manifest.id)) {
-      throw new JavaScriptStageRunError(`capability_stage_related_target_navigation:${manifest.id}`, receipts);
+    // The host cannot tell a link the stage followed from a related product's
+    // variant link without the element it acted on; the address shape alone
+    // read a category click and a page turn as detours, seven times out of
+    // seven in the benchmark, against no true detour. The suspicion is kept on
+    // the receipt for the reader; the demonstration and the validation decide.
+    if (transitioned && isSuspiciousDetailTransition(urlBefore, page.url(), manifest.id, manifest.effect)) {
+      started.notes = [...(started.notes || []), `related_target_navigation_suspected:${urlBefore} -> ${page.url()}`];
     }
     let result = lostContext ? ({ outcome: "Continue" } satisfies CapabilityStageResult) : normalizeStageResult(rawResult, manifest);
     // Continue means "go on to the next stage", so it is not an answer the

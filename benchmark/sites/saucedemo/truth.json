@@ -1,0 +1,111 @@
+{
+  "computedAt": "2026-10-28T04:48:32.535Z",
+  "productCount": 24,
+  "cheapest": {
+    "name": "Sauce Labs Onesie",
+    "price": 7.99
+  },
+  "mostExpensive": {
+    "name": "Sauce Labs Fleece Jacket (XXL)",
+    "price": 49.99
+  },
+  "products": [
+    {
+      "name": "Sauce Labs Onesie",
+      "price": 7.99
+    },
+    {
+      "name": "Sauce Labs Bike Light",
+      "price": 9.99
+    },
+    {
+      "name": "Sauce Labs Bolt T-Shirt",
+      "price": 15.99
+    },
+    {
+      "name": "Test.allTheThings() T-Shirt (Red)",
+      "price": 15.99
+    },
+    {
+      "name": "Sauce Labs Bolt T-Shirt (XS)",
+      "price": 15.99
+    },
+    {
+      "name": "Test.allTheThings() T-Shirt (Red) (XS)",
+      "price": 15.99
+    },
+    {
+      "name": "Test.allTheThings() T-Shirt (Red) (S)",
+      "price": 15.99
+    },
+    {
+      "name": "Test.allTheThings() T-Shirt (Red) (M)",
+      "price": 15.99
+    },
+    {
+      "name": "Test.allTheThings() T-Shirt (Red) (L)",
+      "price": 15.99
+    },
+    {
+      "name": "Test.allTheThings() T-Shirt (Red) (XL)",
+      "price": 15.99
+    },
+    {
+      "name": "Test.allTheThings() T-Shirt (Red) (XXL)",
+      "price": 15.99
+    },
+    {
+      "name": "Sauce Labs Bolt T-Shirt (M)",
+      "price": 15.99
+    },
+    {
+      "name": "Sauce Labs Bolt T-Shirt (L)",
+      "price": 15.99
+    },
+    {
+      "name": "Sauce Labs Bolt T-Shirt (XL)",
+      "price": 15.99
+    },
+    {
+      "name": "Sauce Labs Bolt T-Shirt (XXL)",
+      "price": 15.99
+    },
+    {
+      "name": "Sauce Labs Bolt T-Shirt (S)",
+      "price": 15.99
+    },
+    {
+      "name": "Sauce Labs Backpack",
+      "price": 29.99
+    },
+    {
+      "name": "Sauce Labs Fleece Jacket",
+      "price": 49.99
+    },
+    {
+      "name": "Sauce Labs Fleece Jacket (XS)",
+      "price": 49.99
+    },
+    {
+      "name": "Sauce Labs Fleece Jacket (S)",
+      "price": 49.99
+    },
+    {
+      "name": "Sauce Labs Fleece Jacket (M)",
+      "price": 49.99
+    },
+    {
+      "name": "Sauce Labs Fleece Jacket (L)",
+      "price": 49.99
+    },
+    {
+      "name": "Sauce Labs Fleece Jacket (XL)",
+      "price": 49.99
+    },
+    {
+      "name": "Sauce Labs Fleece Jacket (XXL)",
+      "price": 49.99
+    }
+  ],
+  "standardUser": "standard_user"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "bench-prestashop",
+  "name": "PrestaShop demo (benchmark)",
+  "kind": "app",
+  "internalUrl": "http://prestashop.bench/",
+  "hostUrl": "http://localhost:18081/",
+  "ready": {
+    "marker": "PrestaShop",
+    "timeoutMinutes": 25
+  },
+  "crawl": {
+    "limits": { "maxRenders": 80 }
+  }
+}

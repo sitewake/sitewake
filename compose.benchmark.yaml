@@ -1,0 +1,128 @@
+# The capability benchmark stack: compose.yaml + compose.compact.yaml plus the
+# websites the benchmark drives, all served inside this compose network so the
+# visitor's browser, the crawler and the capability runners see one address
+# per site. Started by `npm run benchmark:up` (scripts/benchmark/up.mjs), which
+# writes the env file under .artifacts/benchmark/.
+#
+#   docker compose -p sitewake-benchmark --env-file .artifacts/benchmark/benchmark.env \
+#     -f compose.yaml -f compose.compact.yaml -f compose.benchmark.yaml up -d
+services:
+  control-plane:
+    environment:
+      # Sites live on this network's private addresses.
+      CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN: "1"
+
+  # Chromium rendering a real shop needs more than the compact host's 900 MB:
+  # the crawl of PrestaShop was OOM-killed at that limit ("Page crashed").
+  # Two generations at a time: a benchmark run sets off one per successful
+  # first ask, and the follow-up waits for each.
+  capability-v2-runtime-launcher:
+    mem_limit: 2048m
+    shm_size: "512m"
+    environment:
+      CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN: "1"
+      CAPABILITY_V2_RUNTIME_CONCURRENCY: "2"
+
+  # The crawler accepts private addresses only when its control plane is on
+  # loopback, so the worker shares the control plane's network namespace and
+  # reaches it at 127.0.0.1; the site names still resolve there.
+  authoring-worker:
+    network_mode: "service:control-plane"
+    mem_limit: 1536m
+    shm_size: "512m"
+    environment:
+      SITEWAKE_CONTROL_PLANE_URL: http://127.0.0.1:3000
+      SITEWAKE_CRAWL_ALLOW_PRIVATE_NETWORK: "1"
+      CAPABILITY_V2_ALLOW_PRIVATE_ORIGIN: "1"
+
+  # Static mirrors of the practice sites (scripts/benchmark/mirror.mjs), one
+  # port and one hostname each so every site is its own origin.
+  bench-sites:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    mem_limit: 64m
+    volumes:
+      - ./.artifacts/benchmark/sites:/usr/share/nginx/html:ro
+      - ./benchmark/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:8101:8101"
+      - "127.0.0.1:8102:8102"
+      - "127.0.0.1:8103:8103"
+    networks:
+      default:
+        aliases: [books.bench, quotes.bench, saucedemo.bench]
+
+  prestashop-db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    mem_limit: 384m
+    command: ["--innodb-buffer-pool-size=64M", "--max-connections=30"]
+    environment:
+      MARIADB_ROOT_PASSWORD: prestashop-root
+      MARIADB_DATABASE: prestashop
+      MARIADB_USER: prestashop
+      MARIADB_PASSWORD: prestashop
+    volumes:
+      - prestashop-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # The shop with a cart and a checkout, installed with demo data on first
+  # start. Its one address is the network name: PrestaShop redirects every
+  # other Host to the domain it was installed with, so a person browsing from
+  # the host maps prestashop.bench to 127.0.0.1 in /etc/hosts and uses :18081.
+  prestashop:
+    image: prestashop/prestashop:8.1-apache
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      DB_SERVER: prestashop-db
+      DB_NAME: prestashop
+      DB_USER: prestashop
+      DB_PASSWD: prestashop
+      PS_INSTALL_AUTO: "1"
+      PS_DOMAIN: prestashop.bench
+      PS_LANGUAGE: en
+      PS_COUNTRY: us
+      PS_ENABLE_SSL: "0"
+      PS_FOLDER_ADMIN: admin-bench
+      PS_FOLDER_INSTALL: install-bench
+      ADMIN_MAIL: bench@example.com
+      ADMIN_PASSWD: benchmark-admin-1
+    volumes:
+      - prestashop-data:/var/www/html
+    ports:
+      - "127.0.0.1:18081:80"
+    networks:
+      default:
+        aliases: [prestashop.bench]
+    depends_on:
+      prestashop-db: { condition: service_healthy }
+
+  # Runs the visitor driver inside the network with the worker image's
+  # Chromium: `docker compose ... run --rm bench-driver scripts/benchmark/run.mjs`.
+  bench-driver:
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.3}
+    profiles: ["driver"]
+    restart: "no"
+    mem_limit: 900m
+    shm_size: "512m"
+    entrypoint: ["node"]
+    working_dir: /app
+    environment:
+      BENCH_CONSOLE_URL: http://control-plane:3000
+      BENCH_ARTIFACTS: /app/.artifacts/benchmark
+      BENCH_IN_NETWORK: "1"
+    volumes:
+      - ./scripts/benchmark:/app/scripts/benchmark:ro
+      - ./benchmark:/app/benchmark:ro
+      - ./.artifacts/benchmark:/app/.artifacts/benchmark
+    depends_on:
+      control-plane: { condition: service_healthy }
+
+volumes:
+  prestashop-db-data:
+  prestashop-data:

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { activeLocale, t, type Locale } from "../../lib/i18n";
+import { failureAttributionLabel } from "../../lib/console/failure-copy";
 import { productCopy } from "../../lib/console/product-copy";
 import { sessionCopy } from "../../lib/console/session-copy";
 import { overviewCopy } from "../../lib/console/overview-copy";
@@ -25,7 +26,8 @@ export function SessionHistory({ siteAgentId, locale = activeLocale() }: { siteA
   const outcomes = overviewCopy(locale).status;
   function statusLabel(fact: EffectRunFact) {
     if (fact.status === "cancelled") return copy.cancelled;
-    return outcomes[fact.outcomeStatus as keyof typeof outcomes] || outcomes.unknown;
+    const label = outcomes[fact.outcomeStatus as keyof typeof outcomes] || outcomes.unknown;
+    return fact.status === "failed" && fact.failureClass ? `${label} · ${failureAttributionLabel(locale, fact.failureClass, fact.failureStage)}` : label;
   }
   function shortTime(value: string) {
     if (!value || !Number.isFinite(Date.parse(value))) return "—";

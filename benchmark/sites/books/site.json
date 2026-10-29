@@ -1,0 +1,14 @@
+{
+  "id": "bench-books",
+  "name": "Books to Scrape (benchmark mirror)",
+  "kind": "mirror",
+  "internalUrl": "http://books.bench:8101/",
+  "hostUrl": "http://localhost:8101/",
+  "mirror": {
+    "source": "https://books.toscrape.com/",
+    "marker": "Books to Scrape"
+  },
+  "crawl": {
+    "limits": { "maxRenders": 80 }
+  }
+}

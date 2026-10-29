@@ -1,0 +1,37 @@
+[
+  {
+    "id": "sauce-cheapest-after-login",
+    "startUrl": "/",
+    "goal": "Log in with the standard user shown on the page and tell me the cheapest product and its price",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{cheapest.name}}", "{{cheapest.price}}"] },
+    "reuse": {
+      "goal": "Log in with the standard user shown on the page and tell me the most expensive product and its price",
+      "expect": { "type": "answer-contains", "facts": ["{{mostExpensive.name}}", "{{mostExpensive.price}}"] }
+    }
+  },
+  {
+    "id": "sauce-add-backpack",
+    "startUrl": "/",
+    "goal": "Log in as the standard user and add the {{products.5.name}} to the cart",
+    "locale": "en-US",
+    "kind": "action",
+    "generates": true,
+    "expect": { "type": "site-state", "probe": { "url": "/cart.html", "contains": ["{{products.5.name}}"], "count": { "selector": ".cart_item", "equals": 1 } } },
+    "reuse": {
+      "goal": "Log in as the standard user and add the {{products.1.name}} to the cart",
+      "expect": { "type": "site-state", "probe": { "url": "/cart.html", "contains": ["{{products.1.name}}"], "count": { "selector": ".cart_item", "equals": 1 } } }
+    }
+  },
+  {
+    "id": "sauce-product-count",
+    "startUrl": "/",
+    "goal": "How many products are listed once I log in as standard_user?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": false,
+    "expect": { "type": "answer-contains", "facts": ["{{productCount}}"] }
+  }
+]

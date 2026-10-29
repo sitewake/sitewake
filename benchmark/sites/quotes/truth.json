@@ -1,0 +1,36 @@
+{
+  "computedAt": "2026-10-28T04:47:06.226Z",
+  "total": 100,
+  "humorCount": 12,
+  "tagCounts": {
+    "humor": 12,
+    "life": 13,
+    "love": 14,
+    "inspirational": 13
+  },
+  "topTags": [
+    "love",
+    "inspirational",
+    "life",
+    "humor",
+    "books",
+    "reading",
+    "friendship",
+    "friends",
+    "truth",
+    "simile"
+  ],
+  "einstein": {
+    "count": 10,
+    "fragments": [
+      "The world as we have created it is a process of our thinking",
+      "There are only two ways to live your life",
+      "Try not to become a man of success"
+    ]
+  },
+  "sunshine": {
+    "author": "Steve Martin",
+    "text": "A day without sunshine is like, you know, night."
+  },
+  "authorCount": 50
+}

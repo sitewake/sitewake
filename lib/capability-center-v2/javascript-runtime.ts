@@ -857,8 +857,24 @@ function stripJavaScriptCommentsAndLiterals(source: string) {
 }
 
 export type JavaScriptModuleValidation =
-  | { ok: true }
+  | { ok: true; notes?: CapabilityQualityNote[] }
   | { ok: false; code: string; message: string };
+
+/** A quality rule's finding that is recorded with the version and does not block it. */
+export type CapabilityQualityNote = { code: string; message: string };
+
+/**
+ * Checks that block nothing any more. A check earns the right to block by a
+ * recorded module it refuses or a benchmark failure it produced
+ * (benchmark/GATES.md); these had neither and refused runs the demonstration
+ * had already proved. Their finding is kept as a note on the version.
+ */
+export const DEMOTED_CHECKS: Record<string, string> = {
+  // The verify stage of "the cheapest book in a category" computed its output
+  // from the elements it listed; the resolver could not trace a value through
+  // sort/reduce and failed closed, three times out of three in the benchmark.
+  capability_module_output_provenance_unknown: "the output of a verify stage could not be traced to a page source by static reading",
+};
 
 /**
  * Return the number of statically visible reads of one public input path.
@@ -1074,6 +1090,8 @@ export function validateCapabilityJavaScriptSource(
     }
     return { ok: true };
   }
+  // Findings of demoted checks (DEMOTED_CHECKS): recorded, not refused.
+  const notes: CapabilityQualityNote[] = [];
   if (/(?:^|[\s("'`])(?:button|a|input|select|textarea|\*)\s*\[\s*role\s*=|\[\s*role\s*=\s*["'](?:button|link)["']/iu.test(normalized)) {
     return { ok: false, code: "capability_module_computed_aria_selector_forbidden", message: "get_dom roles are computed accessibility metadata; use real HTML elements and semantic text instead of CSS role attributes" };
   }
@@ -1408,18 +1426,17 @@ export function validateCapabilityJavaScriptSource(
       for (const entry of entries) {
         const provenance = resolver.resolve(entry.expression);
         if (provenance === "ok") continue;
-        return {
-          ok: false,
+        notes.push({
           code: `capability_module_output_provenance_unknown:${entry.key}`,
           message: provenance === "blob"
             ? `output.${entry.key} is cut out of the text of the whole document or dialog. Read it from the element that carries it — a heading, a link, a cell — via querySelector/closest on the result container, or from state.targets.__actedOn when it is the acted-on identity; a number may be parsed out of the text with parseInt/Number. When the page does not provide it, return NoResult`
             : `output.${entry.key} cannot be traced to anything the page provides (expression: ${entry.expression.slice(0, 80)}). Accepted sources: a located element's textContent/innerText/href/value/getAttribute/dataset, location.href, state.*, input.*, a literal, and trim/replace/slice/split/parseInt/Number or a regular-expression capture applied to one of those. When the page does not provide it, return NoResult`,
-        };
+        });
       }
     }
   }
   if (/\/\/[#@]\s*sourceMappingURL=/i.test(normalized)) return { ok: false, code: "capability_module_source_map_forbidden", message: "source maps are not published with capability modules" };
-  return { ok: true };
+  return notes.length ? { ok: true, notes } : { ok: true };
 }
 
 export async function capabilityModuleHash(source: string) {

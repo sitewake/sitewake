@@ -1,3 +1,7 @@
+import { capabilityUrlHas } from "../../lib/capability-center-v2/entry-page";
+// The shared address test, under the name this module's callers know.
+export { capabilityUrlHas as capabilityUrlIncludes } from "../../lib/capability-center-v2/entry-page";
+import { checkPreconditions, evaluateSuccessConditions, resolveCapabilityInput } from "../../lib/capability-center-v2/run-resolution";
 import { assertCapabilityOutput } from "../../lib/site-knowledge/capability-output";
 import type { Locator, Page } from "playwright";
 import { getModelConfig } from "../../lib/model-config";
@@ -260,7 +264,7 @@ async function urlConditionSatisfied(page: Page, snapshot: { url: string }, cond
   const value = object(condition);
   const type = String(value.type || "");
   if (type === "urlIncludes") {
-    return capabilityUrlIncludes(snapshot.url, String(value.value || "")) || await selectedInputMatchesUrlCondition(page, condition, input);
+    return capabilityUrlHas(snapshot.url, String(value.value || "")) || await selectedInputMatchesUrlCondition(page, condition, input);
   }
   if (type === "urlTemplate") {
     return capabilityUrlTemplateMatches(snapshot.url, value.template, input.parameters) || await selectedInputMatchesUrlCondition(page, condition, input);
@@ -1744,20 +1748,6 @@ function finalizeGroundingExamples(parameters: PlannedParameter[], examples: Arr
   return [...ordinary.slice(0, Math.max(1, limit - omissions.length)), ...omissions].slice(0, limit);
 }
 
-/** Match a URL condition against both its wire form and a decoded form. The
- * browser exposes Unicode query values as percent-encoded URLs while models
- * naturally author conditions with the visible text (for example
- * `category=出行`). */
-export function capabilityUrlIncludes(url: string, expected: string) {
-  const decoded = (() => {
-    try { return decodeURIComponent(url); } catch { return url; }
-  })();
-  const expectedDecoded = (() => {
-    try { return decodeURIComponent(expected); } catch { return expected; }
-  })();
-  return [url, decoded].some((candidate) => [expected, expectedDecoded].some((needle) => candidate.includes(needle)));
-}
-
 function groundingValueHasEvidence(parameter: PlannedParameter, value: JsonValue, demonstration: JsonValue, evidenceText: string) {
   if (value === demonstration) return true;
   // Route, product, category and search inputs are business entities. A
@@ -2056,11 +2046,16 @@ export function cleanParameterPlan(raw: Record<string, unknown>, goal: string, i
   };
 }
 
-function assertGoalTargetGrounded(plan: ParameterPlan, goal: string, demonstrationEvidence = "") {
+export function assertGoalTargetGrounded(plan: ParameterPlan, goal: string, demonstrationEvidence = "") {
   const inferred = inferGoalFacet(goal);
   if (!inferred) return;
   const target = plan.parameters.find((parameter) => targetIdentityPath(parameter.name));
   if (!target) return;
+  // "Brown bear cushion" is a name, not a brown cushion. When the
+  // demonstration's own evidence shows the whole phrase, the colour word is
+  // part of the target and there is no separate facet to ground; refusing
+  // here ended every add-to-cart generation on that shop.
+  if (demonstrationEvidence && comparableText(demonstrationEvidence).includes(comparableText(`${inferred.modifier} ${inferred.noun}`))) return;
   const mapped = plan.inputAliases?.[target.name]?.[inferred.noun];
   // The canonical term must be learned from this demonstration's observed
   // target region. Do not maintain a site/product-specific noun dictionary:
@@ -2719,7 +2714,7 @@ export function alignSuccessConditionsToEvidence(value: unknown, plan: Parameter
     // proved the business result through text or signal evidence.
     if (!template.trim()) return false;
     const parameterized = /\{\{\s*[\p{L}_][\p{L}\p{N}_.-]*\s*\}\}/u.test(template);
-    if (type === "urlIncludes") return capabilityUrlIncludes(evidenceUrl, template);
+    if (type === "urlIncludes") return capabilityUrlHas(evidenceUrl, template);
     if (!parameterized) return capabilityUrlTemplateMatches(evidenceUrl, template, input);
     return capabilityUrlTemplateMatches(evidenceUrl, template, input);
   });
@@ -3120,6 +3115,19 @@ function repairPressAction(action: ExplorerAction, input: CapabilityTaskInput): 
   if (keyboardPressKey(action.key)) return { ...action, inputPath: undefined, value: undefined };
   if (action.inputPath) return { ...action, action: "fill", key: undefined };
   return { ...action, action: "fail", reason: "model_press_key_invalid" };
+}
+
+/**
+ * An `extract` that names no element is the model reading a value off the
+ * page — a result count, a heading — rather than acting on it. The page it
+ * is on is the demonstration's result, and the authoring stage reads such
+ * values from the page itself; the explorer used to end the whole generation
+ * on it (`exploration_element_invalid`, reported as `page_changed`), six
+ * times out of six in the benchmark.
+ */
+export function extractWithoutElementAsDone(action: ExplorerAction): ExplorerAction {
+  if (action.action !== "extract" || action.index !== undefined) return action;
+  return { action: "done", reason: action.reason || `extract_without_element:${action.saveAs || "value"}` };
 }
 
 export function groundExplorerAction(action: ExplorerAction, snapshot: Awaited<ReturnType<typeof inspectPage>>, input: CapabilityTaskInput): ExplorerAction {
@@ -3678,6 +3686,7 @@ export async function exploreCapability(page: Page, goal: string, startUrl: stri
       }
     }
     let action = freshSignals.length ? proposedAction : overrideRepeatedAction(groundedAction, snapshot, history);
+    action = extractWithoutElementAsDone(action);
     const searchGuarded = guardSearchResultDetailClick(action, snapshot, goal, effectiveInput, history);
     if (searchGuarded !== action) {
       action = searchGuarded;
@@ -3977,17 +3986,6 @@ function renderInputTemplate(template: unknown, input: CapabilityTaskInput) {
  * raw caller input, but render URL/text assertions with the contract aliases
  * that the authoring stage discovered (for example `衣服` -> `Clothes`).
  */
-function inputForContractConditions(contract: CapabilityContract | undefined, input: CapabilityTaskInput): CapabilityTaskInput {
-  if (!contract?.inputAliases || !Object.keys(contract.inputAliases).length) return input;
-  const parameters = { ...input.parameters };
-  for (const [parameter, aliases] of Object.entries(contract.inputAliases)) {
-    const value = parameters[parameter];
-    if (typeof value !== "string") continue;
-    const mapped = aliases[value];
-    if (typeof mapped === "string" && mapped.length) parameters[parameter] = mapped;
-  }
-  return { ...input, parameters };
-}
 
 export function renderCapabilityGoal(goal: string, contract: CapabilityContract | undefined, input: CapabilityTaskInput) {
   return contract?.intent ? renderInputTemplate(contract.intent, input) : goal;
@@ -3995,17 +3993,10 @@ export function renderCapabilityGoal(goal: string, contract: CapabilityContract 
 
 export async function evaluatePreconditions(page: Page, contract: CapabilityContract | undefined, input: CapabilityTaskInput) {
   if (!contract?.preconditions.length) return;
-  const conditionInput = inputForContractConditions(contract, input);
+  // The same judgement the widget makes on the same page facts.
   const snapshot = await inspectPage(page);
-  for (const raw of contract.preconditions) {
-    if (typeof raw === "string" && !capabilityTextIncludes(snapshot.text, raw)) throw new EvaluationError("BusinessRejection", `precondition_text_missing:${raw}`);
-    const condition = object(raw); const type = String(condition.type || "");
-    if (type === "urlIncludes" && !capabilityUrlIncludes(snapshot.url, String(condition.value || ""))) throw new EvaluationError("BusinessRejection", "precondition_url_mismatch");
-    if (type === "urlTemplate" && !capabilityUrlTemplateMatches(snapshot.url, condition.template, conditionInput.parameters)) throw new EvaluationError("BusinessRejection", "precondition_url_mismatch");
-    if (type === "textIncludes" && !capabilityTextIncludes(snapshot.text, condition.value)) throw new EvaluationError("BusinessRejection", "precondition_text_missing");
-    if (type === "textTemplate" && !capabilityTextIncludes(snapshot.text, renderInputTemplate(condition.template, conditionInput))) throw new EvaluationError("BusinessRejection", "precondition_text_missing");
-    if (type === "inputExists" && pathValue(input.parameters, String(condition.path || "")) === undefined) throw new EvaluationError("BusinessRejection", "precondition_input_missing");
-  }
+  const failures = checkPreconditions(contract, { url: snapshot.url, text: snapshot.text }, resolveCapabilityInput(contract, input.parameters));
+  if (failures.length) throw new EvaluationError("BusinessRejection", failures[0].code);
 }
 
 async function judgeGoal(page: Page, goal: string, conditions: JsonValue[], observer?: ExplorationObserver) {
@@ -4029,39 +4020,24 @@ export function validateCapabilityResultOutput(contract: CapabilityContract | un
 export async function evaluateResult(page: Page, goal: string, contract: CapabilityContract | undefined, output: JsonObject, input: CapabilityTaskInput = { parameters: {}, context: {}, interactions: [], trigger: {} }, observer?: ExplorationObserver, observedText?: string) {
   validateCapabilityResultOutput(contract, output);
   const conditions = contract?.successConditions || [];
-  const conditionInput = inputForContractConditions(contract, input);
+  const resolved = resolveCapabilityInput(contract, input.parameters);
+  const conditionInput = { ...input, parameters: resolved.site };
   const snapshot = await inspectForContractText(page, conditions, conditionInput, 2_000, observedText);
-  // The same judgement the deterministic check and the execution runtime make:
-  // an output and an address are facts about the run, page text is a fact about
-  // a world that moves. Unmet text is reported, not charged.
-  const unmetText: string[] = [];
-  for (const raw of conditions) {
-    if (typeof raw === "string") {
-      if (!capabilityTextIncludes(snapshot.text, raw)) unmetText.push(raw);
-      continue;
-    }
-    const condition = object(raw); const type = String(condition.type || "");
-    if ((type === "urlIncludes" || type === "urlTemplate") && !await urlConditionSatisfied(page, snapshot, condition as JsonValue, conditionInput)) throw new EvaluationError("BusinessRejection", "success_url_mismatch");
-    if (type === "textIncludes" && !capabilityTextIncludes(snapshot.text, condition.value)) unmetText.push(String(condition.value || ""));
-    if (type === "textTemplate") {
-      const rendered = renderInputTemplate(condition.template, conditionInput);
-      if (!capabilityTextIncludes(snapshot.text, rendered)) unmetText.push(rendered);
-    }
-    // `!==` was an outlier: every other comparison in this file normalizes
-    // before deciding, and this one compared identity. A page that reads its
-    // number back as text ("4" against 4), a full-width digit, a trailing
-    // space — each failed a capability that had done exactly what was asked,
-    // and an array or object value could never pass at all, since two of them
-    // are never identical.
-    if (type === "outputEquals" && !expectedValuesEqual(pathValue(output, String(condition.path || "")), condition.value)) throw new EvaluationError("BusinessRejection", "success_output_mismatch");
-    if (type === "outputExists" && pathValue(output, String(condition.path || "")) === undefined) throw new EvaluationError("BusinessRejection", "success_output_missing");
+  // One judgement for every host (lib/capability-center-v2/run-resolution):
+  // an output and an address are facts about the run, page text is a fact
+  // about a world that moves. Unmet text is reported, not charged. An address
+  // the page writes differently from its selected option is this host's one
+  // extra leniency, applied only after the shared judgement said no.
+  const verdict = evaluateSuccessConditions(contract, { url: snapshot.url, text: snapshot.text, output }, resolved);
+  for (const failure of verdict.failures) {
+    if (failure.code === "success_url_mismatch" && await selectedInputMatchesUrlCondition(page, failure.condition, conditionInput)) continue;
+    throw new EvaluationError("BusinessRejection", failure.code);
   }
-  const requiresModel = conditions.length === 0 || conditions.some((condition) => typeof condition === "object" && String(object(condition).type || "") === "modelGoal");
-  if (requiresModel) {
+  if (verdict.needsModelJudge) {
     const verified = await judgeGoal(page, renderCapabilityGoal(goal, contract, input), conditions, observer);
     if (!verified.success) throw new EvaluationError(verified.outcome, verified.reason);
   }
-  return { success: true as const, ...(unmetText.length ? { unmetTextConditions: unmetText } : {}) };
+  return { success: true as const, ...(verdict.unmetText.length ? { unmetTextConditions: verdict.unmetText } : {}) };
 }
 
 /**
@@ -4076,36 +4052,25 @@ export async function evaluateResultDeterministic(
   observedText?: string,
 ) {
   validateCapabilityResultOutput(contract, output);
-  const conditionInput = inputForContractConditions(contract, input);
-  // What the capability produced and where it ended up are facts about the run.
-  // What the page reads at this instant is a fact about the world, and the
-  // world moves: a board renumbers between opening a topic and reading it, a
-  // day's figures update, a banner rotates. An unmet text condition is
-  // reported with the result and the same judgement is made at execution time;
-  // output and address conditions still decide.
-  const unmetText: string[] = [];
-  for (const raw of contract?.successConditions || []) {
-    if (typeof raw === "string") {
-      if (!capabilityTextIncludes((await inspectForContractText(page, contract?.successConditions || [], conditionInput, 2_000, observedText)).text, raw)) unmetText.push(raw);
-      continue;
-    }
-    const condition = object(raw); const type = String(condition.type || "");
+  const conditions = contract?.successConditions || [];
+  const resolved = resolveCapabilityInput(contract, input.parameters);
+  const conditionInput = { ...input, parameters: resolved.site };
+  for (const raw of conditions) {
+    const type = typeof raw === "string" ? "textIncludes" : String(object(raw).type || "");
     if (!["urlIncludes", "urlTemplate", "textIncludes", "textTemplate", "inputExists", "outputEquals", "outputExists"].includes(type)) {
       throw new EvaluationError("BusinessRejection", `deterministic_condition_unsupported:${type || "unknown"}`);
     }
-    const snapshot = await inspectForContractText(page, contract?.successConditions || [], conditionInput, 2_000, observedText);
-    if ((type === "urlIncludes" || type === "urlTemplate") && !await urlConditionSatisfied(page, snapshot, condition as JsonValue, conditionInput)) throw new EvaluationError("BusinessRejection", "success_url_mismatch");
-    if (type === "textIncludes" && !capabilityTextIncludes(snapshot.text, condition.value)) throw new EvaluationError("BusinessRejection", `success_text_missing:${String(condition.value || "")}`);
-    if (type === "textTemplate" && !capabilityTextIncludes(snapshot.text, renderInputTemplate(condition.template, conditionInput))) throw new EvaluationError("BusinessRejection", `success_text_missing:${renderInputTemplate(condition.template, conditionInput)}`);
-    if (type === "inputExists" && pathValue(input.parameters, String(condition.path || "")) === undefined) throw new EvaluationError("BusinessRejection", "success_input_missing");
-    // `!==` was an outlier: every other comparison in this file normalizes
-    // before deciding, and this one compared identity. A page that reads its
-    // number back as text ("4" against 4), a full-width digit, a trailing
-    // space — each failed a capability that had done exactly what was asked,
-    // and an array or object value could never pass at all, since two of them
-    // are never identical.
-    if (type === "outputEquals" && !expectedValuesEqual(pathValue(output, String(condition.path || "")), condition.value)) throw new EvaluationError("BusinessRejection", "success_output_mismatch");
-    if (type === "outputExists" && pathValue(output, String(condition.path || "")) === undefined) throw new EvaluationError("BusinessRejection", "success_output_missing");
   }
+  const snapshot = await inspectForContractText(page, conditions, conditionInput, 2_000, observedText);
+  // The shared judgement (lib/capability-center-v2/run-resolution). Validation
+  // has no model to fall back on, so here an unmet text condition fails the
+  // case — recorded with the text that was missing, as the generation spec
+  // asks — where the widget only reports it.
+  const verdict = evaluateSuccessConditions(contract, { url: snapshot.url, text: snapshot.text, output }, resolved);
+  for (const failure of verdict.failures) {
+    if (failure.code === "success_url_mismatch" && await selectedInputMatchesUrlCondition(page, failure.condition, conditionInput)) continue;
+    throw new EvaluationError("BusinessRejection", failure.code);
+  }
+  if (verdict.unmetText.length) throw new EvaluationError("BusinessRejection", `success_text_missing:${verdict.unmetText[0]}`);
   return { success: true as const };
 }

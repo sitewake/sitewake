@@ -1,0 +1,102 @@
+[
+  {
+    "id": "ps-search-count",
+    "startUrl": "/",
+    "goal": "Search for mugs and tell me how many products come up",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{search.mug}}"] },
+    "reuse": {
+      "goal": "Search for cushions and tell me how many products come up",
+      "expect": { "type": "answer-contains", "facts": ["{{search.cushion}}"] }
+    }
+  },
+  {
+    "id": "ps-add-cushion",
+    "startUrl": "/",
+    "goal": "Add the {{products.brownBearCushion}} to my cart",
+    "locale": "en-US",
+    "kind": "action",
+    "generates": true,
+    "expect": { "type": "site-state", "probe": { "url": "/cart?action=show", "contains": ["{{products.brownBearCushion}}"], "count": { "selector": ".cart-item", "equals": 1 } } },
+    "reuse": {
+      "goal": "Add the {{products.mountainFoxCushion}} to my cart",
+      "expect": { "type": "site-state", "probe": { "url": "/cart?action=show", "contains": ["{{products.mountainFoxCushion}}"], "count": { "selector": ".cart-item", "equals": 1 } } }
+    }
+  },
+  {
+    "id": "ps-add-mug-quantity",
+    "startUrl": "/",
+    "goal": "Put 2 of the \"{{products.bestMug}}\" in my cart",
+    "locale": "en-US",
+    "kind": "action",
+    "generates": true,
+    "expect": { "type": "site-state", "probe": { "url": "/cart?action=show", "contains": ["{{products.bestMug}}"], "count": { "selector": ".cart-item", "equals": 1 }, "value": { "selector": "input.js-cart-line-product-quantity", "attribute": "value", "equals": "2" } } },
+    "reuse": {
+      "goal": "Put 3 of the \"{{products.bestMug}}\" in my cart",
+      "expect": { "type": "site-state", "probe": { "url": "/cart?action=show", "contains": ["{{products.bestMug}}"], "count": { "selector": ".cart-item", "equals": 1 }, "value": { "selector": "input.js-cart-line-product-quantity", "attribute": "value", "equals": "3" } } }
+    }
+  },
+  {
+    "id": "ps-open-detail-price",
+    "startUrl": "/",
+    "goal": "Open the {{products.tshirt}} and tell me its price",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{products.tshirtPrice}}"] },
+    "reuse": {
+      "goal": "Open the {{products.sweater}} and tell me its price",
+      "expect": { "type": "answer-contains", "facts": ["{{products.sweaterPrice}}"] }
+    }
+  },
+  {
+    "id": "ps-category-count",
+    "startUrl": "/",
+    "goal": "How many products are in the Art category?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{categories.art.count}}"] },
+    "reuse": {
+      "goal": "How many products are in the Accessories category?",
+      "expect": { "type": "answer-contains", "facts": ["{{categories.accessories.count}}"] }
+    }
+  },
+  {
+    "id": "ps-cheapest-accessory",
+    "startUrl": "/",
+    "goal": "What's the cheapest item in Accessories, and how much is it?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{categories.accessories.cheapest.name}}", "{{categories.accessories.cheapest.price}}"] },
+    "reuse": {
+      "goal": "What's the cheapest item in Clothes, and how much is it?",
+      "expect": { "type": "answer-contains", "facts": ["{{categories.clothes.cheapest.name}}", "{{categories.clothes.cheapest.price}}"] }
+    }
+  },
+  {
+    "id": "ps-search-no-result",
+    "startUrl": "/",
+    "goal": "Search for a unicorn lamp",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": false,
+    "expect": { "type": "answer-matches", "patterns": ["no (products|results|items|matches)", "(0|zero|no) (products|results)", "nothing (found|matched)", "couldn't find|could not find|not (available|found|sold)"] }
+  },
+  {
+    "id": "ps-add-notebook-zh",
+    "startUrl": "/",
+    "goal": "帮我把 {{products.brownBearNotebook}} 加入购物车",
+    "locale": "zh-CN",
+    "kind": "action",
+    "generates": true,
+    "expect": { "type": "site-state", "probe": { "url": "/cart?action=show", "contains": ["{{products.brownBearNotebook}}"], "count": { "selector": ".cart-item", "equals": 1 } } },
+    "reuse": {
+      "goal": "帮我把 {{products.brownBearCushion}} 加入购物车",
+      "expect": { "type": "site-state", "probe": { "url": "/cart?action=show", "contains": ["{{products.brownBearCushion}}"], "count": { "selector": ".cart-item", "equals": 1 } } }
+    }
+  }
+]

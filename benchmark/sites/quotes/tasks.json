@@ -1,0 +1,46 @@
+[
+  {
+    "id": "quotes-tag-count",
+    "startUrl": "/",
+    "goal": "How many quotes are tagged 'humor'?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{tagCounts.humor}}"] },
+    "reuse": {
+      "goal": "How many quotes are tagged 'life'?",
+      "expect": { "type": "answer-contains", "facts": ["{{tagCounts.life}}"] }
+    }
+  },
+  {
+    "id": "quotes-by-author",
+    "startUrl": "/",
+    "goal": "Show me Albert Einstein's quotes",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": true,
+    "expect": { "type": "answer-contains", "facts": ["{{einstein.fragments.0}}", "{{einstein.fragments.1}}"] },
+    "reuse": {
+      "goal": "Show me Steve Martin's quotes",
+      "expect": { "type": "answer-contains", "facts": ["{{sunshine.text}}"] }
+    }
+  },
+  {
+    "id": "quotes-who-said",
+    "startUrl": "/",
+    "goal": "Who said \"{{sunshine.text}}\"?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": false,
+    "expect": { "type": "answer-contains", "facts": ["{{sunshine.author}}"] }
+  },
+  {
+    "id": "quotes-top-tags",
+    "startUrl": "/",
+    "goal": "What are the top tags on this site?",
+    "locale": "en-US",
+    "kind": "answer",
+    "generates": false,
+    "expect": { "type": "answer-contains", "facts": ["{{topTags.0}}", "{{topTags.1}}", "{{topTags.2}}"] }
+  }
+]

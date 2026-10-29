@@ -33,6 +33,18 @@ npm run test:deploy-contract
 
 `npm test` runs the broader suite. `npm run test:public` is the release gate — the same suite minus the files listed in `scripts/test-public.mjs`, which are known to fail today and are being fixed separately; a PR must keep it green. Some integration and real-model suites have separate commands in `package.json`. Include failing checks in the PR description; do not describe unrun or mocked checks as real-model validation.
 
+### Changes to the capability module
+
+A change under `lib/capability-center-v2/`, `runner/capability-v2/`, the capability routes in `app/api/`, or the capability parts of `client/user-agent-port.ts` is judged by the benchmark, not by a single live question. Run it before and after the change on the local stack and put the comparison in the PR:
+
+```sh
+npm run benchmark:up                      # once; re-runnable
+npm run benchmark                         # full run, or -- --quick for the 10-task subset
+node scripts/benchmark/compare.mjs .artifacts/benchmark/runs/<before>/report.json .artifacts/benchmark/runs/<after>/report.json
+```
+
+The PR description carries the comparison's rate table and its regressions/fixed/unstable lists. A rate that fell blocks the merge; an unstable task (differs between two runs of one build) needs a line explaining why. `benchmark/README.md` describes the sites, the task format and the report.
+
 ## Names
 
 The product is **SiteWake**, and every identifier a user or operator sees carries that name:
