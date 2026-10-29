@@ -202,7 +202,12 @@ function uniquePaths(values: string[]) {
 export const ACTED_ON_STATE_PATH = "targets.__actedOn";
 const ACTED_ON_ACTIONS = ["click", "check", "press"];
 // Elements that change the chosen object rather than name it.
-const CONTROL_SELECTOR = "button, input, select, textarea, label, option, [role=button], [role=radio], [role=checkbox], [role=option], [role=switch], [role=tab], [role=menuitemradio], [role=spinbutton]";
+const CONTROL_SELECTOR = "button, input, select, textarea, label, option, [role=button], [role=radio], [role=checkbox], [role=option], [role=switch], [role=tab], [role=menuitemradio], [role=spinbutton], [rel=next], [rel=prev], [rel=previous], .pagination a, .pager a, nav[aria-label*=pagination i] a, [aria-label*=next page i], [aria-label*=previous page i]";
+// A link that turns the page is a control too, whatever the site calls it:
+// "Count quotes by tag" turned to page 2 of the tag, the seed took "Next →"
+// for the object it had acted on, and the verify stage refused page 2 of
+// the tag for not being "humor". Source text, as the seed is written out.
+const PAGING_NAME_PATTERN = "/^(?:next|previous|prev|more|load more|show more|»|›|«|‹|→|←|\\d+)\\s*(?:[»›→←]|page)?$/iu";
 
 function stageIO(readsInput: string[], readsState: string[] = [], writesState: string[] = [], writesOutput: string[] = []): CapabilityStageIO {
   return {
@@ -625,7 +630,7 @@ export function seedCapabilitySource(manifest: ReturnType<typeof authoringManife
       // own correct result.
       const namesObject = step === firstActedOnStep
         ? "true"
-        : `!element.closest(${JSON.stringify(CONTROL_SELECTOR)})`;
+        : `!element.closest(${JSON.stringify(CONTROL_SELECTOR)}) && !${PAGING_NAME_PATTERN}.test((nameOf(element) || element.innerText || "").trim())`;
       return `${header}
       async run({ input, waitForTarget, waitUntil, settle, keep, nameOf }) {
         void input;

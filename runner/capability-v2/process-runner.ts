@@ -59,6 +59,7 @@ import { projectCapabilityContract } from "../../lib/capability-center-v2/semant
 import { runCapabilityCaseGeneration } from "./case-generation";
 import {
   capabilityCandidateHash,
+  offeredInputPaths,
   parseCapabilityCaseDiscoveryEvidenceSidecar,
 } from "../../lib/capability-center-v2/case-generation";
 
@@ -498,7 +499,15 @@ async function performCandidateValidation(
       // 关键词搜不到条目」 are the capability working, not the program failing.
       // The case is recorded with what it said, and the review turn reads it.
       // A capability that never worked for any input is still refused, below.
-      if (replayed.outcome === "NoResult") {
+      // Except for a value the site lists beside the demonstrated one: the
+      // category list says Mystery is a category, so a count that finds no
+      // category for it has not answered, it has failed — and used to be
+      // published on the demonstration alone, to answer every other category
+      // with the demonstrated page.
+      const offered = replayed.outcome === "NoResult"
+        ? offeredInputPaths(caseInput.parameters, parsedEvidence.value.regions)
+        : [];
+      if (replayed.outcome === "NoResult" && !offered.length) {
         validationResults.push({
           caseId: testCase.caseId,
           resolvedInput: caseInput.parameters,
@@ -535,6 +544,11 @@ async function performCandidateValidation(
           { caseId: testCase.caseId, ai: false, failed: true, reason },
         );
       };
+      if (replayed.outcome === "NoResult") {
+        const path = offered[0];
+        await recordFailure(`no_result_for_offered_input:${path}=${JSON.stringify(caseInput.parameters[path])}:${replayed.reason || "no_result"}`);
+        continue;
+      }
       if (replayed.outcome !== "Success") {
         await recordFailure(replayed.reason || replayed.outcome);
         continue;

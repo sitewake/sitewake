@@ -202,6 +202,73 @@ three times (`ps-cheapest-accessory`); a verify stage waiting for
 after a write it did not declare (`ps-add-cushion`); a validation that
 produced no result (`ps-open-detail-price`).
 
+## Iteration 3 — validation cases come from the list the demonstrated value was chosen from
+
+Measured on build `f3c6566b` (iteration 2 plus the first two changes
+below), run `2026-10-28T11-36-16`, re-judged with the current checker.
+
+- The case harvest scored product cards and penalised navigation, so the
+  category list "Poetry" sits in never became a region; the cases for the
+  category input were drawn from the first card instead. The harvest now
+  keeps, ahead of everything else, the list each demonstrated value is found
+  in, as the page lays it out (`choice-list`), the derivation takes that
+  list's other items as the cases, and the suggestions beside the
+  demonstration are that list and nothing else.
+- The demonstrated case finding nothing fails validation when the visitor's
+  run found a result.
+- After the run: of the lists that show the value, the one with the most
+  choices (on a category page the breadcrumb also names the category, and
+  came first: the cases were "Home" and "Books"); a case that finds nothing
+  for a value the site lists beside the demonstrated one is a failed case and
+  the floor rejects on it; a link that turns the page is a control, not the
+  object acted on.
+
+| Rate | Iteration 2 (`e7ccffa9`) | Iteration 3 (`f3c6566b`) |
+| --- | --- | --- |
+| First ask | 14 / 18 (77.8%) | 15 / 18 (83.3%) |
+| Generation published | 1 / 9 (11.1%) | 3 / 9 (33.3%) |
+| Reuse | 1 / 1 | 0 / 2 |
+| Failures by class | gate-false-reject 4 · contradiction 3 · wrong-answer 3 · timeout 2 · model-protocol 1 | wrong-answer 4 · gate-false-reject 2 · contradiction 2 · timeout 2 · site-changed 1 · model-budget 1 |
+
+Published: `books-count-poetry` (its cases now "Travel", "Mystery", …),
+`books-price-named` (cases "Tipping the Velvet", "Soumission" — titles from
+the same list; all three passed), `ps-category-count`. The two reuse
+failures are the same defect: each published program opens the demonstrated
+category whatever the input, and its validation had seen it find nothing
+for the other categories and called that a result. The rule made after the
+run refuses exactly that; it turns those two publications into rejections
+with the reason named, and leaves the reuse ask to the page agent.
+`books-most-expensive-travel` was refused on its own Contract: a success
+condition `textIncludes "results."` written from the demonstrated page's
+wording, which the pages the cases reached do not carry — the next class on
+books. PrestaShop generations ended as in iteration 2 (two authoring budgets
+spent on the cart modal, one ambiguous target); `quotes-tag-count` ended on a
+page turn renamed as the acted-on object (fixed after the run, above);
+`quotes-by-author` spent 48 tool calls without writing a draft.
+
+**The iteration's head** (`f1f75a3e`, run `2026-10-28T12-54-49`, with the
+three changes made after the first run): first ask 14 / 18, generation
+2 / 12, reuse 1 / 1. `books-count-poetry` validated on Poetry, Travel and
+Mystery — all three passed — and its reuse ask for Mystery was answered
+through the capability in 19 s, the first reuse on books that a published
+program answered correctly. `books-price-named` validated on three titles
+from the same list. `ps-category-count`, which the first run had published
+to answer every category with the demonstrated one, was refused with the
+reason named (`no_result_for_offered_input:category="CLOTHES"`): the rate
+counts it as a loss, the visitor is better off. The denominator grew to 12
+because every passing first ask left a finished run record this time; the
+other nine ended on the classes already listed — the Contract's
+`textIncludes "results."` (`books-cheapest-travel`), the cart modal's wait
+and the authoring budget on PrestaShop, an ambiguous target, a page turn
+(the fix for it is in this head but `quotes-tag-count` failed three drafts
+on a different identity check), and `quotes-by-author`.
+
+**First-ask failures across the two runs** come from the page agent, not
+the module: `books-five-star-mystery` (one page of two, every run),
+`ps-search-count` (answered from the index), `books-cheapest-travel` (a
+different book), `ps-add-notebook-zh` (added nothing). They cap the visitor
+rate below 90% whatever the module does, and are the other half of the work.
+
 ## Live demo, 2026-10-22 → 2026-10-27 (for comparison)
 
 Not a benchmark run: the demo console's own records over the days the fixes

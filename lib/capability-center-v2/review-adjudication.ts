@@ -29,6 +29,10 @@ export const REVIEW_REJECTION_UNSUBSTANTIATED =
 
 /** Deterministic rejections, ahead of any model; details travel beside them on the event. */
 export const REVIEW_DEMONSTRATION_CASE_FAILED = "review rejected: the demonstrated input's case did not pass";
+export const REVIEW_DEMONSTRATION_CASE_NO_RESULT = "review rejected: the demonstrated input's case found nothing where the visitor's run found a result";
+export const REVIEW_OFFERED_INPUT_NO_RESULT = "review rejected: a case found nothing for a value the site lists beside the demonstrated one";
+/** The failure a validation case records when it found nothing for a value the site offers. */
+export const OFFERED_INPUT_NO_RESULT = /^no_result_for_offered_input:/u;
 export const REVIEW_NO_CASE_PASSED = "review rejected: no validation case passed";
 export const REVIEW_DEMONSTRATION_VALUE_LEAKED = "review rejected: a demonstrated value is written into the source";
 
@@ -93,10 +97,18 @@ export function classifyValidationCase(
  * The deterministic floor under any review: the demonstration's own case
  * passed, or, without one among the cases, some case did. Undefined when it
  * holds; otherwise the reason and the case it is about.
+ *
+ * A case that finds nothing is the capability answering, except for the
+ * demonstrated input of a run the visitor saw succeed: the site had the
+ * result in front of them, and a program that finds nothing there has not
+ * reproduced the demonstration. "Add product to cart" was proven with one
+ * cushion, reported "cart has no row matching" for it on replay, and was
+ * published on that.
  */
 export function validationCaseFloor(
   results: ValidationCaseResult[],
   demonstrationParameters?: Record<string, JsonValue>,
+  demonstrationOutcome?: "Success" | "NoResult",
 ): { reason: string; caseId?: string; failure?: string } | undefined {
   const demonstration = demonstrationParameters && Object.keys(demonstrationParameters).length
     ? results.find((item) => Object.entries(demonstrationParameters).every(([path, value]) => {
@@ -106,10 +118,20 @@ export function validationCaseFloor(
     : undefined;
   if (demonstration) {
     const outcome = classifyValidationCase(demonstration, demonstrationParameters).outcome;
-    return outcome === "Passed" || outcome === "NoResult"
-      ? undefined
-      : { reason: REVIEW_DEMONSTRATION_CASE_FAILED, caseId: demonstration.caseId, failure: firstLine(demonstration.failureReason) };
+    if (outcome === "NoResult" && demonstrationOutcome === "Success") {
+      return { reason: REVIEW_DEMONSTRATION_CASE_NO_RESULT, caseId: demonstration.caseId, failure: firstLine(demonstration.noResultReason) };
+    }
+    if (outcome !== "Passed" && outcome !== "NoResult") {
+      return { reason: REVIEW_DEMONSTRATION_CASE_FAILED, caseId: demonstration.caseId, failure: firstLine(demonstration.failureReason) };
+    }
   }
+  // A value the site lists beside the demonstrated one is a value the
+  // capability is for; nothing found for it is the program failing, whatever
+  // the other cases came to. "Count books in category" was published on
+  // Poetry alone and answered every other category with the Poetry page.
+  const offered = results.find((item) => OFFERED_INPUT_NO_RESULT.test(item.failureReason || ""));
+  if (offered) return { reason: REVIEW_OFFERED_INPUT_NO_RESULT, caseId: offered.caseId, failure: firstLine(offered.failureReason) };
+  if (demonstration) return undefined;
   return results.some((item) => classifyValidationCase(item, demonstrationParameters).outcome === "Passed")
     ? undefined
     : { reason: REVIEW_NO_CASE_PASSED };

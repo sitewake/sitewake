@@ -15,6 +15,7 @@ import {
   decodeC2CaseGenerationOutput,
   decodeCapabilityCaseModelOutput,
   deriveCapabilityCases,
+  offeredInputPaths,
   finalizeCapabilityCaseGeneration,
   mergeCapabilityCaseEnrichment,
   parseCapabilityCaseDiscoveryEvidenceSidecar,
@@ -970,6 +971,38 @@ test("a value written in a list takes the list's other items as its cases, one i
     { query: "Matte black", category: "US plug (Type A/B)" },
     { query: "Chalk white", category: "US plug (Type A/B)" },
   ]);
+});
+
+test("a value the harvest found in a list takes that list's other items as its cases, not the card beside it", async () => {
+  // "Poetry" sat in the catalogue's category list; the cases built for the
+  // category input took "In stock" and a book's title from the first product
+  // card, and the reviewer rejected a working program for what they came to.
+  const { input } = await setup();
+  addCategoryParameter(input, { cases: [{ input: {} }, { input: {} }] });
+  input.demonstrationParameters = { query: "Brass", category: "Poetry" };
+  const discovery = regionsFor(input, [
+    { observedValues: ["A Light in the ...", "£51.77", "In stock", "Add to basket", "Tipping the Velvet", "Brass"] },
+    { kind: "choice-list", observedValues: ["Travel", "Mystery", "Historical Fiction", "Poetry", "Science"] },
+  ]);
+  const derived = deriveCapabilityCases(input, discovery);
+  assert.deepEqual(derived.cases.map((item) => item.input), [
+    { query: "Brass", category: "Poetry" },
+    { query: "Brass", category: "Travel" },
+    { query: "Brass", category: "Mystery" },
+  ]);
+  assert.deepEqual(derived.cases[0].alternatives.category, ["Poetry", "Travel", "Mystery", "Historical Fiction", "Science"], "the suggestions beside the demonstration are the list's items and nothing else");
+  assert.ok(derived.cases.every((item) => !["In stock", "Tipping the Velvet"].includes(item.input.category)));
+});
+
+test("the inputs a case took from a list the page offers are named, and no others", async () => {
+  const { input } = await setup();
+  const discovery = regionsFor(input, [
+    { observedValues: ["A Light in the ...", "In stock", "Tipping the Velvet"] },
+    { kind: "choice-list", observedValues: ["Travel", "Mystery", "Poetry"] },
+  ]);
+  assert.deepEqual(offeredInputPaths({ category: "Mystery", query: "In stock" }, discovery.regions), ["category"], "a card's text is not a list of choices");
+  assert.deepEqual(offeredInputPaths({ category: "Attic" }, discovery.regions), []);
+  assert.deepEqual(offeredInputPaths({ category: "Mystery" }, []), []);
 });
 
 test("a defaulted optional input is left out by one case", async () => {
