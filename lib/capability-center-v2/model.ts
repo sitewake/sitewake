@@ -355,7 +355,8 @@ export type CapabilityPublishInput = {
   generationTaskId: string;
   validated: ValidatedCapabilityPackage;
   authorization:
-    | { mode: "AIApproved"; reviewId: string }
+    /** The validation verdict approved it; `reason` is the verdict's own words. */
+    | { mode: "Validated"; reason: string }
     | { mode: "AdminOverride"; adminId: string; reason: string };
 };
 
@@ -706,9 +707,15 @@ export type Capability = {
 };
 
 export type Review = {
+  /**
+   * The verdict on the validated version. Decided from the validation record
+   * since 2026-10-28 (`deterministic: true`); earlier records hold a model
+   * review's decision and the prompt that produced it.
+   */
   ai?: {
     status: "Pending" | "Reviewing" | "Approved" | "Rejected" | "Error";
     reason?: string;
+    deterministic?: boolean;
     promptKey?: string;
     promptVersion?: string;
     promptHash?: string;

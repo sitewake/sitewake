@@ -1,5 +1,6 @@
 import type { Browser, BrowserContextOptions, Page } from "playwright";
 import type {
+  JsonValue,
   C2CaseGenerationInput,
   CapabilityCaseDiscoveryEvidence,
   CapabilityCaseDiscoveryRegion,
@@ -52,6 +53,8 @@ export type CapabilityCaseDiscoverySnapshot = Omit<
 export type CapabilityCaseDiscoveryDependencies = {
   browser: Browser;
   storageState?: BrowserContextOptions["storageState"];
+  /** The start page as authoring harvested it; given, no browser is opened here. */
+  snapshot?: CapabilityCaseDiscoverySnapshot;
 };
 
 type RawRegion = {
@@ -618,6 +621,11 @@ export async function discoverCapabilityCaseEvidence(
   input: C2CaseGenerationInput,
   dependencies: CapabilityCaseDiscoveryDependencies,
 ): Promise<CapabilityCaseDiscoverySnapshot> {
+  // The page was read once, before authoring, and the authoring loop
+  // replayed on what it offered; case generation reads the same page.
+  if (dependencies.snapshot) {
+    return { ...dependencies.snapshot, generationTaskId: input.generationTaskId, siteId: input.siteId };
+  }
   const baseUrl = safeHttpUrl(input.browser.baseUrl);
   const startUrl = safeHttpUrl(input.browser.startUrl);
   if (startUrl.origin !== baseUrl.origin)
@@ -804,4 +812,45 @@ export async function discoverCapabilityCaseEvidence(
   } finally {
     await context.close();
   }
+}
+
+
+const sameText = (left: unknown, right: unknown) => typeof left === "string" && typeof right === "string"
+  && left.normalize("NFKC").trim().toLocaleLowerCase() === right.normalize("NFKC").trim().toLocaleLowerCase();
+
+/**
+ * The start page read once, before authoring: the lists the demonstrated
+ * values were chosen from ahead of the cards and the page summary, as the
+ * snapshot case generation reads instead of browsing again. `siblings` are
+ * the other items of each input's list — what the authoring loop replays
+ * the draft on, so a program that only works for the demonstrated value is
+ * found while the model can still fix it.
+ */
+export async function harvestStartPage(
+  page: Page,
+  input: { generationTaskId: string; siteId: string; parameters: Record<string, JsonValue> },
+): Promise<{ snapshot: CapabilityCaseDiscoverySnapshot; siblings: Record<string, JsonValue[]> }> {
+  const demonstrationValues = Object.values(input.parameters)
+    .filter((value): value is string => typeof value === "string" && Boolean(value.trim()));
+  const regions: CapabilityCaseDiscoveryRegion[] = [];
+  const actions: CapabilityCaseDiscoveryAction[] = [];
+  await appendPageRegions(page, regions, actions, demonstrationValues);
+  if (!regions.length) throw new Error("case_discovery_regions_required");
+  fitEvidenceBudget(regions);
+  const siblings: Record<string, JsonValue[]> = {};
+  for (const [path, value] of Object.entries(input.parameters)) {
+    const list = regions.find((region) => region.kind === "choice-list" && region.observedValues.some((item) => sameText(item, value)));
+    if (list) siblings[path] = list.observedValues.filter((item) => !sameText(item, value));
+  }
+  return {
+    snapshot: {
+      schemaVersion: "1.0",
+      generationTaskId: input.generationTaskId,
+      siteId: input.siteId,
+      explorationMode: "evidence-only",
+      regions,
+      actions: actions.slice(0, 32),
+    },
+    siblings,
+  };
 }

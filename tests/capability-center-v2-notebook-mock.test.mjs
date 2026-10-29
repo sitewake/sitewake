@@ -28,7 +28,8 @@ test("notebook mock flow runs C1 -> C2 -> C3 without a standalone Freeze module"
     "\u5176\u4f59\u7528\u4f8b\u53d6\u81ea\u9875\u9762\u5c55\u793a\u503c\uff0c\u4e0d\u662f\u539f\u67e5\u8be2\u7684\u9010\u5b57\u590d\u5236");
   assert.equal(results[2].output.validationTask.status, "Pending");
   assert.equal(results[3].output.outcome, "Validated");
-  assert.match(results[4].output.authorization.reviewId, /^capability-v2\.publish-review:[a-f0-9]{64}$/u);
+  assert.equal(results[4].output.authorization.mode, "Validated");
+  assert.equal(results[4].output.review.decision, "Approved");
   assert.equal(results[5].output.outcome, "Published");
   for (const index of [2, 3, 4]) {
     const candidate = index === 2

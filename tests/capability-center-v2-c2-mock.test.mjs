@@ -243,50 +243,22 @@ async function runOfficialC2({
   }
 }
 
-test("C2 mock executes the formal explorer, derivation, enrichment client, compiler, and persistence chain", async () => {
+test("C2 mock executes the formal explorer, derivation by code, compiler, and persistence chain, asking no model", async () => {
   const modelOutput = await fixture("02-c2-enrichment-fixture.json");
   const result = await runOfficialC2({ modelOutput });
   assert.equal(result.contexts.created, 1);
   assert.equal(result.contexts.closed, 1);
-  // One model call, for enrichment, after the cases exist.
-  assert.equal(result.requests.length, 1);
-  assert.equal(result.requests[0].body.model, "c2-http-mock-model");
-  assert.equal(result.requests[0].body.response_format.type, "json_schema");
-  assert.equal(
-    result.requests[0].body.response_format.json_schema.name,
-    "capability_v2_case_enrichment",
-  );
-  assert.equal(
-    result.requests[0].body.response_format.json_schema.strict,
-    true,
-  );
-  assert.match(result.requests[0].body.messages[0].content, /只返回 cases/);
-  const payload = JSON.parse(
-    result.requests[0].body.messages.find((message) => message.role === "user")
-      .content,
-  );
-  assert.equal(payload.caseDiscoveryEvidence.regions.length > 0, true);
-  // The request carries the derived cases with their alternatives; the model
-  // is asked to fill in, not to invent. The first case is the demonstration —
-  // the one input this capability is known to work for — and what the page
-  // showed follows it.
-  assert.deepEqual(payload.cases.map((item) => item.input), [
-    { query: "notebook" }, { query: "Notebook" }, { query: "Mug" },
-  ]);
-  assert.deepEqual(payload.cases[0].alternatives.query, [
-    "Notebook", "Hardcover ruled notebook", "Hardcover", "ruled", "Mug", "Ceramic coffee mug", "Ceramic", "coffee",
-  ]);
-  assert.deepEqual(payload.expectedFields, ["query", "resultUrl", "heading"]);
-  const schema = result.requests[0].body.response_format.json_schema.schema;
-  assert.equal(schema.properties.cases.minItems, 3);
-  assert.deepEqual(Object.keys(schema.properties.cases.items.properties.expected.properties), ["query", "resultUrl", "heading"]);
-
+  // No model turn: the cases are what the page offered, as derived. The one
+  // turn that used to re-select them chose "Add to basket" as a category.
+  assert.equal(result.requests.length, 0);
   assert.equal(result.output.generationTaskId, result.input.generationTaskId);
+  // The first case is the demonstration — the one input this capability is
+  // known to work for — and what the page showed follows it.
   assert.deepEqual(result.output.validationSuite.cases.map((item) => item.input), [
     { query: "notebook" }, { query: "Notebook" }, { query: "Mug" },
   ]);
-  // The echo of the input, and the one enrichment the page supports.
-  assert.deepEqual(result.output.validationSuite.cases[0].expected, { heading: "Notebook", query: "notebook" });
+  // The echo of the input is each case's expectation; nothing else is predicted.
+  assert.deepEqual(result.output.validationSuite.cases[0].expected, { query: "notebook" });
   assert.deepEqual(result.output.validationSuite.cases[1].expected, { query: "Notebook" });
   assert.equal(result.persistCalls, 1);
   const evidence = parseCapabilityCaseDiscoveryEvidenceSidecar(

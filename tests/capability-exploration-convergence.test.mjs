@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { createServer } from "node:http";
 import { startClickableCardSite } from "./helpers/clickable-card-site.mjs";
-import { inspectPage, strategiesFor, executeProgram, exploreCapability } from "../runner/capability-v2/browser-runtime.ts";
+import { inspectPage, strategiesFor, executeProgram } from "../runner/capability-v2/browser-runtime.ts";
 import { authoringManifest } from "../runner/capability-v2/javascript-author.ts";
 import { runCapabilityJavaScriptStages } from "../runner/capability-v2/javascript-stage-runner.ts";
 import { capabilityModuleHash } from "../lib/capability-center-v2/javascript-runtime.ts";
@@ -70,47 +70,6 @@ async function withExplorerModel(selectAction, run) {
   finally { for (const name of names) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; } await new Promise(resolve => server.close(resolve)); }
 }
 
-test("explorer re-plans from a rejected source link to the actual React card, then completes", async () => {
-  const site = await startClickableCardSite();
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage();
-    const trace = [];
-    await withExplorerModel((payload, turn) => {
-      if (turn === 1) return {action:'click',index:payload.page.elements.find(element => element.href?.endsWith('/3')).index};
-      if (payload.page.url.includes('?topic=3')) return {action:'done',reason:'站内第3条详情已打开'};
-      assert.equal(payload.history.at(-1).reason, 'external_link_outside_exploration_scope');
-      return {action:'click',index:payload.page.elements.find(element => element.tag === 'div' && element.name.includes('3城市观察')).index};
-    }, async calls => {
-      const result = await exploreCapability(page,'查看指定排名的热搜详情',site.origin,
-        {parameters:{rank:3},context:{},trigger:{},interactions:[]},5,event => trace.push(event));
-      assert.equal(calls.length, 3);
-      assert.equal(result.program.steps.length, 1, 'rejected links must not become program steps');
-      assert.equal(calls[2].history.at(-1).changed, true);
-      assert.match(calls[2].history.at(-1).urlAfter, /topic=3/);
-      assert.equal(trace.filter(event => event.stage === 'explorer-action-result').length, 2);
-      assert.equal(page.context().pages().length, 1, 'external link must never be opened');
-    });
-  } finally { await browser.close(); await site.close(); }
-});
-
-test("an unchanged click result reaches the next model turn and repeated no-op stops explicitly", async () => {
-  const site = await startClickableCardSite();
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage();
-    // Use a dedicated static no-op target; no production data or site changes.
-    await page.route(site.origin+'/', route => route.fulfill({contentType:'text/html',body:'<h1>榜单</h1><button>3 城市观察</button><p>1 晨间新闻</p>'}));
-    await withExplorerModel(payload => ({action:'click',index:payload.page.elements.find(element=>element.tag==='button').index}), async calls => {
-      await assert.rejects(exploreCapability(page,'查看指定排名的热搜详情',site.origin,
-        {parameters:{rank:3},context:{},trigger:{},interactions:[]},8), /repeated_click_without_page_progress/);
-      assert.equal(calls.length, 3);
-      assert.equal(calls[1].history.at(-1).changed, false);
-      assert.match(calls[1].history.at(-1).feedback, /没有可观察变化/);
-    });
-  } finally { await browser.close(); await site.close(); }
-});
-
 test("plain DOM pointer targets get an exact selector without inventing a role", async () => {
   const browser = await chromium.launch();
   try {
@@ -161,100 +120,6 @@ test("C1 adopts authored I/O within the Contract; C3 replays the frozen declarat
     }
     await assert.rejects(runCapabilityJavaScriptStages({page,moduleUrl:site.origin+program.module.moduleUrl,program,input:{rank:3}}), /capability_stage_transition_manifest_mismatch/);
     await assert.rejects(runCapabilityJavaScriptStages({page,moduleUrl:site.origin+program.module.moduleUrl,program,input:{rank:3},allowModuleGraphAdoption:true,draftInputPaths:['unrelated']}), /capability_stage_input_outside_contract/);
-  } finally { await browser.close(); await site.close(); }
-});
-
-test('waitFor without an element index observes the refreshed page instead of failing the task', async () => {
- const site=await startClickableCardSite(); const browser=await chromium.launch();
- try {
-  const page=await browser.newPage();
-  await withExplorerModel((payload,turn)=>{
-   if(turn===1)return {action:'waitFor',value:1};
-   if(payload.page.url.includes('topic=3'))return {action:'done',reason:'详情已打开'};
-   return {action:'click',index:payload.page.elements.find(e=>e.tag==='div'&&e.name.includes('3城市观察')).index};
-  },async()=>{
-   const result=await exploreCapability(page,'查看指定排名的热搜详情',site.origin,{parameters:{rank:3},context:{},trigger:{},interactions:[]},5);
-   assert.equal(result.program.steps.length,1);
-  });
- }finally{await browser.close();await site.close();}
-});
-
-/**
- * Production incident (a hot-search lookup): after the search box was filled, a
- * role=status region lit up with "searching…"; the explorer treated the fresh signal
- * as completion and proposed done automatically, but done was rejected because the
- * original task's results page (endPage with a q parameter) had not been reached —
- * and the signal was not marked seen, so next turn it was fresh again, done again,
- * rejected again, and the model was never consulted until the step budget was gone.
- * （capability_exploration_step_limit）。
- */
-function searchSiteRoutes(page, origin) {
-  const shell = (body) => `<!doctype html><html lang="zh-CN"><body><h1>热搜时光机</h1>${body}</body></html>`;
-  return page.route(`${origin}/**`, (route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname === '/search') {
-      return route.fulfill({ contentType: 'text/html', body: shell(`<h2>搜索结果</h2><p>周杰伦 上榜次数 12</p>`) });
-    }
-    return route.fulfill({ contentType: 'text/html', body: shell(`
-      <input id="q" placeholder="搜索历史热搜" aria-label="搜索历史热搜">
-      <div id="live" role="status"></div>
-      <script>
-        const input = document.getElementById('q');
-        const live = document.getElementById('live');
-        input.addEventListener('input', () => { live.textContent = '正在查找包含“' + (input.value || input.placeholder) + '”的词条'; setTimeout(() => { live.textContent = '没有找到包含“' + (input.value || input.placeholder) + '”的词条'; }, 50); });
-        input.addEventListener('keydown', (event) => { if (event.key === 'Enter') location.href = '/search?q=' + encodeURIComponent(input.value); });
-      </script>`) });
-  });
-}
-
-test('a rejected auto-done from a page status signal hands the next step back to the model instead of looping', async () => {
-  const site = await startClickableCardSite();
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage();
-    await searchSiteRoutes(page, site.origin);
-    const trace = [];
-    const input = { parameters: { keyword: '周杰伦' }, context: {}, trigger: {}, interactions: [],
-      experience: { schemaVersion: '1.0', actions: [], endPage: { url: `${site.origin}/search?q=%E5%91%A8%E6%9D%B0%E4%BC%A6` } } };
-    await withExplorerModel((payload, turn) => {
-      const box = payload.page.elements.find((element) => element.tag === 'input');
-      if (turn === 1) return { action: 'fill', index: box.index, inputPath: 'keyword' };
-      if (payload.page.url.includes('/search?q=')) return { action: 'done', reason: '结果页已打开' };
-      // Second consultation: the history must carry the rejection and its reason, and the page signal no longer poses as completion.
-      assert.equal(payload.history.at(-1).reason, 'completion_evidence_missing');
-      assert.match(payload.history.at(-1).feedback, /提交搜索/);
-      return { action: 'press', index: box.index, key: 'Enter' };
-    }, async (calls) => {
-      const result = await exploreCapability(page, '搜索微博历史热搜', site.origin, input, 12, (event) => trace.push(event));
-      // fill → the signal-triggered automatic done is rejected → the model is consulted
-      // (press Enter) → once /search?q= is reached, input_navigation_applied completes
-      // automatically. The model was consulted twice instead of never.
-      assert.equal(calls.length, 2, `flow=${trace.map((event) => event.stage).join(' | ')}`);
-      assert.ok(trace.some((event) => event.stage === 'explorer-auto-complete'));
-      assert.deepEqual(result.program.steps.map((step) => step.action), ['fill', 'press']);
-      const rejections = trace.filter((event) => event.stage === 'explorer-action-result' && event.response?.reason === 'completion_evidence_missing');
-      assert.equal(rejections.length, 1, '驳回只发生一次，不再原地打转');
-      assert.match(page.url(), /\/search\?q=/);
-    });
-  } finally { await browser.close(); await site.close(); }
-});
-
-test('three completion rejections on the same page fail explicitly instead of burning the step budget', async () => {
-  const site = await startClickableCardSite();
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage();
-    await searchSiteRoutes(page, site.origin);
-    const input = { parameters: { keyword: '周杰伦' }, context: {}, trigger: {}, interactions: [],
-      experience: { schemaVersion: '1.0', actions: [], endPage: { url: `${site.origin}/search?q=x` } } };
-    // A stubborn model: keeps saying done after the fill.
-    await withExplorerModel((payload, turn) => {
-      const box = payload.page.elements.find((element) => element.tag === 'input');
-      return turn === 1 ? { action: 'fill', index: box.index, inputPath: 'keyword' } : { action: 'done', reason: '我觉得完成了' };
-    }, async (calls) => {
-      await assert.rejects(exploreCapability(page, '搜索微博历史热搜', site.origin, input, 16), /capability_exploration_failed:completion_evidence_missing/);
-      assert.ok(calls.length <= 4, `不该把 16 步烧光: ${calls.length}`);
-    });
   } finally { await browser.close(); await site.close(); }
 });
 
@@ -338,67 +203,6 @@ async function withShopModel(run) {
   finally { for (const name of names) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; } await new Promise((resolve) => server.close(resolve)); }
 }
 
-test("a result count announced on the way does not end exploration while the visitor's path goes on", async () => {
-  // The demo's lamp generations stopped at "Showing 5 of 16 lamps": the
-  // explorer took that status line for completion, kept only the navigation
-  // to the list, and authoring had to invent picking a finish and adding to
-  // the cart. The recorded path is the proof of what completion takes.
-  const site = await startCountingShop();
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage();
-    await withShopModel(async () => {
-      const step = (action, role, accessibleName, path) => ({ action, rawAction: `${action}_element_by_index`, input: {}, element: { role, accessibleName }, page: { url: `${site.origin}${path}` }, observedAt: "2026-10-21T04:00:00.000Z" });
-      const input = {
-        parameters: { finish: "Copper" }, context: {}, trigger: {}, interactions: [],
-        experience: {
-          schemaVersion: "1.0", originalGoal: "Add the Aurora lamp in copper to my cart",
-          actions: [
-            step("click", "link", "Aurora Lamp", "/shop?type=table"),
-            step("click", "button", "Copper", "/product/aurora"),
-            step("click", "button", "Add to cart", "/product/aurora"),
-          ],
-          endPage: { url: `${site.origin}/product/aurora` },
-        },
-      };
-      const result = await exploreCapability(page, "Add the Aurora lamp in copper to my cart", site.origin, input, 12);
-      const clicked = result.program.steps.filter((step) => step.action === "click").length;
-      assert.equal(clicked, 3, `the whole recorded path is explored, got ${JSON.stringify(result.program.steps.map((step) => step.action))}`);
-      assert.match(await page.locator("#cart").innerText(), /Added Aurora Lamp in Copper to cart/);
-    });
-  } finally { await browser.close(); await site.close(); }
-});
-
-test("a recorded scroll passes the turn to the next recorded step, not to the model", async () => {
-  // Right after the visitor's scroll, the model was asked instead, chose a
-  // different product than the visitor had, and the run failed on it.
-  const site = await startCountingShop();
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage();
-    await withShopModel(async (explorerCalls) => {
-      const at = (path) => ({ url: `${site.origin}${path}` });
-      const input = {
-        parameters: { finish: "Copper" }, context: {}, trigger: {}, interactions: [],
-        experience: {
-          schemaVersion: "1.0", originalGoal: "Add the Aurora lamp in copper to my cart",
-          actions: [
-            { action: "scroll", rawAction: "scroll", input: { down: true }, page: at("/shop?type=table"), observedAt: "2026-10-21T04:00:00.000Z" },
-            { action: "click", rawAction: "click_element_by_index", input: {}, element: { role: "link", accessibleName: "Aurora Lamp" }, page: at("/shop?type=table"), observedAt: "2026-10-21T04:00:01.000Z" },
-            { action: "click", rawAction: "click_element_by_index", input: {}, element: { role: "button", accessibleName: "Copper" }, page: at("/product/aurora"), observedAt: "2026-10-21T04:00:02.000Z" },
-            { action: "click", rawAction: "click_element_by_index", input: {}, element: { role: "button", accessibleName: "Add to cart" }, page: at("/product/aurora"), observedAt: "2026-10-21T04:00:03.000Z" },
-          ],
-          endPage: at("/product/aurora"),
-        },
-      };
-      const result = await exploreCapability(page, "Add the Aurora lamp in copper to my cart", site.origin, input, 12);
-      assert.equal(result.program.steps.filter((step) => step.action === "click").length, 3, `got ${JSON.stringify(result.program.steps.map((step) => step.action))}`);
-      assert.equal(explorerCalls.length, 0, "the recorded path needed no model turn");
-      assert.match(await page.locator("#cart").innerText(), /Added Aurora Lamp in Copper to cart/);
-    });
-  } finally { await browser.close(); await site.close(); }
-});
-
 test("a scope several cards satisfy still finds a target that only one of them holds", async () => {
   // Replaying the visitor's click on "Lune Table Lamp" was scoped to cards
   // offering the input finish; three cards offered Brass, and the replay
@@ -443,46 +247,3 @@ test("a swatch chosen by its label is found by the input, not by its position", 
   } finally { await browser.close(); }
 });
 
-test("a step the page refused is retried after the alert is satisfied, and only the accepted attempt is kept", async () => {
-  // The lamp page refused "Add to cart" until a plug type was chosen; the
-  // refused click stayed in the program and every draft waited on it.
-  const html = `<!doctype html><title>Aurora</title><h1>Aurora Lamp</h1>
-    <select id="size" aria-label="Size"><option value="">Choose a size</option><option value="s">Small</option><option value="l">Large</option></select>
-    <button type="button" onclick="document.getElementById('size').value ? (document.getElementById('cart').textContent='Added Aurora Lamp to cart') : (document.getElementById('error').textContent='Please choose a size.')">Add to cart</button>
-    <div id="error" role="alert"></div><div id="cart" role="status"></div>`;
-  const site = createServer((request, response) => { response.writeHead(200, { "content-type": "text/html" }); response.end(html); });
-  await new Promise((resolve) => site.listen(0, "127.0.0.1", resolve));
-  const origin = `http://127.0.0.1:${site.address().port}`;
-  const model = createServer(async (request, response) => {
-    const chunks = []; for await (const chunk of request) chunks.push(chunk);
-    const body = JSON.parse(Buffer.concat(chunks)); const schema = body.response_format?.json_schema?.name;
-    const payload = JSON.parse(body.messages.find((message) => message.role === "user").content);
-    let result = {};
-    if (schema === "capability_v2_specification" && payload.aliasRepairMissing) result = { siteTerms: [] };
-    else if (schema === "capability_v2_specification") result = { name: "Add Aurora to the cart", description: "Add the Aurora lamp to the cart", intent: "Add the Aurora lamp to the cart", aliases: [], siteTerms: [], parameters: [], groundingExamples: [], scope: { kind: "site-global", onMismatch: "no-match" } };
-    else if (schema === "capability_v2_explorer_action") {
-      const size = /choose a size/i.test(payload.guidance || "") && payload.page.elements.find((element) => element.tag === "select");
-      result = size ? { action: "select", index: size.index, value: "Small" } : { action: "done", reason: "added" };
-    } else if (schema === "capability_v2_contract") result = { outputSchema: { type: "object", properties: {}, additionalProperties: true }, preconditions: [], successConditions: [{ type: "textIncludes", value: "Added" }] };
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: JSON.stringify(result) } }] }));
-  });
-  await new Promise((resolve) => model.listen(0, "127.0.0.1", resolve));
-  const names = ["MODEL_API_KEY", "MODEL_BASE_URL", "MODEL", "MODEL_EXECUTION", "MODEL_SEMANTIC", "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"];
-  const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
-  for (const name of names) delete process.env[name];
-  Object.assign(process.env, { OPENAI_API_KEY: "fixture-only", OPENAI_BASE_URL: `http://127.0.0.1:${model.address().port}/v1`, OPENAI_MODEL: "fixture-only" });
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage();
-    const input = { parameters: {}, context: {}, trigger: {}, interactions: [], experience: { schemaVersion: "1.0", originalGoal: "Add the Aurora lamp to my cart", endPage: { url: origin },
-      actions: [{ action: "click", rawAction: "click_element_by_index", input: {}, element: { role: "button", accessibleName: "Add to cart" }, page: { url: `${origin}/` }, observedAt: "2026-10-21T04:00:00.000Z" }] } };
-    const result = await exploreCapability(page, "Add the Aurora lamp to my cart", origin, input, 8);
-    assert.deepEqual(result.program.steps.map((step) => step.action), ["select", "click"], JSON.stringify(result.program.steps.map((step) => step.action)));
-    assert.match(await page.locator("[role=status]").innerText(), /Added Aurora Lamp to cart/);
-  } finally {
-    await browser.close();
-    for (const name of names) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; }
-    await new Promise((resolve) => model.close(resolve)); await new Promise((resolve) => site.close(resolve));
-  }
-});

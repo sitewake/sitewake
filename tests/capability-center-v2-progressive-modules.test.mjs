@@ -82,7 +82,9 @@ const cases = [
     output: "05-review.json",
     assertOutput: (output) => {
       assert.deepEqual(Object.keys(output).sort(), ["authorization", "review", "validated"]);
-      assert.match(output.authorization.reviewId, /^capability-v2\.publish-review:[a-f0-9]{64}$/u);
+      assert.equal(output.authorization.mode, "Validated");
+      assert.equal(output.review.decision, "Approved");
+      assert.equal(output.authorization.reason, output.review.reason, "the authorization carries the verdict's own words");
       assert.equal(output.validated.validation.cases[0].outcome, "Passed");
       assertCompactSemantic(output.validated.artifact.candidate);
     },

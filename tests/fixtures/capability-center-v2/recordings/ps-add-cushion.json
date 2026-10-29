@@ -1,0 +1,156 @@
+{
+  "goal": "Add the Brown bear cushion to my cart",
+  "parameters": {
+    "productName": "Brown bear cushion"
+  },
+  "experience": {
+    "schemaVersion": "1.0",
+    "episodeId": "episode_e1b8ee8a-44f6-496c-9025-411315aa2742",
+    "agentRunId": "run_4be46ac9-a99e-4bc5-9a69-ef24905f4e6e",
+    "browserSessionId": "browser_6b839c26-0680-4ff4-95b5-d4e4cb39bb67",
+    "originalGoal": "Add the Brown bear cushion to my cart",
+    "outcome": "Success",
+    "outcomeSummary": "Added the Brown bear cushion to your cart. Confirmation shows: Brown bear cushion, Color: White, Quantity: 1, price $18.90. Your cart now contains 1 item, with subtotal $18.90 (total incl. $7.00 shipping and taxes: $25.90).",
+    "answer": "Added the Brown bear cushion to your cart. Confirmation shows: Brown bear cushion, Color: White, Quantity: 1, price $18.90. Your cart now contains 1 item, with subtotal $18.90 (total incl. $7.00 shipping and taxes: $25.90).",
+    "startedAt": "2026-10-28T13:23:28.680Z",
+    "endedAt": "2026-10-28T13:24:41.292Z",
+    "startPage": {
+      "url": "http://prestashop.bench/",
+      "title": "PrestaShop"
+    },
+    "endPage": {
+      "url": "http://prestashop.bench/home-accessories/10-24-brown-bear-cushion.html#/8-color-white",
+      "title": "Brown bear cushion",
+      "heading": "Brown bear cushion"
+    },
+    "actions": [
+      {
+        "action": "fill",
+        "rawAction": "input_text",
+        "input": {
+          "index": 6,
+          "text": "Brown bear cushion"
+        },
+        "element": {
+          "tag": "input",
+          "role": "textbox",
+          "accessibleName": "Search",
+          "placeholder": "Search our catalog",
+          "name": "s",
+          "contextText": "search clear",
+          "landmark": "header"
+        },
+        "page": {
+          "url": "http://prestashop.bench/",
+          "title": "PrestaShop"
+        },
+        "observedAt": "2026-10-28T13:23:41.892Z"
+      },
+      {
+        "action": "fill",
+        "rawAction": "input_text",
+        "input": {
+          "index": 6,
+          "text": "Brown bear cushion\n"
+        },
+        "element": {
+          "tag": "input",
+          "role": "textbox",
+          "accessibleName": "Search",
+          "placeholder": "Search our catalog",
+          "name": "s",
+          "contextText": "search clear",
+          "landmark": "header"
+        },
+        "page": {
+          "url": "http://prestashop.bench/",
+          "title": "PrestaShop"
+        },
+        "observedAt": "2026-10-28T13:23:52.808Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 6
+        },
+        "element": {
+          "tag": "input",
+          "role": "textbox",
+          "accessibleName": "Search",
+          "placeholder": "Search our catalog",
+          "name": "s",
+          "contextText": "search clear",
+          "landmark": "header"
+        },
+        "page": {
+          "url": "http://prestashop.bench/",
+          "title": "PrestaShop"
+        },
+        "observedAt": "2026-10-28T13:24:00.684Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 4
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "  Accessories",
+          "href": "http://prestashop.bench/6-accessories",
+          "contextText": "  Accessories Stationery Home Accessories",
+          "landmark": "header"
+        },
+        "page": {
+          "url": "http://prestashop.bench/",
+          "title": "PrestaShop"
+        },
+        "observedAt": "2026-10-28T13:24:10.376Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 96
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Brown bear cushion",
+          "href": "http://prestashop.bench/home-accessories/10-24-brown-bear-cushion.html#/8-color-white",
+          "contextText": " Quick view Brown bear cushion $18.90 New favorite_border",
+          "landmark": "main"
+        },
+        "page": {
+          "url": "http://prestashop.bench/6-accessories",
+          "title": "Accessories",
+          "heading": "Accessories"
+        },
+        "observedAt": "2026-10-28T13:24:20.156Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 19
+        },
+        "element": {
+          "tag": "button",
+          "role": "button",
+          "accessibleName": " Add to cart",
+          "contextText": "Color: White White Black Quantity  Add to cart favorite_border Share Share Tweet Pinterest",
+          "landmark": "main"
+        },
+        "page": {
+          "url": "http://prestashop.bench/home-accessories/10-24-brown-bear-cushion.html#/8-color-white",
+          "title": "Brown bear cushion",
+          "heading": "Brown bear cushion"
+        },
+        "observedAt": "2026-10-28T13:24:31.972Z"
+      }
+    ],
+    "output": {}
+  }
+}

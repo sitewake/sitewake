@@ -1,0 +1,408 @@
+{
+  "goal": "How many quotes are tagged 'humor'?",
+  "parameters": {
+    "tag": "humor"
+  },
+  "experience": {
+    "schemaVersion": "1.0",
+    "episodeId": "episode_d4c70fa8-5b4e-4c1f-aa15-a488383f240c",
+    "agentRunId": "run_6946c7a6-eb42-4203-ae0f-e5fd43f6b509",
+    "browserSessionId": "browser_3691d85f-77f6-40e3-8ab6-25ca0af59fdd",
+    "originalGoal": "How many quotes are tagged 'humor'?",
+    "outcome": "Success",
+    "outcomeSummary": "There are 12 quotes tagged 'humor' in total — 10 on page 1 and 2 on page 2 (the last page, as there is no 'Next' link).",
+    "answer": "There are 12 quotes tagged 'humor' in total — 10 on page 1 and 2 on page 2 (the last page, as there is no 'Next' link).",
+    "startedAt": "2026-10-28T12:21:23.734Z",
+    "endedAt": "2026-10-28T12:22:55.459Z",
+    "startPage": {
+      "url": "http://quotes.bench:8102/",
+      "title": "Quotes to Scrape",
+      "heading": "Quotes to Scrape"
+    },
+    "endPage": {
+      "url": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+      "title": "Quotes to Scrape",
+      "heading": "Quotes to Scrape"
+    },
+    "actions": [
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 46
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "humor",
+          "href": "http://quotes.bench:8102/tag/humor/index.html",
+          "landmark": "unknown"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:21:29.611Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:21:32.925Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:21:41.311Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 11
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "← Previous",
+          "href": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "contextText": "← Previous",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:21:44.990Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:21:50.557Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 11
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "← Previous",
+          "href": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "contextText": "← Previous",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:21:53.903Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:21:57.107Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:05.360Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 11
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "← Previous",
+          "href": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "contextText": "← Previous",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:10.854Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:15.205Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 11
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "← Previous",
+          "href": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "contextText": "← Previous",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:18.593Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:23.270Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 11
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "← Previous",
+          "href": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "contextText": "← Previous",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:27.357Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:32.757Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 11
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "← Previous",
+          "href": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "contextText": "← Previous",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:37.308Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:41.723Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 11
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "← Previous",
+          "href": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "contextText": "← Previous",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:45.950Z"
+      },
+      {
+        "action": "click",
+        "rawAction": "click_element_by_index",
+        "input": {
+          "index": 39
+        },
+        "element": {
+          "tag": "a",
+          "role": "link",
+          "accessibleName": "Next →",
+          "href": "http://quotes.bench:8102/tag/humor/page/2/index.html",
+          "contextText": "Next →",
+          "landmark": "nav"
+        },
+        "page": {
+          "url": "http://quotes.bench:8102/tag/humor/page/1/index.html",
+          "title": "Quotes to Scrape",
+          "heading": "Quotes to Scrape"
+        },
+        "observedAt": "2026-10-28T12:22:51.087Z"
+      }
+    ],
+    "output": {}
+  }
+}

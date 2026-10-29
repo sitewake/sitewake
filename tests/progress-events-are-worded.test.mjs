@@ -178,6 +178,6 @@ test("every marker an emitter can produce is worded in both languages", async ()
     assert.ok(!HAN.test(worded(en[marker])), `the English wording of "${marker}" is not English`);
   }
   // A worded marker nobody emits is a rename that left the catalog behind.
-  const unused = Object.keys(en).filter((key) => !markers.has(key) && !["review approved", "review rejected", "review failed", "ai review approved on gate evidence", "ai review approved; the rejection's claims do not match the program", "review rejected: the demonstrated input's case did not pass", "review rejected: no validation case passed", "review rejected: a demonstrated value is written into the source"].includes(key));
+  const unused = Object.keys(en).filter((key) => !markers.has(key) && !["review approved", "review rejected", "review failed", "approved on validation: the demonstrated case and the offered values passed", "review rejected: the demonstrated input's case did not pass", "review rejected: the demonstrated input's case found nothing where the visitor's run found a result", "review rejected: a case found nothing for a value the site lists beside the demonstrated one", "review rejected: no validation case passed", "review rejected: a demonstrated value is written into the source"].includes(key));
   assert.deepEqual(unused, [], "catalog entries no emitter produces");
 });

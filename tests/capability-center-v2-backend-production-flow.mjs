@@ -131,7 +131,7 @@ export async function runBackendProductionFlow(options = {}) {
   assert.equal(validated.output.outcome, "Validated");
 
   const reviewed = await record(5, "Review", "review", validated.outputPath, async () => undefined);
-  assert.equal(reviewed.output.authorization?.mode, "AIApproved");
+  assert.equal(reviewed.output.authorization?.mode, "Validated");
 
   const published = await record(6, "D", "publish", reviewed.outputPath, async () => undefined);
   assert.equal(published.output.outcome, "Published");

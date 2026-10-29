@@ -11,6 +11,7 @@ import type {
   CapabilityCandidateArtifact,
   CapabilityCaseDiscoveryEvidence,
   CapabilityContract,
+  CapabilityDslProgram,
   CapabilityModuleRef,
   CapabilityProgram,
   CapabilityPromptProvenance,
@@ -28,11 +29,14 @@ import {
   evaluateResult,
   evaluateResultDeterministic,
   contractInProgramWritings,
-  exploreCapability,
+  pinContractToBase,
   validateContractInput,
   type CapabilityExplorationTraceEvent,
 } from "./browser-runtime";
-import { addressOpenedInputs, authorJavaScriptCapability } from "./javascript-author";
+import { traceFromExperience } from "./recording-trace";
+import { harvestStartPage, type CapabilityCaseDiscoverySnapshot } from "./case-discovery";
+import { contractFromDemonstration } from "./contract-from-demonstration";
+import { addressOpenedInputs, authorJavaScriptCapability, type AuthoringRepair } from "./javascript-author";
 import { bootstrapAuthentication } from "./auth-bootstrap";
 import {
   projectStageReceipts,
@@ -752,10 +756,32 @@ type CompletedResult = {
 };
 
 /** What exploration found, kept so a rerun can author again without exploring again. */
-export type C1Exploration = Pick<
-  Awaited<ReturnType<typeof exploreCapability>>,
-  "program" | "candidateSummary" | "demonstrationParameters" | "groundingExamples" | "promptProvenance"
->;
+/** What authoring starts from: the recording as a trace, the Contract the demonstration states, the inputs it ran with. */
+export type C1Exploration = {
+  program: CapabilityDslProgram;
+  candidateSummary: { name: string; description: string; aliases: string[]; contract: CapabilityContract };
+  demonstrationParameters: Record<string, JsonValue>;
+  groundingExamples: Array<Record<string, JsonValue>>;
+  promptProvenance: CapabilityPromptProvenance[];
+};
+
+/**
+ * The rejection a generation was rerun to answer, as the coordinator wrote it
+ * into the task's context: the verdict's reason and the case it named.
+ */
+function repairOf(spec: { input: { context: Record<string, JsonValue | undefined> } }): AuthoringRepair | undefined {
+  const raw = spec.input.context.repair;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const record = raw as JsonObject;
+  if (typeof record.reason !== "string") return undefined;
+  const input = record.input && typeof record.input === "object" && !Array.isArray(record.input) ? record.input as Record<string, JsonValue> : undefined;
+  return {
+    reason: record.reason,
+    ...(typeof record.caseId === "string" ? { caseId: record.caseId } : {}),
+    ...(typeof record.failure === "string" ? { failure: record.failure } : {}),
+    ...(input ? { input } : {}),
+  };
+}
 
 export async function performC1Authoring(
   page: Page,
@@ -769,33 +795,39 @@ export async function performC1Authoring(
   const authoringBaselineStorageState =
     baselineStorageState || (await page.context().storageState());
   if (!spec.browser.startUrl) throw new Error("exploration_start_url_required");
-  const explore = async (): Promise<C1Exploration> => {
-    await helpers.onEvent(
-      "Specification",
-      "designing parameters and contract",
-    );
-    const configuredExplorationSteps = Number(
-      process.env.CAPABILITY_V2_EXPLORATION_MAX_STEPS || 24,
-    );
-    const explorationMaxSteps = Number.isFinite(configuredExplorationSteps)
-      ? Math.max(16, Math.min(100, configuredExplorationSteps))
-      : 24;
-    const found = await exploreCapability(
-      page,
-      spec.goal || "完成用户目标",
-      spec.browser.startUrl!,
-      spec.input,
-      explorationMaxSteps,
-      observer,
-      spec.guidance,
-    );
-    await helpers.onEvent(
-      "Exploring",
-      "exploration succeeded; writing the module",
-    );
-    return found;
+  let startPageSnapshot: CapabilityCaseDiscoverySnapshot | undefined;
+  // The visitor's recording is the trace, and the Contract is what the
+  // demonstration states; no agent walks the path again to find out what
+  // the recording already holds, and no model writes a page's wording into
+  // a condition. A rerun starts from the trace its first run took.
+  const fromRecording = async (): Promise<C1Exploration> => {
+    const experience = spec.input.experience;
+    if (!experience) throw Object.assign(new Error("capability_recording_required"), { code: "capability_recording_required" });
+    const parameters = spec.input.parameters;
+    const { program, dropped } = traceFromExperience(experience, parameters);
+    await helpers.onEvent("Specification", "trace taken from the recording", {
+      steps: program.steps.map((step) => step.action),
+      ...(dropped.length ? { dropped: dropped.map((item) => `${item.reason}: ${item.action} ${item.name}`.trim()) } : {}),
+    });
+    if (!program.steps.length) throw Object.assign(new Error("capability_recording_without_actions"), { code: "capability_recording_without_actions" });
+    const goal = spec.goal || experience.originalGoal;
+    const base = spec.input.trigger?.baseVersionId ? spec.input.candidateSummary?.contract : undefined;
+    const contract = pinContractToBase(contractFromDemonstration({ goal, parameters, experience, trace: program }), base);
+    const named = spec.input.candidateSummary;
+    return {
+      program,
+      candidateSummary: {
+        name: named?.name || experience.originalGoal.slice(0, 80),
+        description: named?.description || experience.originalGoal,
+        aliases: named?.aliases || [],
+        contract,
+      },
+      demonstrationParameters: parameters,
+      groundingExamples: [],
+      promptProvenance: [],
+    };
   };
-  const explored = resume?.exploration || await explore();
+  const explored = resume?.exploration || await fromRecording();
   // The contract states each input in the writing the program consumes: the
   // address writing only where the program opens the page by its address.
   const explorationContract = explored.candidateSummary.contract;
@@ -810,7 +842,34 @@ export async function performC1Authoring(
       explored.demonstrationParameters,
     ),
   };
-  const groundingExamples = withDefaultOmissionExamples(summary.contract, explored.groundingExamples);
+  // The start page, read once: the lists the demonstrated values were chosen
+  // from give the authoring loop the sibling values to replay on, and case
+  // generation the page it would otherwise browse for again.
+  const harvestPage = await isolatedValidationPage(page, spec, authoringBaselineStorageState);
+  let harvested: Awaited<ReturnType<typeof harvestStartPage>> | undefined;
+  try {
+    await harvestPage.page.goto(spec.browser.startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await harvestPage.page.waitForTimeout(200);
+    harvested = await harvestStartPage(harvestPage.page, { generationTaskId: spec.taskId, siteId: spec.siteId, parameters: explored.demonstrationParameters });
+  } catch (error) {
+    await helpers.onEvent("Specification", "start page could not be harvested; authoring proves the demonstration alone", { reason: error instanceof Error ? error.message.slice(0, 200) : String(error) });
+  } finally {
+    await harvestPage.context.close().catch(() => undefined);
+  }
+  const siblingExamples = Object.entries(harvested?.siblings || {})
+    .flatMap(([path, values]) => values.slice(0, 2).map((value) => ({ [path]: value })));
+  if (harvested) {
+    await helpers.onEvent("Specification", "start page harvested", {
+      lists: harvested.snapshot.regions.filter((region) => region.kind === "choice-list").length,
+      regions: harvested.snapshot.regions.length,
+      siblings: Object.fromEntries(Object.entries(harvested.siblings).map(([path, values]) => [path, values.slice(0, 6)])),
+    });
+  }
+  startPageSnapshot = harvested?.snapshot;
+  // A generation rerun as the one repair after a rejection carries the case
+  // the verdict named; that case is replayed first, ahead of the siblings.
+  const repair = repairOf(spec);
+  const groundingExamples = withDefaultOmissionExamples(summary.contract, [...(repair?.input ? [repair.input] : []), ...siblingExamples, ...explored.groundingExamples]);
   const authored = await authorJavaScriptCapability({
     explorationPage: page,
     workspace: helpers.workspace,
@@ -820,7 +879,9 @@ export async function performC1Authoring(
     contract: summary.contract,
     explorationProgram: explored.program,
     groundingExamples,
+    discoveryRegions: harvested?.snapshot.regions,
     startingSource: resume?.source,
+    repair,
     summary,
     explorationPromptProvenance: explored.promptProvenance,
     createDraftContext: () =>
@@ -831,7 +892,7 @@ export async function performC1Authoring(
       helpers.onEvent(event.phase, event.message, event.payload),
   });
   const draftQuality = inspectCapabilityQuality(
-    summary.contract,
+    authored.contract,
     authored.program,
     {
       demonstrationParameters: explored.demonstrationParameters,
@@ -894,7 +955,7 @@ export async function performC1Authoring(
   };
   const candidateSummary = {
     ...summary,
-    contract: projectCapabilityContract(summary.contract),
+    contract: projectCapabilityContract(authored.contract),
   };
   const c1AuthoringOutput: C1AuthoringOutput = {
     generationTaskId: spec.taskId,
@@ -912,7 +973,7 @@ export async function performC1Authoring(
     demonstrationParameters: explored.demonstrationParameters,
     exploration: {
       program: explored.program,
-      candidateSummary: explored.candidateSummary,
+      candidateSummary: { ...explored.candidateSummary, contract: authored.contract },
       demonstrationParameters: explored.demonstrationParameters,
       groundingExamples: explored.groundingExamples,
       promptProvenance: explored.promptProvenance,
@@ -921,6 +982,8 @@ export async function performC1Authoring(
     targetEvidence: authored.draft.evidence,
     promptProvenance: authored.program.promptProvenance,
     artifactRefs: [],
+    // The start page as read before authoring, for case generation to read instead of browsing again.
+    startPageSnapshot,
   };
 }
 
@@ -1011,13 +1074,7 @@ async function perform(
         workspace: helpers.workspace,
         browser,
         storageState: baselineStorageState,
-        onEnrichmentUnavailable: async (reason) => {
-          await helpers.onEvent(
-            "CaseGeneration",
-            "case enrichment skipped; using derived inputs",
-            { ai: true, enrichment: "unavailable", reason },
-          );
-        },
+        snapshot: authored.startPageSnapshot,
         persistEvidence: async (bytes) => {
           caseDiscoveryEvidenceArtifact = await helpers.saveArtifact(
             "CaseDiscoveryEvidence",

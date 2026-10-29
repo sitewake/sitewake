@@ -86,8 +86,12 @@ const {
   markRunnerLost,
   parseAndValidateToolArguments,
   parseCapabilityExperienceAbstraction,
-  parseReviewDecision,
   parseStructuredModelJson,
+  productionProgress,
+  projectProductionStatus,
+  REVIEW_APPROVED_ON_VALIDATION,
+  REVIEW_NO_CASE_PASSED,
+  REVIEW_OFFERED_INPUT_NO_RESULT,
   rejectMismatchedFacetAction,
   promptProvenance,
   publishVersion,
@@ -601,19 +605,6 @@ test("JavaScript module validation rejects unsafe or malformed bundles", () => {
       "capability_module_network_forbidden",
     ],
     [
-      // Seen in production: build a URL and jump via location.href, bypassing the site's own interaction.
-      "export const capability={run({input}){location.href='/search?q='+encodeURIComponent(input.keyword);return {outcome:'Continue'}}};",
-      "capability_module_direct_navigation_forbidden",
-    ],
-    [
-      "export const capability={run(){location.assign('/next');return {outcome:'Continue'}}};",
-      "capability_module_direct_navigation_forbidden",
-    ],
-    [
-      "export const capability={run(){return document.querySelector('button[role=\"button\"]')}};",
-      "capability_module_computed_aria_selector_forbidden",
-    ],
-    [
       "export const capability={};\n//# sourceMappingURL=capability.js.map",
       "capability_module_source_map_forbidden",
     ],
@@ -626,6 +617,19 @@ test("JavaScript module validation rejects unsafe or malformed bundles", () => {
     const inspected = validateCapabilityJavaScriptSource(source);
     assert.equal(inspected.ok, false, code);
     assert.equal(inspected.code, code);
+  }
+  // Checks with no recorded defect behind them are notes: the module is
+  // accepted and the finding is kept with it (benchmark/GATES.md).
+  const noted = [
+    // Seen in production: build a URL and jump via location.href, bypassing the site's own interaction.
+    ["export const capability={run({input}){location.href='/search?q='+encodeURIComponent(input.keyword);return {outcome:'Continue'}}};", "capability_module_direct_navigation_forbidden"],
+    ["export const capability={run(){location.assign('/next');return {outcome:'Continue'}}};", "capability_module_direct_navigation_forbidden"],
+    ["export const capability={run(){return document.querySelector('button[role=\"button\"]')}};", "capability_module_computed_aria_selector_forbidden"],
+  ];
+  for (const [source, code] of noted) {
+    const inspected = validateCapabilityJavaScriptSource(source);
+    assert.equal(inspected.ok, true, code);
+    assert.ok(inspected.notes.some((note) => note.code === code), code);
   }
 });
 
@@ -991,71 +995,6 @@ test("structured model JSON parser reports empty responses and accepts fenced ob
   assert.deepEqual(
     parseStructuredModelJson('```json\n{"decision":"Approved"}\n```'),
     { decision: "Approved" },
-  );
-});
-
-test("an English review rejection is judged by the evidence it cites, not by its language", () => {
-  const reason = "The source code of stage_verify reads a fixed heading instead of the order input, and the deterministic quality gate does not check which element it reads.";
-  assert.deepEqual(parseReviewDecision({ decision: "Rejected", reason }), { decision: "Rejected", reason });
-  assert.throws(
-    () => parseReviewDecision({ decision: "Rejected", reason: "The name does not feel abstract enough, so this version should not be published." }),
-    /ai_review_rejection_evidence_required/,
-  );
-});
-
-test("AI publish review requires a complete auditable decision reason", () => {
-  assert.deepEqual(
-    parseReviewDecision({
-      decision: "Approved",
-      reason: "确定性质量门禁与独立回放证据均已通过，可以发布。",
-    }),
-    {
-      decision: "Approved",
-      reason: "确定性质量门禁与独立回放证据均已通过，可以发布。",
-    },
-  );
-  assert.deepEqual(
-    parseReviewDecision({
-      decision: "Approved",
-      reason: "该能力已通过检查但模型解释在这里被截断为",
-    }),
-    {
-      decision: "Approved",
-      reason:
-        "ai review approved on gate evidence",
-    },
-  );
-  assert.throws(
-    () =>
-      parseReviewDecision({
-        decision: "Rejected",
-        reason: "能力名称和描述中包含",
-      }),
-    /ai_review_reason_incomplete/,
-  );
-  assert.throws(
-    () =>
-      parseReviewDecision({
-        decision: "Rejected",
-        reason: "发现了一个需要说明但没有结束标点的具体审核问题",
-      }),
-    /ai_review_reason_incomplete/,
-  );
-  assert.throws(
-    () =>
-      parseReviewDecision({
-        decision: "Rejected",
-        reason: "名称似乎不够抽象，因此拒绝发布这个能力版本。",
-      }),
-    /ai_review_rejection_evidence_required/,
-  );
-  assert.deepEqual(
-    parseReviewDecision({
-      decision: "Rejected",
-      reason:
-        "确定性质量门禁没有覆盖管理员附加规则；Validation 证据明确缺少管理员要求的第二种页面状态，因此拒绝发布。",
-    }).decision,
-    "Rejected",
   );
 });
 
@@ -3181,7 +3120,7 @@ test("a rebuild keeps the published contract's defaults, and the draft is run wi
   assert.deepEqual(examples, [...explored, { room: "hall" }]);
   assert.deepEqual(store.withDefaultOmissionExamples(contract, examples), examples, "an existing omission is not added twice");
   assert.deepEqual(store.withDefaultOmissionExamples(contract, []), [], "no example, nothing to derive from");
-  const issues = (cases) => inspectCapabilityQuality(contract, { schemaVersion: "1.0", stages: [], parameterRoles: [], targetBindings: [], module: {} }, { validationCases: cases }).issues.map((issue) => issue.code);
+  const issues = (cases) => inspectCapabilityQuality(contract, { schemaVersion: "1.0", stages: [], parameterRoles: [], targetBindings: [], module: {} }, { validationCases: cases }).notes.map((issue) => issue.code);
   assert.ok(issues(explored).includes("default_omission_validation_required"));
   assert.ok(!issues(examples).includes("default_omission_validation_required"));
 });
@@ -3219,7 +3158,7 @@ test("quality gate rejects malformed conditions and target success that ignores 
     report.issues.some((issue) => issue.code === "condition_value_missing"),
   );
   assert.ok(
-    report.issues.some(
+    report.notes.some(
       (issue) => issue.code === "target_success_condition_required",
     ),
   );
@@ -3238,7 +3177,7 @@ test("quality gate enforces formal minimal scope matchers", () => {
     program,
   );
   assert.ok(
-    undeclared.issues.some((issue) => issue.code === "scope_input_undeclared"),
+    undeclared.notes.some((issue) => issue.code === "scope_input_undeclared"),
   );
 
   const missingMatcher = inspectCapabilityQuality(
@@ -3249,7 +3188,7 @@ test("quality gate enforces formal minimal scope matchers", () => {
     program,
   );
   assert.ok(
-    missingMatcher.issues.some((issue) => issue.code === "page_scope_match_required"),
+    missingMatcher.notes.some((issue) => issue.code === "page_scope_match_required"),
   );
 
   const siteGlobal = inspectCapabilityQuality(
@@ -3289,14 +3228,14 @@ test("quality gate rejects a generic capability that bakes in the demonstrated p
   );
   assert.equal(bad.valid, false);
   assert.ok(
-    bad.issues.some((issue) => issue.code === "required_input_not_consumed"),
+    bad.notes.some((issue) => issue.code === "required_input_not_consumed"),
   );
   // One validation case is not what is wrong here: a page that offers a single
   // value yields a single case, and refusing the capability for that meant it
   // was never generated. What is wrong is the program ignoring its own input
   // and the demonstrated product baked into a success condition.
   assert.equal(
-    bad.issues.some((issue) => issue.code === "independent_validation_cases_required"),
+    bad.notes.some((issue) => issue.code === "independent_validation_cases_required"),
     false,
   );
   assert.ok(
@@ -3465,8 +3404,8 @@ test("javascript module input-consumption gate rejects omitted public parameters
     "export const capability={version:2,stages:[{id:'complete',async run({input}){return {outcome:'Success',output:{productKeyword:input.productKeyword}}}}]};",
     ["productKeyword", "color"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "capability_module_input_unused:color");
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_input_unused:color");
 });
 
 test("javascript module target gate requires target selection to reread the input", () => {
@@ -3475,8 +3414,8 @@ test("javascript module target gate requires target selection to reread the inpu
     ["query"],
     ["query"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "capability_module_target_input_not_reused:query");
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_target_input_not_reused:query");
 });
 
 test("javascript module verifier accepts optional-chaining input reads", () => {
@@ -3494,11 +3433,8 @@ test("javascript module target gate rejects first-candidate fallback", () => {
     ["query"],
     ["query"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(
-    result.code,
-    "capability_module_target_first_candidate_forbidden",
-  );
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_target_first_candidate_forbidden");
 });
 
 test("javascript module target gate rejects incomplete candidate find", () => {
@@ -3507,11 +3443,8 @@ test("javascript module target gate rejects incomplete candidate find", () => {
     ["query"],
     ["query"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(
-    result.code,
-    "capability_module_target_first_candidate_forbidden",
-  );
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_target_first_candidate_forbidden");
 });
 
 test("javascript module target gate rejects candidate find without executable proof", () => {
@@ -3520,11 +3453,8 @@ test("javascript module target gate rejects candidate find without executable pr
     ["query"],
     ["query"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(
-    result.code,
-    "capability_module_target_first_candidate_forbidden",
-  );
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_target_first_candidate_forbidden");
 });
 
 test("javascript module target gate accepts complete match and executable action proof", () => {
@@ -3542,8 +3472,8 @@ test("javascript module rejects document-wide add-to-cart fallback", () => {
     ["query"],
     ["query"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "capability_module_related_add_to_cart_fallback");
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_related_add_to_cart_fallback");
 });
 
 test("javascript module rejects document-wide related variant navigation", () => {
@@ -3552,8 +3482,8 @@ test("javascript module rejects document-wide related variant navigation", () =>
     ["color"],
     ["color"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "capability_module_related_variant_navigation");
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_related_variant_navigation");
 });
 
 test("javascript module rejects quoted document-wide variant href selectors", () => {
@@ -3562,8 +3492,8 @@ test("javascript module rejects quoted document-wide variant href selectors", ()
     ["color"],
     ["color"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "capability_module_related_variant_navigation");
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_related_variant_navigation");
 });
 
 test("runner rejects detail-to-detail target changes outside target selection", () => {
@@ -3598,8 +3528,8 @@ test("javascript module rejects fixed cart confirmation sentences", () => {
     "export const capability={version:2,stages:[{id:'stage_verify',async run({input}){const text=document.body.innerText;return {outcome:text.includes('Your cart contains 1 of these products')?'Success':'BusinessRejection',output:{product:input.query}}}}]};",
     [],
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "capability_module_fixed_cart_success_text");
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_fixed_cart_success_text");
 });
 
 test("grounding examples of a positionally selected capability can be independent", () => {
@@ -3675,16 +3605,16 @@ test("quality gate rejects a required input no acting stage reads", () => {
     targetBindings: [],
   };
   const report = inspectCapabilityQuality(contract, program, {});
-  assert.equal(report.valid, false);
-  assert.ok(report.issues.some((issue) => issue.code === "required_input_does_not_parameterize"), JSON.stringify(report.issues));
+  assert.equal(report.valid, true, "a note does not block");
+  assert.ok(report.notes.some((issue) => issue.code === "required_input_does_not_parameterize"), JSON.stringify(report.notes));
 
   // Reading it in the stage that acts is the whole difference.
   const acting = { ...program, stages: [{ ...stages[0], io: { ...stages[0].io, reads: { input: ["rank"], state: [] } } }, stages[1]] };
-  assert.deepEqual(inspectCapabilityQuality(contract, acting, {}).issues, []);
+  assert.deepEqual(inspectCapabilityQuality(contract, acting, {}).notes, []);
 
   // A required input no stage declares at all is the same defect.
   const unread = { ...program, stages: [stages[0], { ...stages[1], io: { ...stages[1].io, reads: { input: [], state: ["targets.__actedOn"] } } }] };
-  assert.ok(inspectCapabilityQuality(contract, unread, {}).issues.some((issue) => issue.code === "required_input_does_not_parameterize"));
+  assert.ok(inspectCapabilityQuality(contract, unread, {}).notes.some((issue) => issue.code === "required_input_does_not_parameterize"));
 
   // A capability that only reads has no acting stage to hold to this, and the
   // module source gate is what requires its one stage to use the input.
@@ -3822,8 +3752,8 @@ test("javascript module rejects invented customization text", () => {
     ["query"],
     ["query"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "capability_module_invented_customization");
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_invented_customization");
 });
 
 test("javascript module rejects native search form submit", () => {
@@ -3832,8 +3762,8 @@ test("javascript module rejects native search form submit", () => {
     ["query"],
     ["query"],
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "capability_module_search_form_submit_unsafe");
+  assert.equal(result.ok, true, "a note does not refuse the module");
+  assert.equal(result.notes[0].code, "capability_module_search_form_submit_unsafe");
 });
 
 test("quality gate ignores demonstration examples in comments but rejects executable literals", () => {
@@ -3993,17 +3923,17 @@ test("quality gate requires source consumption, write reconciliation and distinc
     source: "export const capability={version:2,stages:[]};",
   });
   assert.ok(
-    rejected.issues.some(
+    rejected.notes.some(
       (issue) => issue.code === "write_stage_reconciliation_required",
     ),
   );
   assert.ok(
-    rejected.issues.some(
+    rejected.notes.some(
       (issue) => issue.code === "declared_input_not_consumed_by_source",
     ),
   );
   assert.ok(
-    rejected.issues.some(
+    rejected.notes.some(
       (issue) => issue.code === "independent_target_evidence_required",
     ),
   );
@@ -4040,7 +3970,7 @@ test("quality gate requires source consumption, write reconciliation and distinc
   assert.equal(accepted.valid, true, JSON.stringify(accepted.issues));
 });
 
-test("V2 closes Discovery -> Validation -> AI review -> Publish without legacy data", async () => {
+test("V2 closes Discovery -> Validation -> verdict -> Publish without legacy data", async () => {
   const discovery = await createCapabilityTask(siteId, {
     type: "Discovery",
     goal: "加入购物车",
@@ -4463,7 +4393,7 @@ test("lost V2 Runner returns its task to Pending with visible diagnostics and re
   assert.equal(reclaimed.task.error, undefined);
 });
 
-test("Coordinator automatically creates Validation and records an AI error when no review model is configured", async () => {
+test("Coordinator automatically creates Validation and records the verdict without any review model; the administrator can still override", async () => {
   const discovery = await createCapabilityTask(siteId, {
     type: "Discovery",
     goal: "搜索商品",
@@ -4497,7 +4427,12 @@ test("Coordinator automatically creates Validation and records an AI error when 
   const version = (
     await listVersions(siteId, completed.task.result.capabilityId)
   ).versions[0];
-  assert.equal(version.review.ai.status, "Error");
+  // A validation that recorded no case holds nothing up: the verdict is read
+  // off the record, and an empty record is not a passed one.
+  assert.equal(version.review.ai.status, "Rejected");
+  assert.equal(version.review.ai.reason, REVIEW_NO_CASE_PASSED);
+  assert.equal(version.review.ai.deterministic, true);
+  assert.equal(version.review.ai.promptKey, undefined, "no prompt produced the verdict");
   await assert.rejects(
     () => publishVersion(siteId, version.id, { adminId: "admin" }),
     (error) => error.code === "admin_override_reason_required",
@@ -4507,6 +4442,57 @@ test("Coordinator automatically creates Validation and records an AI error when 
     reason: "人工核验通过",
   });
   assert.equal(published.version.status, "Published");
+});
+
+async function validatedVersion(goal, validationResults) {
+  const discovery = await createCapabilityTask(siteId, {
+    type: "Discovery",
+    goal,
+    input: {
+      candidateSummary: { name: goal, description: goal, contract },
+      program,
+      parameters: {},
+      context: { startUrl: "https://example.test" },
+      interactions: [],
+      trigger: {},
+    },
+  });
+  await claimTask(siteId, discovery.task.id, "runner-discovery");
+  const completed = await submitTaskResult(siteId, discovery.task.id, "runner-discovery", { outcome: "Success", candidateProgram: program });
+  const advanced = await advanceCompletedTask(completed.task);
+  await claimTask(siteId, advanced.nextTask.id, "runner-validation");
+  const validation = await submitTaskResult(siteId, advanced.nextTask.id, "runner-validation", { outcome: "Success", output: {}, validationResults });
+  const { review } = await advanceCompletedTask(validation.task);
+  const version = (await listVersions(siteId, completed.task.result.capabilityId)).versions[0];
+  return { review, version, validationTaskId: advanced.nextTask.id };
+}
+
+test("a validation whose cases passed is published on the verdict alone, with the verdict on the version", async () => {
+  const { review, version } = await validatedVersion("搜索商品", [
+    { caseId: "case_1", resolvedInput: { query: "notebook" }, output: { query: "notebook" } },
+  ]);
+  assert.equal(review.version.status, "Published");
+  assert.equal(version.status, "Published");
+  assert.equal(version.review.ai.status, "Approved");
+  assert.equal(version.review.ai.reason, REVIEW_APPROVED_ON_VALIDATION);
+  assert.equal(version.review.ai.deterministic, true);
+});
+
+test("a case that found nothing for a value the site offers rejects the version, and the event names the case", async () => {
+  const failure = "no_result_for_offered_input:query=\"Mug\":the search page shows no results for Mug";
+  const { version, validationTaskId } = await validatedVersion("搜索商品", [
+    { caseId: "case_1", resolvedInput: { query: "notebook" }, output: { query: "notebook" } },
+    { caseId: "case_2", resolvedInput: { query: "Mug" }, failureReason: failure },
+  ]);
+  assert.equal(version.status, "Draft");
+  assert.equal(version.review.ai.status, "Rejected");
+  assert.equal(version.review.ai.reason, REVIEW_OFFERED_INPUT_NO_RESULT);
+  const events = await listTaskEvents(siteId, validationTaskId);
+  const completed = events.find((event) => event.eventType === "ReviewCompleted");
+  assert.equal(completed.payload.decision, "Rejected");
+  assert.equal(completed.payload.caseId, "case_2");
+  assert.equal(completed.payload.failure, failure);
+  assert.equal(completed.payload.deterministic, true);
 });
 
 test("Runner receives decrypted interaction values only through its assigned RunSpec", async () => {
@@ -5029,7 +5015,7 @@ test("module boundary B -> C -> D commits a candidate, validates it and publishe
 });
 
 /** Runs one generation through C1/C2 and C3 as the boundary test does, returning what D needs. */
-async function generationReadyForPublish(task, runnerId, candidateName) {
+async function generationReadyForPublish(task, runnerId, candidateName, validationResults = passingValidationResults) {
   await claimTask(siteId, task.id, runnerId);
   const source = `export const capability={version:2,stages:[{id:"complete",async run({input}){const query=String(input.query??"").trim();return {outcome:"Success",state:{targets:{query}},output:{query}}}}]};`;
   const program = await makeProgram(source, {
@@ -5060,14 +5046,96 @@ async function generationReadyForPublish(task, runnerId, candidateName) {
   await claimTask(siteId, validationTaskId, `${runnerId}-validation`);
   const validated = await submitTaskResult(siteId, validationTaskId, `${runnerId}-validation`, {
     outcome: "Success",
-    validationResults: [
-      { caseId: "case_1", resolvedInput: { query: "马克杯" }, output: { query: "马克杯" }, stageReceipts: [{ stageId: "complete", outcome: "Success", evidenceRefs: ["evidence://case_1"] }], evidenceRefs: ["evidence://case_1"] },
-      { caseId: "case_2", resolvedInput: { query: "棕色垫子" }, output: { query: "棕色垫子" }, stageReceipts: [{ stageId: "complete", outcome: "Success", evidenceRefs: ["evidence://case_2"] }], evidenceRefs: ["evidence://case_2"] },
-    ],
+    validationResults,
   });
   assert.equal(validated.task.result?.buildResult?.outcome, "Validated");
   return { validated: validated.task.result.buildResult.package, validationTaskId };
 }
+
+const passingValidationResults = [
+  { caseId: "case_1", resolvedInput: { query: "马克杯" }, output: { query: "马克杯" }, stageReceipts: [{ stageId: "complete", outcome: "Success", evidenceRefs: ["evidence://case_1"] }], evidenceRefs: ["evidence://case_1"] },
+  { caseId: "case_2", resolvedInput: { query: "棕色垫子" }, output: { query: "棕色垫子" }, stageReceipts: [{ stageId: "complete", outcome: "Success", evidenceRefs: ["evidence://case_2"] }], evidenceRefs: ["evidence://case_2"] },
+];
+// The second case is a value the page lists beside the demonstrated one, and the program found nothing for it.
+const OFFERED_VALUE_FAILURE = "no_result_for_offered_input:query=\"棕色垫子\":the search page lists nothing for it";
+const offeredValueRejectedResults = [
+  passingValidationResults[0],
+  { caseId: "case_2", resolvedInput: { query: "棕色垫子" }, output: {}, failureReason: OFFERED_VALUE_FAILURE, stageReceipts: [], evidenceRefs: [] },
+];
+
+async function generationFor(name) {
+  const classified = await classifyCapabilityGeneration(siteId, {
+    request: { goal: name, parameters: { query: "马克杯" }, entryUrl: "https://example.test/search", locale: "zh-CN" },
+    source: "Admin",
+    instruction: { operation: "create" },
+  });
+  assert.equal(classified.disposition, "Created");
+  // The classification returns a projection; the stored task carries the goal and guidance a rerun copies.
+  return getTask(siteId, classified.task.id, true);
+}
+
+test("a rejection the verdict names a case for is followed by one repair that starts from that case", async () => {
+  const name = "分类计数能力";
+  const generation = await generationFor(name);
+  const first = await generationReadyForPublish(generation, "repair-first", name, offeredValueRejectedResults);
+  const validation = await getTask(siteId, first.validationTaskId, true);
+  const advanced = await advanceCompletedTask(validation);
+  assert.equal(advanced.review.outcome, "Rejected");
+  assert.equal(advanced.review.reason, REVIEW_OFFERED_INPUT_NO_RESULT);
+  assert.equal(advanced.review.caseId, "case_2");
+  const repair = advanced.nextTask;
+  assert.ok(repair, "the rejection schedules a repair");
+  assert.equal(repair.type, "Discovery");
+  assert.equal(repair.status, "Pending");
+  assert.equal(repair.rerunOfTaskId, generation.id);
+  assert.equal(repair.goal, generation.goal);
+  assert.equal(repair.guidance, generation.guidance, "the same guidance, so the prior source is restored as the first draft");
+  assert.deepEqual(repair.input.parameters, generation.input.parameters);
+  assert.equal(repair.input.context.__autoRepairOfTaskId, generation.id);
+  assert.deepEqual(repair.input.context.repair, { reason: REVIEW_OFFERED_INPUT_NO_RESULT, caseId: "case_2", failure: OFFERED_VALUE_FAILURE, input: { query: "棕色垫子" } });
+  const events = await listTaskEvents(siteId, first.validationTaskId);
+  const scheduled = events.find((event) => event.eventType === "RepairScheduled");
+  assert.equal(scheduled.payload.repairTaskId, repair.id);
+  const status = projectProductionStatus(await getTask(siteId, first.validationTaskId, true), events);
+  assert.equal(status.state, "Running");
+  assert.equal(status.messageKey, "repairScheduled");
+  assert.equal(status.nextTaskId, repair.id, "the record runs on, into the repair");
+  // The record the visitor's run opened follows the chain into the repair.
+  const followed = await productionProgress(siteId, await getTask(siteId, generation.id, true));
+  assert.equal(followed.taskId, generation.id);
+  assert.equal(followed.state, "Queued", "the repair is waiting for a runner");
+  assert.equal(followed.nextTaskId, first.validationTaskId, "the next hop is the validation that scheduled the repair");
+  // The repair's candidate passes on both values and is published; the chain holds one repair.
+  const second = await generationReadyForPublish(repair, "repair-second", name);
+  const published = await advanceCompletedTask(await getTask(siteId, second.validationTaskId, true));
+  assert.equal(published.review.outcome, "Published");
+  assert.equal(published.nextTask, undefined);
+  const done = await productionProgress(siteId, await getTask(siteId, generation.id, true));
+  assert.equal(done.state, "Published", "the original record shows the repair's publication");
+  assert.equal(done.capabilityId, published.review.capability.id);
+  // The marker travels into the repair's own validation task with the rest of its context; the authoring tasks are what is counted.
+  const repairs = (await listTasks(siteId, { includeDeleted: true, includeArchived: true })).tasks.filter((task) => task.type !== "Validation" && task.input.context.__autoRepairOfTaskId === generation.id);
+  assert.equal(repairs.length, 1);
+});
+
+test("a repair rejected again is not repaired a second time; the second rejection stands", async () => {
+  const name = "分类计数能力二";
+  const generation = await generationFor(name);
+  const first = await generationReadyForPublish(generation, "again-first", name, offeredValueRejectedResults);
+  const repair = (await advanceCompletedTask(await getTask(siteId, first.validationTaskId, true))).nextTask;
+  assert.ok(repair);
+  const before = (await listTasks(siteId, { includeDeleted: true, includeArchived: true })).tasks.length;
+  const second = await generationReadyForPublish(repair, "again-second", name, offeredValueRejectedResults);
+  const validation = await getTask(siteId, second.validationTaskId, true);
+  const advanced = await advanceCompletedTask(validation);
+  assert.equal(advanced.review.outcome, "Rejected");
+  assert.equal(advanced.nextTask, undefined);
+  const after = (await listTasks(siteId, { includeDeleted: true, includeArchived: true })).tasks.length;
+  assert.equal(after - before, 1, "only the repair's own validation task was added; no third authoring");
+  const status = projectProductionStatus(validation, await listTaskEvents(siteId, second.validationTaskId));
+  assert.equal(status.state, "Rejected");
+  assert.equal(status.detail, REVIEW_OFFERED_INPUT_NO_RESULT, "the second rejection is the reason shown");
+});
 
 test("a second generation of an already published capability ends as AlreadyPublished, never as a failed publish", async () => {
   const name = "同名竞速能力";
@@ -5867,11 +5935,11 @@ test("a completion signal with a result count is evidence, not a frozen contract
   assert.equal(hasVolatileNumber("找到 {{count}} 条", plan), false);
 });
 
-test("assigning .value to a DOM handle is rejected statically; fill() and plain-data .value are fine", () => {
+test("assigning .value to a DOM handle is recorded as a note; fill() and plain-data .value are clean", () => {
   const stage = (body) => `export const capability={version:2,stages:[{id:"stage_1",io:{reads:{input:["keyword"],state:[]},writes:{state:[],output:[]}},navigation:"optional",async run({input,waitFor,fill}){${body}return {outcome:"Continue"}}}]};`;
-  assert.equal(validateCapabilityJavaScriptSource(stage(`const box=await waitFor("#q");box.value=input.keyword;box.dispatchEvent(new Event("input",{bubbles:true}));`)).code, "capability_module_direct_value_assignment");
-  assert.equal(validateCapabilityJavaScriptSource(stage(`const box=document.querySelector("#q");box.value=input.keyword;`)).code, "capability_module_direct_value_assignment");
-  assert.equal(validateCapabilityJavaScriptSource(stage(`document.querySelector("#q").value=input.keyword;`)).code, "capability_module_direct_value_assignment");
+  assert.equal(validateCapabilityJavaScriptSource(stage(`const box=await waitFor("#q");box.value=input.keyword;box.dispatchEvent(new Event("input",{bubbles:true}));`)).notes[0].code, "capability_module_direct_value_assignment");
+  assert.equal(validateCapabilityJavaScriptSource(stage(`const box=document.querySelector("#q");box.value=input.keyword;`)).notes[0].code, "capability_module_direct_value_assignment");
+  assert.equal(validateCapabilityJavaScriptSource(stage(`document.querySelector("#q").value=input.keyword;`)).notes[0].code, "capability_module_direct_value_assignment");
   assert.equal(validateCapabilityJavaScriptSource(stage(`const box=await waitFor("#q");fill(box,input.keyword);`)).ok, true);
   assert.equal(validateCapabilityJavaScriptSource(stage(`const box=await waitFor("#q");const evidence={value:box.value};evidence.value=box.value.trim();`)).ok, true, "普通对象的 .value 不受影响");
   // The branch needs a body of its own: an empty one is refused by the guard
@@ -5879,12 +5947,12 @@ test("assigning .value to a DOM handle is rejected statically; fill() and plain-
   assert.equal(validateCapabilityJavaScriptSource(stage(`const box=await waitFor("#q");if(box.value===input.keyword){return {outcome:"Continue"}}`)).ok, true, "比较不是赋值");
 });
 
-test("selectors built from get_dom's computed role/name are rejected before the browser wastes a timeout on them", () => {
+test("selectors built from get_dom's computed role/name are recorded as notes", () => {
   const stage = (selector) => `export const capability={version:2,stages:[{id:"stage_1",io:{reads:{input:[],state:[]},writes:{state:[],output:[]}},navigation:"optional",async run({waitFor}){await waitFor(${JSON.stringify(selector)});return {outcome:"Continue"}}}]};`;
   // The old role rule missed a tag name directly preceded by a quote.
-  assert.equal(validateCapabilityJavaScriptSource(stage('input[role="combobox"][name="搜索历史热搜"]')).code, "capability_module_computed_aria_selector_forbidden");
-  assert.equal(validateCapabilityJavaScriptSource(stage('button[name="搜索"]')).code, "capability_module_computed_aria_selector_forbidden");
-  assert.equal(validateCapabilityJavaScriptSource(stage('a[name="Add to cart"]')).code, "capability_module_computed_aria_selector_forbidden");
+  assert.equal(validateCapabilityJavaScriptSource(stage('input[role="combobox"][name="搜索历史热搜"]')).notes[0].code, "capability_module_computed_aria_selector_forbidden");
+  assert.equal(validateCapabilityJavaScriptSource(stage('button[name="搜索"]')).notes[0].code, "capability_module_computed_aria_selector_forbidden");
+  assert.equal(validateCapabilityJavaScriptSource(stage('a[name="Add to cart"]')).notes[0].code, "capability_module_computed_aria_selector_forbidden");
   // A real name attribute (an ASCII identifier) remains allowed.
   assert.equal(validateCapabilityJavaScriptSource(stage('input[name="q"]')).ok, true);
   assert.equal(validateCapabilityJavaScriptSource(stage('input[placeholder="搜索历史热搜"]')).ok, true);
@@ -5957,10 +6025,10 @@ test("an output assembled from a hard-coded address is a guess, not a reading", 
   // Same published version: when neither location.href nor a link carried the
   // topic, it built the URL from the title and returned it as targetUrl.
   const fabricated = `export const capability={version:2,stages:[{id:"stage_verify",async run(){const targetTitle=document.querySelector("h2").textContent;let targetUrl="";if(location.search.includes("?topic=")){targetUrl=location.href}else{const link=document.querySelector('a[href*="?topic="]');if(link){targetUrl=link.href}else{targetUrl=\`https://www.example.test/?topic=\${encodeURIComponent(targetTitle)}\`}}return{outcome:"Success",output:{targetTitle,targetUrl}}}}]};`;
-  assert.equal(validateCapabilityJavaScriptSource(fabricated, []).code, "capability_module_output_fabricated");
+  assert.equal(validateCapabilityJavaScriptSource(fabricated, []).notes[0].code, "capability_module_output_fabricated");
   // String concatenation is the same guess.
   const concatenated = fabricated.replace("`https://www.example.test/?topic=${encodeURIComponent(targetTitle)}`", '"https://www.example.test/?topic="+encodeURIComponent(targetTitle)');
-  assert.equal(validateCapabilityJavaScriptSource(concatenated, []).code, "capability_module_output_fabricated");
+  assert.equal(validateCapabilityJavaScriptSource(concatenated, []).notes[0].code, "capability_module_output_fabricated");
   // What the page did not provide is NoResult, and that is accepted.
   const honest = fabricated.replace("targetUrl=`https://www.example.test/?topic=${encodeURIComponent(targetTitle)}`", 'return{outcome:"NoResult",reason:"no topic link on the page"}');
   assert.deepEqual(validateCapabilityJavaScriptSource(honest, []), { ok: true });
@@ -6083,7 +6151,7 @@ test("an input whose value is part of the entry address selects the page, and a 
     targetBindings: [],
   };
   const demonstrationParameters = { date: "2026-03-11" };
-  const codes = (report) => report.issues.map((issue) => issue.code);
+  const codes = (report) => report.notes.map((issue) => issue.code);
 
   // The value is a path segment of the entry address, and nothing navigates.
   assert.deepEqual(codes(inspectCapabilityQuality(contract, program, { demonstrationParameters, entryUrl: "https://archive.example/daily/2026-03-11" })), ["page_selecting_input_not_navigated"]);

@@ -17,7 +17,6 @@ import {
   deriveCapabilityCases,
   offeredInputPaths,
   finalizeCapabilityCaseGeneration,
-  mergeCapabilityCaseEnrichment,
   parseCapabilityCaseDiscoveryEvidenceSidecar,
   sanitizeCapabilityCaseDiscoveryEvidence,
 } from "../lib/capability-center-v2/case-generation.ts";
@@ -296,6 +295,8 @@ test("C2 requires one case to omit each optional defaulted input", async () => {
       },
     ],
   });
+  // C2's own invariant over the suite it derives, not the quality rule of the
+  // same name: a suite without the omission case is a C2 defect.
   assert.throws(
     () => compileCapabilityCaseGeneration(input, model, discovery),
     /default_omission_validation_required:limit/,
@@ -749,31 +750,6 @@ test("C2 final output requires the persisted evidence identity", async () => {
   });
 });
 
-test("an enrichment request carries the capability's own input and expected fields, sized to the cases", async () => {
-  const { build } = await import("esbuild");
-  const bundle = await build({
-    entryPoints: [fileURLToPath(new URL("../runner/capability-v2/case-generation.ts", import.meta.url))],
-    bundle: true, platform: "node", format: "esm", write: false, logLevel: "silent",
-  });
-  const { caseEnrichmentOutputSchema } = await import(
-    `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`
-  );
-  // The prompt's schema was strict and declared input/expected as bare objects;
-  // a strict decoder cannot emit any key for those, and three attempts in a
-  // row came back as `"input": { ": 1, ": 1 }`.
-  const schema = caseEnrichmentOutputSchema({
-    inputSchema: { type: "object", properties: { rank: { type: "number" } }, required: ["rank"], additionalProperties: false },
-    outputSchema: { type: "object", properties: { targetTitle: { type: "string" }, currentRank: { type: "number" } }, required: ["targetTitle"], additionalProperties: false },
-  }, 3);
-  const cases = schema.schema.properties.cases;
-  assert.equal(cases.minItems, 3);
-  assert.equal(cases.maxItems, 3);
-  // Nothing is required of `input`: it is omitted when the derived input stands.
-  assert.deepEqual(cases.items.properties.input, { type: "object", properties: { rank: { type: "number" } }, required: [], additionalProperties: false });
-  assert.deepEqual(cases.items.properties.expected, { type: "object", properties: { targetTitle: { type: "string" }, currentRank: { type: "number" } }, required: [], additionalProperties: false });
-  assert.equal(schema.strict, true, "the rest of the prompt's schema is untouched");
-});
-
 test("a case key that could not be a field name is refused as a broken response, not as a missing field", () => {
   assert.throws(
     () => decodeCapabilityCaseModelOutput({ cases: [{ input: { ": 1, ": 1 }, expected: {} }] }),
@@ -1052,64 +1028,3 @@ test("the demonstration witness is held to the Contract", async () => {
   assert.deepEqual(decodeC2CaseGenerationInput(input).demonstrationParameters, { query: "notebook" });
 });
 
-test("enrichment may use any value the contract accepts, and nothing it says is fatal", async () => {
-  const { input } = await setup();
-  const discovery = regionsFor(input, [
-    { observedValues: ["Notebook", "Hardcover ruled notebook", "Spiral notebook"] },
-    { observedValues: ["Mug", "Ceramic coffee mug"] },
-  ]);
-  const derived = deriveCapabilityCases(input, discovery);
-  assert.deepEqual(derived.cases.map((item) => item.input), [
-    { query: "notebook" }, { query: "Notebook" }, { query: "Mug" },
-  ]);
-  const merged = mergeCapabilityCaseEnrichment(input, derived, {
-    cases: [
-      // The demonstration's own case stays what was demonstrated.
-      { input: { query: "laptop" }, expected: {} },
-      // A value the page showed, matched to the page's own writing of it.
-      { input: { query: "spiral notebook" }, expected: { heading: "Notebook" } },
-      // A value the page never showed: taken as given. A search box accepts
-      // words that are nowhere on the page it stands on, and whether the
-      // capability works for one is decided by running it.
-      { input: { query: "laptop" }, expected: { heading: "Mug" } },
-    ],
-  }, discovery);
-  assert.deepEqual(merged.cases.map((item) => item.input), [
-    { query: "notebook" }, { query: "Spiral notebook" }, { query: "laptop" },
-  ]);
-  assert.deepEqual(merged.cases[1].expected, { heading: "Notebook", query: "Spiral notebook" });
-  assert.deepEqual(merged.cases[2].expected, { heading: "Mug", query: "laptop" });
-  assert.deepEqual(merged.report.reselected, [1, 2]);
-  assert.deepEqual(merged.report.inputIgnored, [{ index: 0, reason: "case_enrichment_demonstrated_case_kept" }]);
-  // An expectation outside the output schema: dropped for this case only.
-  const outside = mergeCapabilityCaseEnrichment(input, derived, {
-    cases: [{ expected: {} }, { expected: {} }, { expected: { resultCount: 3 } }],
-  }, discovery);
-  assert.equal(outside.report.expectedIgnored.length, 1);
-  assert.equal(outside.report.expectedIgnored[0].index, 2);
-  // A value the schema refuses is still refused: that is the contract, not a
-  // rule about where values come from.
-  const refused = mergeCapabilityCaseEnrichment(input, derived, {
-    cases: [{ input: { query: 42 }, expected: {} }, { expected: {} }, { expected: {} }],
-  }, discovery);
-  assert.deepEqual(refused.cases[0].input, { query: "notebook" });
-  assert.equal(refused.report.inputIgnored.length, 1);
-  // A re-selection that would duplicate another case is ignored.
-  const collapsed = mergeCapabilityCaseEnrichment(input, derived, {
-    cases: [{ expected: {} }, { expected: {} }, { input: { query: "Notebook" }, expected: {} }],
-  }, discovery);
-  assert.deepEqual(collapsed.cases.map((item) => item.input), [
-    { query: "notebook" }, { query: "Notebook" }, { query: "Mug" },
-  ]);
-  assert.deepEqual(collapsed.report.inputIgnored, [{ index: 2, reason: "case_enrichment_duplicate_case" }]);
-  // The wrong number of cases, or a candidate rewrite, is not an enrichment
-  // at all; the runner treats the throw as "no enrichment".
-  assert.throws(
-    () => mergeCapabilityCaseEnrichment(input, derived, { cases: [{ expected: {} }] }, discovery),
-    /case_enrichment_count_mismatch:1:3/u,
-  );
-  assert.throws(
-    () => mergeCapabilityCaseEnrichment(input, derived, { candidate: {}, cases: [] }, discovery),
-    /case_generation_candidate_rewrite_forbidden/u,
-  );
-});

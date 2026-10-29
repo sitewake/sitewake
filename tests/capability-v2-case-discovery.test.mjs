@@ -71,6 +71,23 @@ test("the harvest keeps the list a demonstrated value was chosen from, as a regi
   }
 });
 
+test("the start page is harvested once, before authoring: the lists as regions and each input's siblings", async () => {
+  const { server, origin } = await serve(CATALOGUE);
+  const browser = await launchTestBrowser();
+  try {
+    const page = await browser.newPage();
+    await page.goto(`${origin}/`);
+    const { snapshot, siblings } = await discovery.harvestStartPage(page, { generationTaskId: "generation_1", siteId: "site_1", parameters: { category: "Poetry", query: "Brass" } });
+    assert.equal(snapshot.generationTaskId, "generation_1");
+    assert.equal(snapshot.regions[0].kind, "choice-list");
+    assert.deepEqual(siblings, { category: ["Travel", "Mystery", "Historical Fiction"] }, "the other items of the list Poetry sits in; a value no list offers has no siblings");
+    assert.ok(snapshot.regions.some((region) => region.kind !== "choice-list"), "the cards are harvested too, for the cases of inputs no list offers");
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});
+
 test("a demonstrated value that sits in no list on the page adds no region", async () => {
   const { server, origin } = await serve(CATALOGUE);
   const browser = await launchTestBrowser();

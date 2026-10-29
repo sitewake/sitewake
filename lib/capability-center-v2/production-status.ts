@@ -32,6 +32,7 @@ export type ProductionMessageKey =
   | 'publicationFailed'
   | 'reviewUnavailable'
   | 'reviewRejected'
+  | 'repairScheduled'
   | 'reviewStalled'
   | 'reviewRunning';
 
@@ -95,7 +96,7 @@ export function projectProductionStatus(task: CapabilityTask, events: Capability
   if (task.status !== 'Succeeded') return base;
   if (task.result?.validationTaskId) return { ...base, state: 'StageCompleted', messageKey: 'stageCompletedValidationQueued', nextTaskId: task.result.validationTaskId };
   if (task.result?.buildResult?.outcome !== 'Validated') return { ...base, state: 'StageCompleted', messageKey: 'stageCompletedNoReceipt' };
-  const last = [...events].sort((a, b) => a.sequence - b.sequence).filter(e => ['ReviewCompleted', 'ReviewFailed', 'PublicationFailed', 'PublicationSuperseded', 'PublicationStarted', 'ReviewStarted'].includes(e.eventType) || (e.eventType === 'PhaseChanged' && e.payload.phase === 'Reviewing')).at(-1);
+  const last = [...events].sort((a, b) => a.sequence - b.sequence).filter(e => ['ReviewCompleted', 'ReviewFailed', 'PublicationFailed', 'PublicationSuperseded', 'PublicationStarted', 'ReviewStarted', 'RepairScheduled'].includes(e.eventType) || (e.eventType === 'PhaseChanged' && e.payload.phase === 'Reviewing')).at(-1);
   const reason = text(last?.payload.reason);
   // Another generation of the same capability published first: what the user
   // asked for is available, so this is the done state, not a failure.
@@ -105,6 +106,9 @@ export function projectProductionStatus(task: CapabilityTask, events: Capability
     return { ...base, phase: 'Publication', state: 'Failed', messageKey: 'publicationFailed', detail: reason, code, failureClass: classifyFailure({ code, message: reason }), failureStage: 'Publication', recovery: last.payload.conflict === true ? 'InspectConflict' : 'RetryReview' };
   }
   if (last?.eventType === 'ReviewFailed') return { ...base, phase: 'Review', state: 'Failed', messageKey: 'reviewUnavailable', detail: reason, failureClass: classifyFailure({ code: 'review_failed', message: reason }), failureStage: 'Review', recovery: 'RetryReview' };
+  // The verdict rejected it and a second authoring was started from the
+  // failure: the record runs on, into that task.
+  if (last?.eventType === 'RepairScheduled') return { ...base, phase: 'Review', state: 'Running', messageKey: 'repairScheduled', detail: reason, nextTaskId: text(last.payload.repairTaskId), recovery: 'None' };
   if (last?.eventType === 'ReviewCompleted' && last.payload.decision !== 'Approved') return { ...base, phase: 'Review', state: 'Rejected', messageKey: 'reviewRejected', detail: reason, recovery: 'RetryProduction' };
   const stalled = now - Date.parse(last?.createdAt || task.finishedAt || task.updatedAt) > 10 * 60_000;
   return { ...base, phase: last?.eventType === 'PublicationStarted' || last?.payload.decision === 'Approved' ? 'Publication' : 'Review', state: stalled ? 'NeedsAttention' : 'Running', messageKey: stalled ? 'reviewStalled' : 'reviewRunning', recovery: stalled ? 'RetryReview' : 'None' };
