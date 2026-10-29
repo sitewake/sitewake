@@ -1364,6 +1364,7 @@ export const en: ConsoleCopy = {
           "review rejected: the demonstrated input's case did not pass": "Not published: the validation case that uses the demonstrated input did not pass.",
           "review rejected: the demonstrated input's case found nothing where the visitor's run found a result": "Not published: the visitor's run found a result, but the replay on the demonstrated input found nothing.",
           "review rejected: a case found nothing for a value the site lists beside the demonstrated one": "Not published: for a value the site lists beside the demonstrated one, the program found nothing.",
+          "review rejected: a case failed for a value the site lists beside the demonstrated one": "Not published: for a value the site lists beside the demonstrated one, the program did not finish.",
           "review rejected: no validation case passed": "Not published: no validation case passed.",
           "review rejected: a demonstrated value is written into the source": "Not published: the program writes a demonstrated value into its code instead of reading it from the input.",
           "rejected; authoring once more from the failure": "Not approved; writing the program once more from the case that failed",

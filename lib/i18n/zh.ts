@@ -1447,6 +1447,7 @@ export const zh = {
           "review rejected: the demonstrated input's case did not pass": "未发布：使用演示输入的验证样例没有通过。",
           "review rejected: the demonstrated input's case found nothing where the visitor's run found a result": "未发布：访客的那次运行有结果，而独立回放对演示输入没有找到任何东西。",
           "review rejected: a case found nothing for a value the site lists beside the demonstrated one": "未发布：页面在演示值旁边列出的某个值，程序没有给出结果。",
+          "review rejected: a case failed for a value the site lists beside the demonstrated one": "未发布：页面在演示值旁边列出的某个值，程序没有跑通。",
           "review rejected: no validation case passed": "未发布：没有任何验证样例通过。",
           "review rejected: a demonstrated value is written into the source": "未发布：程序把演示时的取值写死在代码里，而不是从输入读取。",
           "rejected; authoring once more from the failure": "判定未通过，正在从没通过的样例出发再撰写一次",

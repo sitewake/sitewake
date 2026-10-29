@@ -94,3 +94,43 @@ test("a typed value equal to an input is written as that input, and Enter become
   assert.deepEqual(program.steps[0].value, { source: "input", path: "productName" });
   assert.equal(program.steps[1].key, "Enter");
 });
+
+test("a quantity typed as text is the numeric input it equals", () => {
+  // The recording holds the text "2"; the parameter is the number 2. Left a
+  // literal, the seed added two mugs whatever quantity was asked for.
+  const { parameters, experience } = recording("ps-add-mug-quantity");
+  const { program } = traceFromExperience(experience, parameters);
+  const fill = program.steps.find((step) => step.action === "fill");
+  assert.deepEqual(fill.value, { source: "input", path: "quantity" });
+  assert.ok(names(program.steps[0]).includes(JSON.stringify({ source: "input", path: "productName" })));
+});
+
+test("a run that began on the page an input chooses opens it from the home page by the link the input names", () => {
+  // Read-only: the visitor opened /9-art and read it. No action, so there was
+  // no trace at all, and the generation stopped before authoring.
+  const read = recording("ps-category-count-read-only");
+  assert.equal(read.experience.actions.length, 0);
+  const readTrace = traceFromExperience(read.experience, read.parameters).program;
+  assert.deepEqual(readTrace.entry, { mode: "Navigate", url: "http://prestashop.bench/" });
+  assert.deepEqual(readTrace.steps.map((step) => step.action), ["click"]);
+  assert.ok(names(readTrace.steps[0]).includes(JSON.stringify({ source: "input", path: "category" })));
+  // Began on /6-accessories and sorted it: the sort is kept, after the input's page is opened.
+  const sorted = recording("ps-cheapest-accessory");
+  const sortedTrace = traceFromExperience(sorted.experience, sorted.parameters).program;
+  assert.equal(sortedTrace.entry.url, "http://prestashop.bench/");
+  assert.ok(names(sortedTrace.steps[0]).includes(JSON.stringify({ source: "input", path: "category" })));
+  assert.ok(sortedTrace.steps.slice(1).some((step) => names(step).some((name) => /Price, low to high/.test(name))));
+  // A run whose steps already use the input keeps the page it began on.
+  const poetry = recording("books-count-poetry");
+  assert.equal(traceFromExperience(poetry.experience, poetry.parameters).program.entry.url, "http://books.bench:8101/");
+});
+
+test("a link named alike in every entry is the one in the entry its address names, and a return by the back button is not a step", () => {
+  // Every quote has an "(about)" link; the visitor's leads to
+  // /author/Albert-Einstein.html. They opened it, came back with the browser's
+  // back button (not recorded), and opened it again.
+  const { parameters, experience } = recording("quotes-by-author");
+  const { program } = traceFromExperience(experience, parameters);
+  assert.equal(program.steps.length, 1);
+  assert.deepEqual(program.steps[0].target.strategies[0], { type: "role", role: "link", name: "(about)", match: "exact", containsText: { source: "input", path: "authorName" } });
+});

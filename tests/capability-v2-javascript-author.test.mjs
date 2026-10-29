@@ -1148,3 +1148,58 @@ test("a site-global capability is replayed from the site's own entry", async () 
   // entry its program was published with: the Contract's resolution is read first.
   assert.ok(block.indexOf("resolveCapabilityRun(candidate.contract") >= 0 && block.indexOf("resolveCapabilityRun(candidate.contract") < block.indexOf("program.entry.mode"), "the Contract's page comes first");
 });
+
+test("the selector that tells a control from the acted-on object is one a browser accepts", async () => {
+  // Unquoted, `[aria-label*=next page i]` is not a selector, and `closest`
+  // threw on it in every seed that acted by a click (benchmark, 2026-10-28).
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<nav aria-label="Pagination"><a href="/p2" aria-label="Next page">2</a></nav><a id="card" href="/p/1">Brown bear cushion</a><button id="add">Add to cart</button>');
+    const found = await page.evaluate((selector) => ({
+      card: Boolean(document.querySelector("#card").closest(selector)),
+      add: Boolean(document.querySelector("#add").closest(selector)),
+      next: Boolean(document.querySelector("nav a").closest(selector)),
+    }), author.CONTROL_SELECTOR);
+    assert.deepEqual(found, { card: false, add: true, next: true });
+  } finally {
+    await browser.close();
+  }
+});
+
+test("an edit is found through doubled backslashes and changed whitespace, and only when it names one place", () => {
+  // Recorded on the benchmark: the model copied `\d+` from the seed as `\\d+`
+  // and repeated that edit thirty times against a source that held it.
+  const source = 'const paging = /^(?:next|\\d+)\\s*$/iu;\nconst namesObject = !element.closest("a");\nreturn { outcome: "Continue" };\n';
+  const exact = author.locateEdit(source, 'const namesObject = !element.closest("a");');
+  assert.equal(exact.ok, true);
+  assert.equal(source.slice(exact.start, exact.end), 'const namesObject = !element.closest("a");');
+  const doubled = author.locateEdit(source, 'const paging = /^(?:next|\\\\d+)\\\\s*$/iu;');
+  assert.equal(doubled.ok, true, "doubled backslashes still find the line");
+  assert.equal(source.slice(doubled.start, doubled.end), 'const paging = /^(?:next|\\d+)\\s*$/iu;');
+  const spaced = author.locateEdit(source, 'const  namesObject =\n   !element.closest("a");');
+  assert.equal(spaced.ok, true, "whitespace may differ");
+  const twice = author.locateEdit(`${source}${source}`, 'return { outcome: "Continue" };');
+  assert.equal(twice.ok, false);
+  assert.match(twice.error, /not_unique:2/);
+  const missing = author.locateEdit(source, 'const namesObject = !element.closest("button");');
+  assert.equal(missing.ok, false);
+  assert.match(missing.error, /edit_file_old_str_not_found/);
+  assert.match(missing.error, /closest lines are:\nconst namesObject = !element\.closest\("a"\);/);
+});
+
+test("the same failing call sent again is named as a repeat, and the third repeat ends the loop", async () => {
+  const edit = { path: "capability.ts", old_str: "this text is not in the file", new_str: "x" };
+  const turns = [
+    toolTurn(1, "write_file", { path: "capability.ts", content: source }),
+    toolTurn(2, "edit_file", edit), toolTurn(3, "edit_file", edit), toolTurn(4, "edit_file", edit), toolTurn(5, "edit_file", edit),
+    toolTurn(6, "run_draft"),
+  ];
+  const completed = await runAuthor({ turns, stageRun: async () => successfulDraft(), maxToolCalls: 20 });
+  assert.equal(turns.length, 2, "the loop stopped after the third repeat, before the fourth edit");
+  const feedback = completed.requests.at(-1).messages.filter((message) => message.role === "tool").map((message) => JSON.parse(message.content));
+  assert.match(feedback.at(-1).error, /already failed this way/);
+  // The draft written before the repeats is replayed once on the way out, as any unreplayed draft is.
+  assert.equal(completed.result.draft.outcome, "Success");
+});

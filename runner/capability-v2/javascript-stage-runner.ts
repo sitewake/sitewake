@@ -254,6 +254,11 @@ async function recoverDisabledProductDetail(
   const previousUrl = page.url();
   await page.goBack({ waitUntil: "domcontentloaded", timeout: 15_000 }).catch(() => undefined);
   if (page.url() === previousUrl) return false;
+  // Nothing came before this page in the run: there is no result page to go back to.
+  if (page.url() === "about:blank") {
+    await page.goForward({ waitUntil: "domcontentloaded", timeout: 15_000 }).catch(() => undefined);
+    return false;
+  }
   await page.waitForTimeout(200);
   const targetValues = Object.entries(input)
     .filter(([key, value]) => typeof value === "string" && String(value).trim() && /product|item|keyword|query|search|category|商品|产品|物品|关键词|类别/iu.test(key))
@@ -622,7 +627,12 @@ export async function runCapabilityJavaScriptStages(options: {
     // visible, before a navigation checkpoint can carry the input forward.
     const stageInput = await reconcileVisibleCapabilityOptions(effectiveInput, page);
     Object.assign(effectiveInput, stageInput);
-    await recoverDisabledProductDetail(page, effectiveInput, options.program, manifest.id);
+    // Only while nothing has been written: a shop disables its Add-to-cart
+    // button while the cart confirmation is open, and going back from there
+    // left the verify stage on the page before — in a fresh browser,
+    // about:blank — on every add-to-cart PrestaShop generation.
+    const written = receipts.some((receipt) => receipt.status === "Completed" && program.stages[receipt.stageIndex]?.effect === "write");
+    if (!written && !/verify/iu.test(manifest.id)) await recoverDisabledProductDetail(page, effectiveInput, options.program, manifest.id);
     const urlBefore = page.url(); const startedAt = Date.now();
     const started: JavaScriptStageReceipt = { stageId: manifest.id, stageIndex, status: "Started", urlBefore, iteration: control.capabilityStageIteration(program, cursor, manifest.id) };
     receipts.push(started); await options.onReceipt?.(page, started);

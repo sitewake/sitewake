@@ -36,6 +36,7 @@ const {
   REVIEW_DEMONSTRATION_CASE_NO_RESULT,
   REVIEW_DEMONSTRATION_VALUE_LEAKED,
   REVIEW_OFFERED_INPUT_NO_RESULT,
+  REVIEW_OFFERED_INPUT_FAILED,
   REVIEW_NO_CASE_PASSED,
 } = await import(BUNDLE_PATH);
 rmSync(BUNDLE_PATH);
@@ -144,4 +145,19 @@ test("the verdict approves on the record alone and names what it rejects for", (
   });
   // Without the source (a version whose generation left none) the leak check has nothing to read and does not reject.
   assert.equal(validationVerdict({ results: passed, demonstrationParameters: demonstration, requiredInputs: ["category"] }).decision, "Approved");
+});
+
+test("a case that failed in any way on a value the site lists rejects, not only one that found nothing", () => {
+  // "Count category products" and "Find cheapest item in category" were
+  // published on the demonstrated category alone: every other category the
+  // menu lists timed out, and only a case that found nothing was marked.
+  const results = [
+    { caseId: "case_1", resolvedInput: { category: "Art" } },
+    { caseId: "case_2", resolvedInput: { category: "Clothes" }, failureReason: "offered_input_failed:category=\"Clothes\":capability_control_flow_timeout:stage_1" },
+  ];
+  assert.deepEqual(validationCaseFloor(results, { category: "Art" }, "Success"), {
+    reason: REVIEW_OFFERED_INPUT_FAILED, caseId: "case_2", failure: "offered_input_failed:category=\"Clothes\":capability_control_flow_timeout:stage_1",
+  });
+  // A failure on a value no list offers is still one case among others.
+  assert.equal(validationCaseFloor([results[0], { caseId: "case_2", resolvedInput: { category: "Attic" }, failureReason: "capability_control_flow_timeout:stage_1" }], { category: "Art" }, "Success"), undefined);
 });

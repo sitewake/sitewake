@@ -108,7 +108,7 @@ export function contractFromDemonstration(input: {
 }): CapabilityContract {
   const inputSchema = inputSchemaFromDemonstration(input.parameters);
   const required = Array.isArray(inputSchema.required) ? inputSchema.required as string[] : [];
-  const scope = inferCapabilityScope(input.experience.startPage.url, input.trace.steps, {
+  const scope = inferCapabilityScope(input.trace.entry.mode === "Navigate" && input.trace.entry.url ? input.trace.entry.url : input.experience.startPage.url, input.trace.steps, {
     parameters: Object.entries(input.parameters).map(([name, value]) => ({ name, type: typeOf(value) as "string" | "number" | "boolean", description: humanize(name), required: true, exampleValue: typeof value === "object" || value === null ? "" : String(value) })),
   });
   const template = addressTemplateFromEnd(input.experience.endPage.url, input.parameters);

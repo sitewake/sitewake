@@ -685,3 +685,66 @@ test("a target chosen by an input picks that option or says the page does not of
     await browser.close();
   }
 });
+
+test("after the add, a shop that disables its button does not send the verify stage back a page", async () => {
+  // PrestaShop disables Add to cart while its confirmation is open. The
+  // runner read that as a non-executable product before the verify stage and
+  // went back in history — in a fresh browser, to about:blank — on every
+  // add-to-cart generation of the benchmark.
+  const productPage = `<!doctype html><title>Brown bear notebook</title><main><h1>Brown bear notebook</h1>
+    <button data-button-action="add-to-cart" onclick="this.disabled=true;document.querySelector('#modal').hidden=false">Add to cart</button>
+    <div id="modal" hidden><span class="product-name">Brown bear notebook</span></div></main>`;
+  const module = `export const capability={version:2,stages:[
+    {id:"stage_1",io:{reads:{input:[],state:[]},writes:{state:[],output:[]}},navigation:"optional",async run(){document.querySelector("[data-button-action]").click();return {outcome:"Continue"}}},
+    {id:"stage_verify",io:{reads:{input:[],state:[]},writes:{state:[],output:["added"]}},navigation:"none",async run({waitUntil}){await waitUntil(()=>!document.querySelector("#modal").hidden);return {outcome:"Success",output:{added:document.querySelector(".product-name").textContent}}}}]};`;
+  const browser = await launchTestBrowser();
+  const context = await browser.newContext();
+  await context.route("**/*", async (route) => {
+    const url = route.request().url();
+    if (url === "https://shop.test/notebook.html") return route.fulfill({ status: 200, contentType: "text/html", body: productPage });
+    if (url === "https://public.test/module.js") return route.fulfill({ status: 200, headers: { "content-type": "text/javascript", "access-control-allow-origin": "*" }, body: module });
+    return route.abort("failed");
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto("https://shop.test/notebook.html");
+    const stages = [
+      { id: "stage_1", title: "Add", purpose: "Add", effect: "write", resumePolicy: "reconcile-before-retry", io: { reads: { input: [], state: [] }, writes: { state: [], output: [] } }, navigation: "optional" },
+      { id: "stage_verify", title: "Verify", purpose: "Verify", effect: "read", resumePolicy: "skip-completed", io: { reads: { input: [], state: [] }, writes: { state: [], output: ["added"] } }, navigation: "none" },
+    ];
+    const result = await stageRunner.runCapabilityJavaScriptStages({ page, moduleUrl: "https://public.test/module.js", program: { ...program, entry: { mode: "CurrentPage" }, stages }, input: {} });
+    assert.equal(result.outcome, "Success");
+    assert.deepEqual(result.output, { added: "Brown bear notebook" });
+    assert.equal(result.receipts.at(-1).urlBefore, "https://shop.test/notebook.html");
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+});
+
+test("find tells apart links named alike by the entry around them", async () => {
+  const listing = `<!doctype html><title>Quotes</title>
+    <div class="quote"><span>“A”</span><span>by <small>Albert Einstein</small> <a href="/author/Albert-Einstein.html">(about)</a></span></div>
+    <div class="quote"><span>“B”</span><span>by <small>Jane Austen</small> <a href="/author/Jane-Austen.html">(about)</a></span></div>`;
+  const module = `export const capability={version:2,stages:[{id:"stage_verify",io:{reads:{input:["authorName"],state:[]},writes:{state:[],output:["href"]}},navigation:"none",async run({input,find}){const link=await find({strategies:[{type:"role",role:"link",name:"(about)",match:"exact",containsText:input["authorName"]}]});return link?{outcome:"Success",output:{href:link.getAttribute("href")}}:{outcome:"NoResult",reason:"no entry"}}}]};`;
+  const browser = await launchTestBrowser();
+  const context = await browser.newContext();
+  await context.route("**/*", async (route) => {
+    const url = route.request().url();
+    if (url === "https://quotes.test/") return route.fulfill({ status: 200, contentType: "text/html", body: listing });
+    if (url === "https://public.test/module.js") return route.fulfill({ status: 200, headers: { "content-type": "text/javascript", "access-control-allow-origin": "*" }, body: module });
+    return route.abort("failed");
+  });
+  try {
+    const page = await context.newPage();
+    const stages = [{ id: "stage_verify", title: "Verify", purpose: "Verify", effect: "read", resumePolicy: "skip-completed", io: { reads: { input: ["authorName"], state: [] }, writes: { state: [], output: ["href"] } }, navigation: "none" }];
+    for (const [authorName, href] of [["Jane Austen", "/author/Jane-Austen.html"], ["Albert Einstein", "/author/Albert-Einstein.html"]]) {
+      await page.goto("https://quotes.test/");
+      const result = await stageRunner.runCapabilityJavaScriptStages({ page, moduleUrl: "https://public.test/module.js", program: { ...program, entry: { mode: "CurrentPage" }, stages }, input: { authorName } });
+      assert.deepEqual(result.output, { href }, authorName);
+    }
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+});
