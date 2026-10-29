@@ -409,6 +409,48 @@ What is left, by class:
 - Model variance in authoring: budgets and malformed actions, one or two
   tasks a run.
 
+## Iteration 8 — values from the whole list, not only the start page
+
+Found on the demo console (`demo-console.sitewake.ai`, 2026-10-29): "Get
+product price", generated from a visitor who picked the Mira Pendant on the
+home page, was validated on three other home-page lamps and hung for three
+minutes on the Pilo Mushroom Lamp, which the home page does not show (four
+of sixteen lamps are there).
+
+- The harvest recognises a grid of cards as a list, named by each card's
+  heading; a title the card cuts short is taken from its link's full title or
+  left out.
+- It reads a bounded few pages linked from the start page; a list there that
+  holds every value the start page shows, and more, is the one replays and
+  cases come from, the unseen values first.
+- When the input's whole list is on such a page and the trace starts by
+  clicking the item the input names, the program starts there and is
+  published with it as its entry.
+- A target chosen by an input that the settled page does not show ends the
+  wait in seconds; the seeded stage answers that there is no such item.
+- An output another listed value answers without is optional; a number the
+  answer adds in parentheses is not what it found.
+
+Reproduced against the live demo shop with the server's own RunSpec and
+`deepseek-v4-flash`: the program starts on `/shop`, and answers Pilo ($119,
+out of stock), Fenna ($129) and Mira ($219); a lamp the shop does not sell
+fails in 12 s instead of 3 min.
+
+| Rate | Iteration 6 (two runs) | Iteration 8, run `2026-10-29T08-05-33` (`8848d2d2`) |
+| --- | --- | --- |
+| First ask | 31 / 36 | 17 / 18 |
+| Generation published | 18 / 23 | 6 / 11 (6 / 9 that started) |
+| Reuse | 13 / 15 | 5 / 5 |
+
+Two intermediate runs on this branch (`2026-10-29T06-30-19`,
+`2026-10-29T07-22-34`) published 7 / 11 and 7 / 10 and showed what the wider
+lists broke first: a PrestaShop program moved to a page that was larger but
+not a superset of the home page's list, a colour field required of products
+without colours, and cut card titles used as cases; each is fixed above. The
+wider values make PrestaShop authoring harder (the cushion's cases now
+include mugs), and generation on this benchmark is lower than iteration 6;
+no published capability failed on reuse in any of the three runs.
+
 ## Live demo, 2026-10-22 → 2026-10-27 (for comparison)
 
 Not a benchmark run: the demo console's own records over the days the fixes
