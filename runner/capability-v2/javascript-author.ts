@@ -208,7 +208,9 @@ function uniquePaths(values: string[]) {
 export const ACTED_ON_STATE_PATH = "targets.__actedOn";
 const ACTED_ON_ACTIONS = ["click", "check", "press"];
 // Elements that change the chosen object rather than name it.
-const CONTROL_SELECTOR = "button, input, select, textarea, label, option, [role=button], [role=radio], [role=checkbox], [role=option], [role=switch], [role=tab], [role=menuitemradio], [role=spinbutton], [rel=next], [rel=prev], [rel=previous], .pagination a, .pager a, nav[aria-label*=pagination i] a, [aria-label*=next page i], [aria-label*=previous page i]";
+// Attribute values are quoted: an unquoted value with a space is not a valid
+// selector, and `closest` threw on it in every seed that acted by a click.
+export const CONTROL_SELECTOR = 'button, input, select, textarea, label, option, [role="button"], [role="radio"], [role="checkbox"], [role="option"], [role="switch"], [role="tab"], [role="menuitemradio"], [role="spinbutton"], [rel="next"], [rel="prev"], [rel="previous"], .pagination a, .pager a, nav[aria-label*="pagination" i] a, [aria-label*="next page" i], [aria-label*="previous page" i]';
 // A link that turns the page is a control too, whatever the site calls it:
 // "Count quotes by tag" turned to page 2 of the tag, the seed took "Next →"
 // for the object it had acted on, and the verify stage refused page 2 of
@@ -239,6 +241,35 @@ export function qualityRepairHint(issue: CapabilityQualityReport["issues"][numbe
     return "REPAIR REQUIRED: the demonstration value is written into executable code. Read the value from input.* instead; a literal copied from the example works for one input only.";
   }
   return `REPAIR REQUIRED: ${issue.message}`;
+}
+
+/**
+ * Where an edit's old_str is in the source. Exact first; then the same text
+ * with any run of backslashes and any run of whitespace allowed to differ,
+ * when that finds one place only. Models double the backslashes of a regex
+ * they copy (`\\d` for `\d`): one authoring repeated the same edit thirty
+ * times against a source that held it, and spent its budget on nothing. When
+ * neither finds it, the error carries the lines of the source that come
+ * closest, to copy from.
+ */
+export function locateEdit(source: string, oldStr: string): { ok: true; start: number; end: number } | { ok: false; error: string } {
+  const exact = source.split(oldStr).length - 1;
+  if (exact === 1) {
+    const start = source.indexOf(oldStr);
+    return { ok: true, start, end: start + oldStr.length };
+  }
+  if (exact > 1) return { ok: false, error: `edit_file_old_str_not_unique:${exact}: add surrounding lines to old_str until it names one place` };
+  const pattern = oldStr.trim().split(/(\\+|\s+)/u).filter(Boolean).map((part) => /^\\+$/u.test(part) ? "\\\\+" : /^\s+$/u.test(part) ? "\\s+" : part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join("");
+  const matches = pattern ? [...source.matchAll(new RegExp(pattern, "gu"))] : [];
+  if (matches.length === 1) return { ok: true, start: matches[0].index!, end: matches[0].index! + matches[0][0].length };
+  if (matches.length > 1) return { ok: false, error: `edit_file_old_str_not_unique:${matches.length}: add surrounding lines to old_str until it names one place` };
+  const first = oldStr.split("\n").map((line) => line.trim()).find((line) => line.length > 0) || "";
+  const lines = source.split("\n");
+  const common = (line: string) => { const text = line.trim(); let index = 0; while (index < text.length && index < first.length && text[index] === first[index]) index += 1; return index; };
+  let best = -1; let bestScore = 0;
+  lines.forEach((line, index) => { const score = common(line); if (score > bestScore) { best = index; bestScore = score; } });
+  const nearest = best >= 0 && bestScore >= 8 ? lines.slice(best, best + 6).join("\n") : "";
+  return { ok: false, error: `edit_file_old_str_not_found: old_str is not in src/capability.ts; copy it from the file as it is now${nearest ? `. The closest lines are:\n${nearest.slice(0, 1200)}` : " (read_file shows it)"}` };
 }
 
 export type AuthoringAddressOptions = {
@@ -856,6 +887,10 @@ export async function authorJavaScriptCapability(options: {
   let lastDraftFailure: Error | undefined;
   let previousDraftFailureSignature: string | undefined;
   let repeatedDraftFailures = 0;
+  /** The last failed non-replay tool call, and how many times in a row it was sent unchanged. */
+  let previousToolFailure: string | undefined;
+  let repeatedToolFailures = 0;
+  let repeatedCallStalled = false;
   let modelStalled = false;
   const budgetLeft = () => ({ toolCalls: Math.max(0, maxToolCalls - toolCallsUsed), draftRuns: Math.max(0, maxDraftRuns - draftRuns) });
 
@@ -1153,7 +1188,7 @@ export async function authorJavaScriptCapability(options: {
     }),
   });
   try {
-  while (toolCallsUsed < maxToolCalls && draftRuns < maxDraftRuns) {
+  while (toolCallsUsed < maxToolCalls && draftRuns < maxDraftRuns && !repeatedCallStalled) {
     await options.onEvent?.({ phase: "Authoring", message: "model turn", payload: { turn: toolCallsUsed + 1 } });
     const authorTimeoutMs = Math.max(120_000, Number(process.env.CAPABILITY_V2_AUTHOR_TIMEOUT_MS || 180_000));
     await workspace.event('model.request', {baseMessageCount:recordedMessageCount,appendMessages:messages.slice(recordedMessageCount),model:config.model,prompt:provenance});
@@ -1227,9 +1262,9 @@ export async function authorJavaScriptCapability(options: {
           let content: string;
           if (call.function.name === "edit_file") {
             if (!["capability.ts", "src/capability.ts"].includes(String(args.path)) || typeof args.old_str !== "string" || !args.old_str || typeof args.new_str !== "string") throw new Error("edit_file_arguments_invalid");
-            const occurrences = source.split(args.old_str).length - 1;
-            if (occurrences !== 1) throw new Error(occurrences ? `edit_file_old_str_not_unique:${occurrences}` : "edit_file_old_str_not_found: copy old_str exactly from the current src/capability.ts (read_file shows it)");
-            content = source.replace(args.old_str, () => args.new_str as string);
+            const located = locateEdit(source, args.old_str);
+            if (!located.ok) throw new Error(located.error);
+            content = source.slice(0, located.start) + (args.new_str as string) + source.slice(located.end);
           } else {
             if (!["capability.ts", "src/capability.ts"].includes(String(args.path)) || typeof args.content !== "string") throw new Error("write_file_arguments_invalid");
             content = args.content;
@@ -1245,7 +1280,18 @@ export async function authorJavaScriptCapability(options: {
           result = await runDraft();
         }
       } catch (error) {
-        const failure = error instanceof Error ? error : new Error(String(error));
+        let failure = error instanceof Error ? error : new Error(String(error));
+        // The same call failing the same way again changes nothing: one
+        // authoring sent one edit thirty times and spent its budget on it.
+        // The model is told so on the first repeat, and the loop stops on
+        // the third.
+        if (call.function.name !== "run_draft") {
+          const signature = `${call.function.name}:${call.function.arguments}:${failure.message.split("\n")[0]}`;
+          repeatedToolFailures = signature === previousToolFailure ? repeatedToolFailures + 1 : 0;
+          previousToolFailure = signature;
+          if (repeatedToolFailures > 0) failure = Object.assign(new Error(`${failure.message}\nThis exact call already failed this way; sending it again will fail again. Change the arguments, or read_file and write_file the whole module.`), { code: (failure as { code?: string }).code });
+          if (repeatedToolFailures >= 2) repeatedCallStalled = true;
+        }
         const code = failureCode(failure);
         await options.onEvent?.({
           phase: call.function.name === "run_draft" ? "DraftReplay" : "Authoring",
