@@ -505,6 +505,7 @@ function targetExpression(target: ProgramStep["target"]): string {
     if (strategy.role) fields.push(`role:${JSON.stringify(strategy.role)}`);
     const name = locatorExpression(strategy.name); if (name) fields.push(`name:${name}`);
     const value = locatorExpression(strategy.value); if (value) fields.push(`value:${value}`);
+    const containsText = locatorExpression(strategy.containsText); if (containsText) fields.push(`containsText:${containsText}`);
     if (strategy.match) fields.push(`match:${JSON.stringify(strategy.match)}`);
     return `{${fields.join(",")}}`;
   });

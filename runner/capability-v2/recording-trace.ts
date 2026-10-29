@@ -96,10 +96,34 @@ function pageElement(element: RecordedElement | undefined, index: number) {
   };
 }
 
+/**
+ * A link named the same in every entry — "(about)" beside each author — is
+ * the one in the entry that names the input: the recording's text around the
+ * element holds the demonstrated value though its own name does not.
+ */
+function entryInput(action: RecordedAction, input: CapabilityTaskInput, strategies: LocatorStrategy[]) {
+  if (JSON.stringify(strategies).includes('"source":"input"')) return undefined;
+  const around = (action.element?.contextText || "").normalize("NFKC").toLocaleLowerCase();
+  // The address it leads to spells the value: /author/Albert-Einstein.html.
+  // A link back to the page it is on (a sort order, a filter) is a control
+  // of that page, whatever its address spells.
+  const leadsTo = (() => {
+    try {
+      const target = new URL(action.element?.href || "");
+      if (action.page?.url && new URL(action.page.url).pathname === target.pathname) return "";
+      return slugWords((target.pathname.split("/").filter(Boolean).at(-1) || "").replace(/\.html?$/u, "")).join(" ");
+    } catch { return ""; }
+  })();
+  return Object.entries(input.parameters).find(([, value]) => typeof value === "string" && value.trim().length > 1
+    && ((around && around.includes(value.normalize("NFKC").trim().toLocaleLowerCase())) || (leadsTo && leadsTo === slugWords(value).join(" "))))?.[0];
+}
+
 function targetFor(action: RecordedAction, index: number, input: CapabilityTaskInput): ProgramStep["target"] {
   const strategies: LocatorStrategy[] = strategiesFor(pageElement(action.element, index), input);
   const name = nameOf(action.element);
   if (!strategies.length && name) strategies.push({ type: "text", value: name, match: "exact" });
+  const path = entryInput(action, input, strategies);
+  if (path && name && action.element?.role) strategies.unshift({ type: "role", role: action.element.role, name, match: "exact", containsText: { source: "input", path } });
   return { strategies };
 }
 
@@ -192,6 +216,12 @@ export function traceFromExperience(experience: CapabilityExperience, parameters
       drop(move, "loop");
       continue;
     }
+    // An action taken from a page the trail already left from: the visitor
+    // went back to it (the browser's back button is not recorded), and what
+    // they did after leaving it the first time is not on the way.
+    const current = trail.at(-1)?.to;
+    const returned = current && !samePage(current, move.from) ? trail.findIndex((kept) => samePage(kept.from, move.from) && !samePage(kept.to, kept.from)) : -1;
+    if (returned >= 0) for (const cut of trail.splice(returned)) drop(cut, "loop");
     trail.push(move);
   }
 

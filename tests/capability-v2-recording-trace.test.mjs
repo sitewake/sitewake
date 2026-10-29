@@ -124,3 +124,13 @@ test("a run that began on the page an input chooses opens it from the home page 
   const poetry = recording("books-count-poetry");
   assert.equal(traceFromExperience(poetry.experience, poetry.parameters).program.entry.url, "http://books.bench:8101/");
 });
+
+test("a link named alike in every entry is the one in the entry its address names, and a return by the back button is not a step", () => {
+  // Every quote has an "(about)" link; the visitor's leads to
+  // /author/Albert-Einstein.html. They opened it, came back with the browser's
+  // back button (not recorded), and opened it again.
+  const { parameters, experience } = recording("quotes-by-author");
+  const { program } = traceFromExperience(experience, parameters);
+  assert.equal(program.steps.length, 1);
+  assert.deepEqual(program.steps[0].target.strategies[0], { type: "role", role: "link", name: "(about)", match: "exact", containsText: { source: "input", path: "authorName" } });
+});

@@ -224,7 +224,8 @@ export async function executeBrowserCapabilityStage(payload: string | {
     const elements = [...document.querySelectorAll(CANDIDATES)];
     if (strategy.type === 'role') {
       const role = String(strategy.role || '').toLowerCase();
-      return elements.find((element) => visible(element) && roleMatches(role, roleOf(element)) && (!wanted || textMatches(wanted, accessibleName(element), strategy.match))) as HTMLElement || null;
+      const named = elements.filter((element) => visible(element) && roleMatches(role, roleOf(element)) && (!wanted || textMatches(wanted, accessibleName(element), strategy.match)));
+      return (withinEntryHaving(named, strategy.containsText)[0] || null) as HTMLElement | null;
     }
     if (strategy.type === 'label') {
       return elements.find((element) => visible(element) && (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) && textMatches(wanted, accessibleName(element), strategy.match)) as HTMLElement || null;
@@ -233,6 +234,20 @@ export async function executeBrowserCapabilityStage(payload: string | {
     const matching = elements.filter((element) => visible(element) && textMatches(wanted, normalizeText(element.textContent), strategy.match));
     const interactive = matching.find((element) => ['button', 'link', 'option', 'menuitem', 'tab', 'checkbox', 'radio'].includes(roleOf(element)) || element.matches('[tabindex],[contenteditable]'));
     return (interactive || matching.find((element) => !matching.some((other) => other !== element && element.contains(other))) || null) as HTMLElement | null;
+  };
+  // An element named the same in every entry of a list ("(about)", "Add to
+  // cart") is told apart by the entry around it: the smallest ancestor whose
+  // text holds the value, when that ancestor holds no other such element.
+  const withinEntryHaving = (candidates: Element[], containsText: unknown): Element[] => {
+    const wanted = normalizeText(containsText).toLocaleLowerCase();
+    if (!wanted) return candidates;
+    return candidates.filter((candidate) => {
+      for (let entry = candidate.parentElement; entry && entry !== document.body; entry = entry.parentElement) {
+        if (!normalizeText(entry.textContent).toLocaleLowerCase().includes(wanted)) continue;
+        return candidates.filter((other) => entry!.contains(other)).length === 1;
+      }
+      return false;
+    });
   };
   const firstFound = (strategies: Strategy[]): HTMLElement | null => {
     for (const strategy of strategies) { try { const element = findOne(strategy); if (element) return element; } catch { /* an invalid selector in one strategy does not disqualify the others */ } }
