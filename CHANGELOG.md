@@ -5,6 +5,14 @@ All notable changes to SiteWake are recorded here. The format follows
 [Semantic Versioning](https://semver.org/). Each entry corresponds to a git tag
 `vX.Y.Z` and a GitHub Release with the same notes.
 
+## 1.0.4 - 2026-10-30
+
+Capability generation is shorter and works on more of a site.
+
+- **Simpler generation** — a capability is built from the visitor's recorded session and published once independent test runs pass, with one automatic retry after a failure. The model review step is removed.
+- **Every item, not only the ones on the start page** — test values come from the site's full list, so a capability reaches products the home page does not show, and answers "no such item" in seconds instead of timing out.
+- **Fixes** — rebuilding a capability from the console works again, and the assistant no longer loses its answer when two updates arrive out of order.
+
 ## 1.0.3 - 2026-10-18
 
 Text reaching a reader in the language they chose.
