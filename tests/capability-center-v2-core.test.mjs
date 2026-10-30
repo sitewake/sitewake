@@ -4082,6 +4082,20 @@ test("administrator rebuild creates a new draft on the same capability and repai
       },
       interactions: [],
       trigger: {},
+      experience: {
+        episodeId: "episode-search",
+        agentRunId: "run-search",
+        browserSessionId: "browser-search",
+        originalGoal: "搜索 Arc",
+        outcome: "Success",
+        outcomeSummary: "found Arc",
+        startedAt: "2026-10-29T00:00:00.000Z",
+        endedAt: "2026-10-29T00:00:05.000Z",
+        startPage: { url: "https://example.test/" },
+        endPage: { url: "https://example.test/search?q=Arc" },
+        actions: [],
+        output: {},
+      },
     },
   });
   await claimTask(siteId, discovery.task.id, "runner-source");
@@ -4142,6 +4156,9 @@ test("administrator rebuild creates a new draft on the same capability and repai
   // started with a bare context was run by the v2 runner and then advanced by
   // the legacy branch, which asked for a second validation.
   assert.equal(rebuild.task.input.context.__pipelineVersion, discovery.task.input.context.__pipelineVersion);
+  // Generation derives the program from the visitor's recording: a rebuild
+  // without it failed with capability_recording_required before authoring.
+  assert.equal(rebuild.task.input.experience?.episodeId, "episode-search");
   await assert.rejects(
     () =>
       createCapabilityMaintenanceTask(siteId, capabilityId, { mode: "Repair" }),
@@ -4182,6 +4199,7 @@ test("administrator rebuild creates a new draft on the same capability and repai
     capabilityId,
   });
   assert.equal(repair.task.input.parameters.query, "Arc");
+  assert.equal(repair.task.input.experience?.episodeId, "episode-search");
   assert.deepEqual(repair.task.input.context.initialLocalStorage, {
     cart: '["arc"]',
   });
