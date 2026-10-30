@@ -911,8 +911,11 @@ async function widenListsFromLinkedPages(
     const merged = { ...wider, observedValues: [...unseen, ...wider.observedValues.filter((item) => !unseen.includes(item))] };
     const at = local ? regions.indexOf(local) : -1;
     if (at >= 0) regions.splice(at, 1);
-    regions.unshift({ ...merged, regionId: `region_${regions.length + 1}` });
+    regions.unshift(merged);
   }
+  // Case generation refuses regions that share an id; a list moved to the
+  // front or replaced leaves the old numbering with gaps and repeats.
+  regions.forEach((region, index) => { region.regionId = `region_${index + 1}`; });
 }
 
 /**

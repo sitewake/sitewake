@@ -161,6 +161,10 @@ test("a card grid is a list named by its headings, and a longer list on a linked
     assert.deepEqual([...siblings.productName].sort(), ["Arden Lamp", "Lune Lamp", "Pilo Lamp", "Sela Lamp", "Tove Sconce"]);
     assert.equal(snapshot.regions[0].kind, "choice-list");
     assert.equal(snapshot.regions[0].url, `${origin}/shop`);
+    // Case generation refuses evidence whose regions share an id. The demo
+    // shop's rebuild failed there after the home page's list was replaced.
+    const ids = snapshot.regions.map((region) => region.regionId);
+    assert.equal(new Set(ids).size, ids.length, `region ids repeat: ${ids.join(", ")}`);
     assert.equal(tab.url(), `${origin}/`, "the page is back where it started");
   } finally {
     await browser.close();
