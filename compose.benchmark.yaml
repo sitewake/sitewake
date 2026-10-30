@@ -105,7 +105,7 @@ services:
   # Runs the visitor driver inside the network with the worker image's
   # Chromium: `docker compose ... run --rm bench-driver scripts/benchmark/run.mjs`.
   bench-driver:
-    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.3}
+    image: ${SITEWAKE_IMAGE_REGISTRY:-ghcr.io/sitewake}/sitewake-worker:${SITEWAKE_IMAGE_TAG:-1.0.4}
     profiles: ["driver"]
     restart: "no"
     mem_limit: 900m
